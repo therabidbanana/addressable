@@ -1026,6 +1026,147 @@ module Addressable
       regexp_string = "^#{regexp_string}$"
       return expansions, Regexp.new(regexp_string)
     end
+  end
 
+  class TemplateMachine
+    class VariableSpec
+      def self.concat(mapping, variables)
+        list = variables.map do |variable|
+          value(mapping, *variable)
+        end
+        unless list.empty?
+          joined_values(list.compact)
+        end
+      end
+
+      def self.joined_values(list)
+        raise 'unimplemented'
+      end
+
+      def self.value(mapping, name, explode, length)
+        value = mapping[name]
+        if explode
+          coerce_exploded(value, name, length)
+        else
+          coerce(value, name, length)
+        end
+      end
+
+      def self.coerce(value, name, length)
+        if length
+          value.to_s.slice(0, length)
+        else
+          value.to_s
+        end
+      end
+
+      def self.coerce_exploded(values, name, length)
+        value.join(',')
+      end
+    end
+
+    class OpPlain < VariableSpec
+    end
+
+    class OpPath < VariableSpec
+      def self.joined_values(list)
+        "/#{list.join('/')}"
+      end
+    end
+
+    class OpQuery < VariableSpec
+      def self.coerce(value, name, length)
+        if length
+          "#{name}=#{value.to_s.slice(0, length)}"
+        else
+          "#{name}=#{value}"
+        end
+      end
+      def self.joined_values(list)
+        "?#{list.join('&')}"
+      end
+    end
+
+    def initialize(uri_template)
+      @nodes = TemplateLexer.new.parse_nodes_without_scanner(uri_template)
+    end
+
+    def expand(mapping)
+      result = String.new
+      @nodes.each do |node|
+        if node.is_a?(String)
+          result << node
+        else
+          expand_varspec(mapping, *node) do |expansion|
+            result << expansion
+          end
+        end
+      end
+      result
+    end
+
+    def expand_varspec(mapping, op, vars)
+      val = op.concat(mapping, vars)
+      yield val if val
+    end
+  end
+
+  class TemplateLexer
+    OPERATORS = {
+      "/" => TemplateMachine::OpPath,
+      "?" => TemplateMachine::OpQuery,
+      " " => TemplateMachine::OpPlain,
+    }.freeze
+
+    # Constants used throughout the template code.
+    anything =
+      Addressable::URI::CharacterClasses::RESERVED +
+      Addressable::URI::CharacterClasses::UNRESERVED
+
+
+    variable_char_class =
+      Addressable::URI::CharacterClasses::ALPHA +
+      Addressable::URI::CharacterClasses::DIGIT + '_'
+
+    var_char =
+      "(?:(?:[#{variable_char_class}]|%[a-fA-F0-9][a-fA-F0-9])+)"
+    RESERVED =
+      "(?:[#{anything}]|%[a-fA-F0-9][a-fA-F0-9])"
+    UNRESERVED =
+      "(?:[#{
+        Addressable::URI::CharacterClasses::UNRESERVED
+      }]|%[a-fA-F0-9][a-fA-F0-9])"
+    variable =
+      "(?:#{var_char}(?:\\.?#{var_char})*)"
+    varspec =
+      "(?:(#{variable})(\\*|:(\\d+))?)"
+    VARSPEC = /#{varspec}/
+
+    def initialize
+    end
+
+
+    def parse_nodes_without_scanner(uri_template)
+      node_list = []
+      uri_template.scan(/([^{}]+)|(#{Template::EXPRESSION})/) do |text, varspec, op, vars, *others|
+        if text
+          node_list << text
+        else
+          op_class = OPERATORS[op]
+          nodes = vars.split(',').map do |var|
+            if var.end_with?('*')
+              [var.chomp('*'), true, nil]
+            elsif var.include?(?:)
+              var, length = var.split(':')
+              [var, false, length.to_i]
+            else
+              [var, false, nil]
+            end
+          end
+          node_list << [op_class, nodes]
+        end
+      end
+      node_list
+    end
   end
 end
