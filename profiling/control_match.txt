@@ -1,0 +1,322 @@
+Total allocated: 126.33 MB (1270003 objects)
+Total retained:  0 B (0 objects)
+Total time 10.15475606918335 seconds
+
+allocated memory by gem
+-----------------------------------
+ 126.33 MB  addressable/lib
+   40.00 B  other
+
+allocated memory by file
+-----------------------------------
+ 101.60 MB  addressable/lib/addressable/template.rb
+  24.73 MB  addressable/lib/addressable/uri.rb
+   40.00 B  tasks/profile.rake
+
+allocated memory by location
+-----------------------------------
+  23.94 MB  addressable/lib/addressable/template.rb:1041
+  13.44 MB  addressable/lib/addressable/template.rb:991
+  12.72 MB  addressable/lib/addressable/template.rb:998
+  11.44 MB  addressable/lib/addressable/template.rb:1005
+  11.05 MB  addressable/lib/addressable/uri.rb:109
+   8.64 MB  addressable/lib/addressable/template.rb:1001
+   6.29 MB  addressable/lib/addressable/template.rb:990
+   4.39 MB  addressable/lib/addressable/template.rb:1035
+   4.02 MB  addressable/lib/addressable/template.rb:1032
+   3.72 MB  addressable/lib/addressable/template.rb:1036
+   3.56 MB  addressable/lib/addressable/template.rb:1040
+   2.80 MB  addressable/lib/addressable/template.rb:1004
+   2.80 MB  addressable/lib/addressable/template.rb:1023
+   2.08 MB  addressable/lib/addressable/uri.rb:900
+   1.68 MB  addressable/lib/addressable/uri.rb:148
+   1.44 MB  addressable/lib/addressable/uri.rb:1359
+   1.36 MB  addressable/lib/addressable/uri.rb:2341
+   1.04 MB  addressable/lib/addressable/uri.rb:138
+   1.04 MB  addressable/lib/addressable/template.rb:1017
+ 880.00 kB  addressable/lib/addressable/uri.rb:2345
+ 800.00 kB  addressable/lib/addressable/template.rb:1002
+ 800.00 kB  addressable/lib/addressable/template.rb:1003
+ 800.00 kB  addressable/lib/addressable/uri.rb:1851
+ 800.00 kB  addressable/lib/addressable/uri.rb:2465
+ 400.00 kB  addressable/lib/addressable/template.rb:416
+ 400.00 kB  addressable/lib/addressable/template.rb:988
+ 400.00 kB  addressable/lib/addressable/template.rb:994
+ 400.00 kB  addressable/lib/addressable/uri.rb:1223
+ 400.00 kB  addressable/lib/addressable/uri.rb:127
+ 400.00 kB  addressable/lib/addressable/uri.rb:129
+ 400.00 kB  addressable/lib/addressable/uri.rb:1565
+ 400.00 kB  addressable/lib/addressable/uri.rb:2342
+ 400.00 kB  addressable/lib/addressable/uri.rb:2343
+ 400.00 kB  addressable/lib/addressable/uri.rb:2346
+ 400.00 kB  addressable/lib/addressable/uri.rb:2459
+ 400.00 kB  addressable/lib/addressable/uri.rb:904
+   40.00 B  addressable/lib/addressable/template.rb:239
+   40.00 B  tasks/profile.rake:45
+
+allocated memory by class
+-----------------------------------
+  70.39 MB  String
+  23.52 MB  MatchData
+  17.62 MB  Regexp
+  11.68 MB  Array
+   2.08 MB  Hash
+   1.04 MB  Addressable::URI
+   40.00 B  Addressable::Template
+
+allocated objects by gem
+-----------------------------------
+   1270002  addressable/lib
+         1  other
+
+allocated objects by file
+-----------------------------------
+    940002  addressable/lib/addressable/template.rb
+    330000  addressable/lib/addressable/uri.rb
+         1  tasks/profile.rake
+
+allocated objects by location
+-----------------------------------
+    190000  addressable/lib/addressable/template.rb:1005
+    160000  addressable/lib/addressable/template.rb:1001
+    160000  addressable/lib/addressable/template.rb:991
+    130000  addressable/lib/addressable/uri.rb:109
+     70000  addressable/lib/addressable/template.rb:1004
+     60000  addressable/lib/addressable/template.rb:990
+     60000  addressable/lib/addressable/template.rb:998
+     40001  addressable/lib/addressable/template.rb:1041
+     40000  addressable/lib/addressable/template.rb:1035
+     30000  addressable/lib/addressable/template.rb:1032
+     20000  addressable/lib/addressable/template.rb:1002
+     20000  addressable/lib/addressable/template.rb:1003
+     20000  addressable/lib/addressable/template.rb:1023
+     20000  addressable/lib/addressable/template.rb:1036
+     20000  addressable/lib/addressable/uri.rb:1851
+     20000  addressable/lib/addressable/uri.rb:2465
+     20000  addressable/lib/addressable/uri.rb:900
+     10000  addressable/lib/addressable/template.rb:1017
+     10000  addressable/lib/addressable/template.rb:1040
+     10000  addressable/lib/addressable/template.rb:416
+     10000  addressable/lib/addressable/template.rb:988
+     10000  addressable/lib/addressable/template.rb:994
+     10000  addressable/lib/addressable/uri.rb:1223
+     10000  addressable/lib/addressable/uri.rb:127
+     10000  addressable/lib/addressable/uri.rb:129
+     10000  addressable/lib/addressable/uri.rb:1359
+     10000  addressable/lib/addressable/uri.rb:138
+     10000  addressable/lib/addressable/uri.rb:148
+     10000  addressable/lib/addressable/uri.rb:1565
+     10000  addressable/lib/addressable/uri.rb:2341
+     10000  addressable/lib/addressable/uri.rb:2342
+     10000  addressable/lib/addressable/uri.rb:2343
+     10000  addressable/lib/addressable/uri.rb:2345
+     10000  addressable/lib/addressable/uri.rb:2346
+     10000  addressable/lib/addressable/uri.rb:2459
+     10000  addressable/lib/addressable/uri.rb:904
+         1  addressable/lib/addressable/template.rb:239
+         1  tasks/profile.rake:45
+
+allocated objects by class
+-----------------------------------
+    920002  String
+    190000  Array
+    120000  MatchData
+     20000  Hash
+     10000  Addressable::URI
+     10000  Regexp
+         1  Addressable::Template
+
+retained memory by gem
+-----------------------------------
+NO DATA
+
+retained memory by file
+-----------------------------------
+NO DATA
+
+retained memory by location
+-----------------------------------
+NO DATA
+
+retained memory by class
+-----------------------------------
+NO DATA
+
+retained objects by gem
+-----------------------------------
+NO DATA
+
+retained objects by file
+-----------------------------------
+NO DATA
+
+retained objects by location
+-----------------------------------
+NO DATA
+
+retained objects by class
+-----------------------------------
+NO DATA
+
+
+Allocated String Report
+-----------------------------------
+     60000  "path"
+     30000  addressable/lib/addressable/template.rb:1005
+     20000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:1004
+
+     50000  "/"
+     10000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:1002
+     10000  addressable/lib/addressable/template.rb:1003
+     10000  addressable/lib/addressable/uri.rb:1565
+     10000  addressable/lib/addressable/uri.rb:2459
+
+     50000  "\\{\\?foo,bar:12\\}"
+     40000  addressable/lib/addressable/template.rb:991
+     10000  addressable/lib/addressable/template.rb:990
+
+     50000  "foo"
+     30000  addressable/lib/addressable/template.rb:1005
+     10000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:1004
+
+     50000  "https"
+     20000  addressable/lib/addressable/uri.rb:1851
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:900
+     10000  addressable/lib/addressable/uri.rb:904
+
+     40000  "\\{/path\\}"
+     30000  addressable/lib/addressable/template.rb:991
+     10000  addressable/lib/addressable/template.rb:990
+
+     40000  "google.com"
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:1223
+     10000  addressable/lib/addressable/uri.rb:127
+     10000  addressable/lib/addressable/uri.rb:129
+
+     40000  "{/path}"
+     20000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:991
+     10000  addressable/lib/addressable/template.rb:998
+
+     40000  "{?foo,bar:12}"
+     20000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:991
+     10000  addressable/lib/addressable/template.rb:998
+
+     30001  "^https://google\\.com(?:|/(?<path>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?)(?:|\\?(?<foo>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?&?"
+     20001  addressable/lib/addressable/template.rb:1041
+     10000  addressable/lib/addressable/template.rb:1040
+
+     30000  "bar:12"
+     20000  addressable/lib/addressable/template.rb:1005
+     10000  addressable/lib/addressable/template.rb:1004
+
+     20000  "#cat"
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2346
+
+     20000  "(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?"
+     20000  addressable/lib/addressable/template.rb:1023
+
+     20000  "(?<path>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?"
+     10000  addressable/lib/addressable/template.rb:1032
+     10000  addressable/lib/addressable/template.rb:1035
+
+     20000  "//google.com"
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2343
+
+     20000  "/a"
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2465
+
+     20000  ":12"
+     10000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:1005
+
+     20000  "?"
+     10000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:991
+
+     20000  "?foo=longstring,longeststrin"
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2345
+
+     20000  "bar"
+     10000  addressable/lib/addressable/template.rb:1001
+     10000  addressable/lib/addressable/template.rb:1005
+
+     20000  "https:"
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2342
+
+     20000  "https://google\\.com\\{/path\\}\\{\\?foo,bar:12\\}\\#cat"
+     10000  addressable/lib/addressable/template.rb:988
+     10000  addressable/lib/addressable/template.rb:990
+
+     20000  "https://google\\.com{/path}{?foo,bar:12}\\#cat"
+     10000  addressable/lib/addressable/template.rb:990
+     10000  addressable/lib/addressable/template.rb:998
+
+     20000  "{"
+     20000  addressable/lib/addressable/template.rb:991
+
+     20000  "}"
+     20000  addressable/lib/addressable/template.rb:991
+
+     10000  "&"
+     10000  addressable/lib/addressable/template.rb:1003
+
+     10000  "&?"
+     10000  addressable/lib/addressable/template.rb:1035
+
+     10000  "(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?"
+     10000  addressable/lib/addressable/template.rb:1017
+
+     10000  "(?:|/(?<path>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?)"
+     10000  addressable/lib/addressable/template.rb:1036
+
+     10000  "(?:|\\?(?<foo>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?&?(?<bar>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA"
+     10000  addressable/lib/addressable/template.rb:1036
+
+     10000  "(?<bar>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?"
+     10000  addressable/lib/addressable/template.rb:1032
+
+     10000  "(?<foo>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?"
+     10000  addressable/lib/addressable/template.rb:1032
+
+     10000  "(?<foo>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?&?(?<bar>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9]"
+     10000  addressable/lib/addressable/template.rb:1035
+
+     10000  "//"
+     10000  addressable/lib/addressable/uri.rb:2465
+
+     10000  "/?"
+     10000  addressable/lib/addressable/template.rb:1035
+
+     10000  "\\?"
+     10000  addressable/lib/addressable/template.rb:1002
+
+     10000  "cat"
+     10000  addressable/lib/addressable/uri.rb:109
+
+     10000  "foo,bar:12"
+     10000  addressable/lib/addressable/template.rb:1001
+
+     10000  "foo=longstring,longeststrin"
+     10000  addressable/lib/addressable/uri.rb:109
+
+     10000  "https://google.com/a?foo=longstring,longeststrin#cat"
+     10000  addressable/lib/addressable/uri.rb:2341
+
+     10000  "https://google\\.com(?:|/(?<path>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?)(?:|\\?(?<foo>(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*=(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*?)?&?("
+     10000  addressable/lib/addressable/template.rb:998
+
+         1  "https://google.com{/path}{?foo,bar:12}#cat"
+         1  addressable/lib/addressable/template.rb:239
+
