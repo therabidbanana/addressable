@@ -1,0 +1,262 @@
+Total allocated: 47.85 MB (330049 objects)
+Total retained:  0 B (0 objects)
+Total time 2.6378047466278076 seconds
+
+allocated memory by gem
+-----------------------------------
+  47.85 MB  addressable/lib
+   40.00 B  other
+
+allocated memory by file
+-----------------------------------
+  35.37 MB  addressable/lib/addressable/template_machine.rb
+  12.48 MB  addressable/lib/addressable/uri_template.rb
+   2.10 kB  addressable/lib/addressable/template_lexer.rb
+   40.00 B  tasks/profile.rake
+
+allocated memory by location
+-----------------------------------
+  15.96 MB  addressable/lib/addressable/template_machine.rb:110
+  13.65 MB  addressable/lib/addressable/template_machine.rb:82
+   8.64 MB  addressable/lib/addressable/uri_template.rb:104
+   1.76 MB  addressable/lib/addressable/uri_template.rb:95
+   1.68 MB  addressable/lib/addressable/template_machine.rb:104
+   1.68 MB  addressable/lib/addressable/template_machine.rb:78
+   1.68 MB  addressable/lib/addressable/uri_template.rb:96
+ 800.00 kB  addressable/lib/addressable/template_machine.rb:107
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:109
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:112
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:116
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:83
+ 400.00 kB  addressable/lib/addressable/uri_template.rb:100
+  240.00 B  addressable/lib/addressable/template_lexer.rb:27
+  200.00 B  addressable/lib/addressable/template_lexer.rb:18
+  176.00 B  addressable/lib/addressable/template_lexer.rb:21
+  160.00 B  addressable/lib/addressable/template_lexer.rb:63
+  120.00 B  addressable/lib/addressable/template_lexer.rb:24
+  120.00 B  addressable/lib/addressable/template_lexer.rb:44
+  120.00 B  addressable/lib/addressable/template_lexer.rb:46
+  120.00 B  addressable/lib/addressable/template_lexer.rb:58
+  120.00 B  addressable/lib/addressable/template_lexer.rb:59
+   80.00 B  addressable/lib/addressable/template_lexer.rb:26
+   80.00 B  addressable/lib/addressable/template_lexer.rb:28
+   80.00 B  addressable/lib/addressable/template_lexer.rb:35
+   80.00 B  addressable/lib/addressable/template_lexer.rb:37
+   80.00 B  addressable/lib/addressable/template_lexer.rb:51
+   80.00 B  addressable/lib/addressable/template_lexer.rb:52
+   80.00 B  addressable/lib/addressable/template_lexer.rb:60
+   80.00 B  addressable/lib/addressable/template_lexer.rb:62
+   40.00 B  addressable/lib/addressable/template_lexer.rb:19
+   40.00 B  addressable/lib/addressable/template_lexer.rb:31
+   40.00 B  addressable/lib/addressable/uri_template.rb:30
+   40.00 B  tasks/profile.rake:45
+
+allocated memory by class
+-----------------------------------
+  18.32 MB  String
+  14.09 MB  Regexp
+   8.24 MB  Thread::Backtrace
+   5.04 MB  Hash
+   1.76 MB  StringScanner
+ 400.00 kB  Addressable::UriTemplate::NoMatch
+  520.00 B  Array
+  120.00 B  Addressable::TemplateMachine::Variable
+   40.00 B  Addressable::TemplateLexer
+   40.00 B  Addressable::UriTemplate
+
+allocated objects by gem
+-----------------------------------
+    330048  addressable/lib
+         1  other
+
+allocated objects by file
+-----------------------------------
+    280002  addressable/lib/addressable/template_machine.rb
+     50001  addressable/lib/addressable/uri_template.rb
+        45  addressable/lib/addressable/template_lexer.rb
+         1  tasks/profile.rake
+
+allocated objects by location
+-----------------------------------
+    110001  addressable/lib/addressable/template_machine.rb:110
+     90001  addressable/lib/addressable/template_machine.rb:82
+     20000  addressable/lib/addressable/template_machine.rb:107
+     20000  addressable/lib/addressable/uri_template.rb:104
+     10000  addressable/lib/addressable/template_machine.rb:104
+     10000  addressable/lib/addressable/template_machine.rb:109
+     10000  addressable/lib/addressable/template_machine.rb:112
+     10000  addressable/lib/addressable/template_machine.rb:116
+     10000  addressable/lib/addressable/template_machine.rb:78
+     10000  addressable/lib/addressable/template_machine.rb:83
+     10000  addressable/lib/addressable/uri_template.rb:100
+     10000  addressable/lib/addressable/uri_template.rb:95
+     10000  addressable/lib/addressable/uri_template.rb:96
+         6  addressable/lib/addressable/template_lexer.rb:27
+         4  addressable/lib/addressable/template_lexer.rb:63
+         3  addressable/lib/addressable/template_lexer.rb:24
+         3  addressable/lib/addressable/template_lexer.rb:44
+         3  addressable/lib/addressable/template_lexer.rb:46
+         3  addressable/lib/addressable/template_lexer.rb:58
+         3  addressable/lib/addressable/template_lexer.rb:59
+         2  addressable/lib/addressable/template_lexer.rb:26
+         2  addressable/lib/addressable/template_lexer.rb:28
+         2  addressable/lib/addressable/template_lexer.rb:35
+         2  addressable/lib/addressable/template_lexer.rb:37
+         2  addressable/lib/addressable/template_lexer.rb:51
+         2  addressable/lib/addressable/template_lexer.rb:52
+         2  addressable/lib/addressable/template_lexer.rb:60
+         2  addressable/lib/addressable/template_lexer.rb:62
+         1  addressable/lib/addressable/template_lexer.rb:18
+         1  addressable/lib/addressable/template_lexer.rb:19
+         1  addressable/lib/addressable/template_lexer.rb:21
+         1  addressable/lib/addressable/template_lexer.rb:31
+         1  addressable/lib/addressable/uri_template.rb:30
+         1  tasks/profile.rake:45
+
+allocated objects by class
+-----------------------------------
+    250034  String
+     30000  Hash
+     20000  Regexp
+     10001  StringScanner
+     10000  Addressable::UriTemplate::NoMatch
+     10000  Thread::Backtrace
+         9  Array
+         3  Addressable::TemplateMachine::Variable
+         1  Addressable::TemplateLexer
+         1  Addressable::UriTemplate
+
+retained memory by gem
+-----------------------------------
+NO DATA
+
+retained memory by file
+-----------------------------------
+NO DATA
+
+retained memory by location
+-----------------------------------
+NO DATA
+
+retained memory by class
+-----------------------------------
+NO DATA
+
+retained objects by gem
+-----------------------------------
+NO DATA
+
+retained objects by file
+-----------------------------------
+NO DATA
+
+retained objects by location
+-----------------------------------
+NO DATA
+
+retained objects by class
+-----------------------------------
+NO DATA
+
+
+Allocated String Report
+-----------------------------------
+     40001  "(foo)=((?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*)"
+     40001  addressable/lib/addressable/template_machine.rb:110
+
+     40001  "/((?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])*)"
+     40001  addressable/lib/addressable/template_machine.rb:82
+
+     20002  "?"
+     10000  addressable/lib/addressable/template_machine.rb:107
+     10000  addressable/lib/addressable/template_machine.rb:109
+         1  addressable/lib/addressable/template_lexer.rb:35
+         1  addressable/lib/addressable/template_lexer.rb:37
+
+     20000  "(?:[a-zA-Z0-9\\-\\.\\_\\~]|%[a-fA-F0-9][a-fA-F0-9])"
+     10000  addressable/lib/addressable/template_machine.rb:110
+     10000  addressable/lib/addressable/template_machine.rb:82
+
+     20000  "*)"
+     10000  addressable/lib/addressable/template_machine.rb:110
+     10000  addressable/lib/addressable/template_machine.rb:82
+
+     10003  "foo"
+     10000  addressable/lib/addressable/template_machine.rb:110
+         1  addressable/lib/addressable/template_lexer.rb:44
+         1  addressable/lib/addressable/template_lexer.rb:62
+         1  addressable/lib/addressable/template_lexer.rb:63
+
+     10001  ","
+     10000  addressable/lib/addressable/template_machine.rb:107
+         1  addressable/lib/addressable/template_lexer.rb:46
+
+     10001  "https://google.com"
+     10000  addressable/lib/addressable/uri_template.rb:100
+         1  addressable/lib/addressable/template_lexer.rb:27
+
+     10000  "&"
+     10000  addressable/lib/addressable/template_machine.rb:116
+
+     10000  "("
+     10000  addressable/lib/addressable/template_machine.rb:110
+
+     10000  ")=("
+     10000  addressable/lib/addressable/template_machine.rb:110
+
+     10000  "/("
+     10000  addressable/lib/addressable/template_machine.rb:82
+
+     10000  "/a"
+     10000  addressable/lib/addressable/template_machine.rb:82
+
+     10000  "a"
+     10000  addressable/lib/addressable/template_machine.rb:83
+
+     10000  "foo=longstring"
+     10000  addressable/lib/addressable/template_machine.rb:110
+
+     10000  "longstring"
+     10000  addressable/lib/addressable/template_machine.rb:112
+
+         4  ""
+         2  addressable/lib/addressable/template_lexer.rb:28
+         1  addressable/lib/addressable/template_lexer.rb:27
+         1  addressable/lib/addressable/template_lexer.rb:58
+
+         4  "{"
+         3  addressable/lib/addressable/template_lexer.rb:27
+         1  addressable/lib/addressable/template_lexer.rb:26
+
+         3  "12"
+         2  addressable/lib/addressable/template_lexer.rb:58
+         1  addressable/lib/addressable/template_lexer.rb:59
+
+         3  "path"
+         1  addressable/lib/addressable/template_lexer.rb:44
+         1  addressable/lib/addressable/template_lexer.rb:62
+         1  addressable/lib/addressable/template_lexer.rb:63
+
+         2  "*"
+         2  addressable/lib/addressable/template_lexer.rb:60
+
+         2  "/"
+         1  addressable/lib/addressable/template_lexer.rb:35
+         1  addressable/lib/addressable/template_lexer.rb:37
+
+         2  "https://google.com{"
+         1  addressable/lib/addressable/template_lexer.rb:26
+         1  addressable/lib/addressable/template_lexer.rb:27
+
+         2  "}"
+         2  addressable/lib/addressable/template_lexer.rb:46
+
+         1  "#cat"
+         1  addressable/lib/addressable/template_lexer.rb:31
+
+         1  "bar"
+         1  addressable/lib/addressable/template_lexer.rb:59
+
+         1  "bar:12"
+         1  addressable/lib/addressable/template_lexer.rb:44
+
