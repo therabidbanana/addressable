@@ -229,6 +229,15 @@ module Addressable
       def self.joiner; ","; end
     end
 
+    class OpReserved < Expression
+      def self.allows_reserved?; true; end
+    end
+    class OpFragment < Expression
+      def self.allows_reserved?; true; end
+      def self.leader; "#"; end
+      def self.joiner; ","; end
+    end
+
     class OpPath < Expression
       def self.leader; "/"; end
       def self.joiner; "/"; end
@@ -245,12 +254,24 @@ module Addressable
       end
     end
 
-    class OpDot < Expression
+    class OpLabel < Expression
       def self.leader; "."; end
       def self.joiner; "."; end
     end
 
-    class OpQuery < Expression
+    class OpPathParams < Expression
+      def self.leader; ";"; end
+      def self.joiner; ";"; end
+      def self.prefer_keypairs?; true; end
+    end
+
+    class OpFormContinuation < Expression
+      def self.leader; "&"; end
+      def self.joiner; "&"; end
+      def self.prefer_keypairs?; true; end
+    end
+
+    class OpForm < Expression
       def self.leader; "?"; end
       def self.joiner; "&"; end
       def self.prefer_keypairs?; true; end

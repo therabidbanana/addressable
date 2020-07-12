@@ -107,289 +107,289 @@ describe "Level 1:" do
   }
 end
 
-# describe "Level 2" do
-#   subject {
-#     {
-#       :var => "value",
-#       :hello => "Hello World!",
-#       :path => "/foo/bar"
-#     }
-#   }
-#   context "Operator +:" do
-#     it_behaves_like 'expands', {
-#       '{+var}' => 'value',
-#       '{+hello}' => 'Hello%20World!',
-#       '{+path}/here' => '/foo/bar/here',
-#       'here?ref={+path}' => 'here?ref=/foo/bar'
-#     }
-#   end
-#   context "Operator #:" do
-#     it_behaves_like 'expands', {
-#       'X{#var}' => 'X#value',
-#       'X{#hello}' => 'X#Hello%20World!'
-#     }
-#   end
-# end
+describe "Level 2" do
+  subject {
+    {
+      :var => "value",
+      :hello => "Hello World!",
+      :path => "/foo/bar"
+    }
+  }
+  context "Operator +:" do
+    it_behaves_like 'expands', {
+      '{+var}' => 'value',
+      '{+hello}' => 'Hello%20World!',
+      '{+path}/here' => '/foo/bar/here',
+      'here?ref={+path}' => 'here?ref=/foo/bar'
+    }
+  end
+  context "Operator #:" do
+    it_behaves_like 'expands', {
+      'X{#var}' => 'X#value',
+      'X{#hello}' => 'X#Hello%20World!'
+    }
+  end
+end
 
-# describe "Level 3" do
-#   subject {
-#     {
-#       :var => "value",
-#       :hello => "Hello World!",
-#       :empty => "",
-#       :path => "/foo/bar",
-#       :x => "1024",
-#       :y => "768"
-#     }
-#   }
-#   context "Operator nil (multiple vars):" do
-#     it_behaves_like 'expands', {
-#       'map?{x,y}' => 'map?1024,768',
-#       '{x,hello,y}' => '1024,Hello%20World%21,768'
-#     }
-#   end
-#   context "Operator + (multiple vars):" do
-#     it_behaves_like 'expands', {
-#       '{+x,hello,y}' => '1024,Hello%20World!,768',
-#       '{+path,x}/here' => '/foo/bar,1024/here'
-#     }
-#   end
-#   context "Operator # (multiple vars):" do
-#     it_behaves_like 'expands', {
-#       '{#x,hello,y}' => '#1024,Hello%20World!,768',
-#       '{#path,x}/here' => '#/foo/bar,1024/here'
-#     }
-#   end
-#   context "Operator ." do
-#     it_behaves_like 'expands', {
-#       'X{.var}' => 'X.value',
-#       'X{.x,y}' => 'X.1024.768'
-#     }
-#   end
-#   context "Operator /" do
-#     it_behaves_like 'expands', {
-#       '{/var}' => '/value',
-#       '{/var,x}/here' => '/value/1024/here'
-#     }
-#   end
-#   context "Operator ;" do
-#     it_behaves_like 'expands', {
-#       '{;x,y}' => ';x=1024;y=768',
-#       '{;x,y,empty}' => ';x=1024;y=768;empty'
-#     }
-#   end
-#   context "Operator ?" do
-#     it_behaves_like 'expands', {
-#       '{?x,y}' => '?x=1024&y=768',
-#       '{?x,y,empty}' => '?x=1024&y=768&empty='
-#     }
-#   end
-#   context "Operator &" do
-#     it_behaves_like 'expands', {
-#       '?fixed=yes{&x}' => '?fixed=yes&x=1024',
-#       '{&x,y,empty}' => '&x=1024&y=768&empty='
-#     }
-#   end
-# end
+describe "Level 3" do
+  subject {
+    {
+      :var => "value",
+      :hello => "Hello World!",
+      :empty => "",
+      :path => "/foo/bar",
+      :x => "1024",
+      :y => "768"
+    }
+  }
+  context "Operator nil (multiple vars):" do
+    it_behaves_like 'expands', {
+      'map?{x,y}' => 'map?1024,768',
+      '{x,hello,y}' => '1024,Hello%20World%21,768'
+    }
+  end
+  context "Operator + (multiple vars):" do
+    it_behaves_like 'expands', {
+      '{+x,hello,y}' => '1024,Hello%20World!,768',
+      '{+path,x}/here' => '/foo/bar,1024/here'
+    }
+  end
+  context "Operator # (multiple vars):" do
+    it_behaves_like 'expands', {
+      '{#x,hello,y}' => '#1024,Hello%20World!,768',
+      '{#path,x}/here' => '#/foo/bar,1024/here'
+    }
+  end
+  context "Operator ." do
+    it_behaves_like 'expands', {
+      'X{.var}' => 'X.value',
+      'X{.x,y}' => 'X.1024.768'
+    }
+  end
+  context "Operator /" do
+    it_behaves_like 'expands', {
+      '{/var}' => '/value',
+      '{/var,x}/here' => '/value/1024/here'
+    }
+  end
+  context "Operator ;" do
+    it_behaves_like 'expands', {
+      '{;x,y}' => ';x=1024;y=768',
+      '{;x,y,empty}' => ';x=1024;y=768;empty'
+    }
+  end
+  context "Operator ?" do
+    it_behaves_like 'expands', {
+      '{?x,y}' => '?x=1024&y=768',
+      '{?x,y,empty}' => '?x=1024&y=768&empty='
+    }
+  end
+  context "Operator &" do
+    it_behaves_like 'expands', {
+      '?fixed=yes{&x}' => '?fixed=yes&x=1024',
+      '{&x,y,empty}' => '&x=1024&y=768&empty='
+    }
+  end
+end
 
-# describe "Level 4" do
-#   subject {
-#     {
-#       :var => "value",
-#       :hello => "Hello World!",
-#       :path => "/foo/bar",
-#       :semi => ";",
-#       :list => %w(red green blue),
-#       :keys => {"semi" => ';', "dot" => '.', "comma" => ','}
-#     }
-#   }
-#   context "Expansion with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{var:3}' => 'val',
-#       '{var:30}' => 'value',
-#       '{list}' => 'red,green,blue',
-#       '{list*}' => 'red,green,blue',
-#       '{keys}' => [
-#         'semi,%3B,dot,.,comma,%2C',
-#         'dot,.,semi,%3B,comma,%2C',
-#         'comma,%2C,semi,%3B,dot,.',
-#         'semi,%3B,comma,%2C,dot,.',
-#         'dot,.,comma,%2C,semi,%3B',
-#         'comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{keys*}' => [
-#         'semi=%3B,dot=.,comma=%2C',
-#         'dot=.,semi=%3B,comma=%2C',
-#         'comma=%2C,semi=%3B,dot=.',
-#         'semi=%3B,comma=%2C,dot=.',
-#         'dot=.,comma=%2C,semi=%3B',
-#         'comma=%2C,dot=.,semi=%3B'
-#       ]
-#     }
-#   end
-#   context "Operator + with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{+path:6}/here' => '/foo/b/here',
-#       '{+list}' => 'red,green,blue',
-#       '{+list*}' => 'red,green,blue',
-#       '{+keys}' => [
-#         'semi,;,dot,.,comma,,',
-#         'dot,.,semi,;,comma,,',
-#         'comma,,,semi,;,dot,.',
-#         'semi,;,comma,,,dot,.',
-#         'dot,.,comma,,,semi,;',
-#         'comma,,,dot,.,semi,;'
-#       ],
-#       '{+keys*}' => [
-#         'semi=;,dot=.,comma=,',
-#         'dot=.,semi=;,comma=,',
-#         'comma=,,semi=;,dot=.',
-#         'semi=;,comma=,,dot=.',
-#         'dot=.,comma=,,semi=;',
-#         'comma=,,dot=.,semi=;'
-#       ]
-#     }
-#   end
-#   context "Operator # with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{#path:6}/here' => '#/foo/b/here',
-#       '{#list}' => '#red,green,blue',
-#       '{#list*}' => '#red,green,blue',
-#       '{#keys}' => [
-#         '#semi,;,dot,.,comma,,',
-#         '#dot,.,semi,;,comma,,',
-#         '#comma,,,semi,;,dot,.',
-#         '#semi,;,comma,,,dot,.',
-#         '#dot,.,comma,,,semi,;',
-#         '#comma,,,dot,.,semi,;'
-#       ],
-#       '{#keys*}' => [
-#         '#semi=;,dot=.,comma=,',
-#         '#dot=.,semi=;,comma=,',
-#         '#comma=,,semi=;,dot=.',
-#         '#semi=;,comma=,,dot=.',
-#         '#dot=.,comma=,,semi=;',
-#         '#comma=,,dot=.,semi=;'
-#       ]
-#     }
-#   end
-#   context "Operator . with value modifiers" do
-#     it_behaves_like 'expands', {
-#       'X{.var:3}' => 'X.val',
-#       'X{.list}' => 'X.red,green,blue',
-#       'X{.list*}' => 'X.red.green.blue',
-#       'X{.keys}' => [
-#         'X.semi,%3B,dot,.,comma,%2C',
-#         'X.dot,.,semi,%3B,comma,%2C',
-#         'X.comma,%2C,semi,%3B,dot,.',
-#         'X.semi,%3B,comma,%2C,dot,.',
-#         'X.dot,.,comma,%2C,semi,%3B',
-#         'X.comma,%2C,dot,.,semi,%3B'
-#       ],
-#       'X{.keys*}' => [
-#         'X.semi=%3B.dot=..comma=%2C',
-#         'X.dot=..semi=%3B.comma=%2C',
-#         'X.comma=%2C.semi=%3B.dot=.',
-#         'X.semi=%3B.comma=%2C.dot=.',
-#         'X.dot=..comma=%2C.semi=%3B',
-#         'X.comma=%2C.dot=..semi=%3B'
-#       ]
-#     }
-#   end
-#   context "Operator / with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{/var:1,var}' => '/v/value',
-#       '{/list}' => '/red,green,blue',
-#       '{/list*}' => '/red/green/blue',
-#       '{/list*,path:4}' => '/red/green/blue/%2Ffoo',
-#       '{/keys}' => [
-#         '/semi,%3B,dot,.,comma,%2C',
-#         '/dot,.,semi,%3B,comma,%2C',
-#         '/comma,%2C,semi,%3B,dot,.',
-#         '/semi,%3B,comma,%2C,dot,.',
-#         '/dot,.,comma,%2C,semi,%3B',
-#         '/comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{/keys*}' => [
-#         '/semi=%3B/dot=./comma=%2C',
-#         '/dot=./semi=%3B/comma=%2C',
-#         '/comma=%2C/semi=%3B/dot=.',
-#         '/semi=%3B/comma=%2C/dot=.',
-#         '/dot=./comma=%2C/semi=%3B',
-#         '/comma=%2C/dot=./semi=%3B'
-#       ]
-#     }
-#   end
-#   context "Operator ; with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{;hello:5}' => ';hello=Hello',
-#       '{;list}' => ';list=red,green,blue',
-#       '{;list*}' => ';list=red;list=green;list=blue',
-#       '{;keys}' => [
-#         ';keys=semi,%3B,dot,.,comma,%2C',
-#         ';keys=dot,.,semi,%3B,comma,%2C',
-#         ';keys=comma,%2C,semi,%3B,dot,.',
-#         ';keys=semi,%3B,comma,%2C,dot,.',
-#         ';keys=dot,.,comma,%2C,semi,%3B',
-#         ';keys=comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{;keys*}' => [
-#         ';semi=%3B;dot=.;comma=%2C',
-#         ';dot=.;semi=%3B;comma=%2C',
-#         ';comma=%2C;semi=%3B;dot=.',
-#         ';semi=%3B;comma=%2C;dot=.',
-#         ';dot=.;comma=%2C;semi=%3B',
-#         ';comma=%2C;dot=.;semi=%3B'
-#       ]
-#     }
-#   end
-#   context "Operator ? with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{?var:3}' => '?var=val',
-#       '{?list}' => '?list=red,green,blue',
-#       '{?list*}' => '?list=red&list=green&list=blue',
-#       '{?keys}' => [
-#         '?keys=semi,%3B,dot,.,comma,%2C',
-#         '?keys=dot,.,semi,%3B,comma,%2C',
-#         '?keys=comma,%2C,semi,%3B,dot,.',
-#         '?keys=semi,%3B,comma,%2C,dot,.',
-#         '?keys=dot,.,comma,%2C,semi,%3B',
-#         '?keys=comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{?keys*}' => [
-#         '?semi=%3B&dot=.&comma=%2C',
-#         '?dot=.&semi=%3B&comma=%2C',
-#         '?comma=%2C&semi=%3B&dot=.',
-#         '?semi=%3B&comma=%2C&dot=.',
-#         '?dot=.&comma=%2C&semi=%3B',
-#         '?comma=%2C&dot=.&semi=%3B'
-#       ]
-#     }
-#   end
-#   context "Operator & with value modifiers" do
-#     it_behaves_like 'expands', {
-#       '{&var:3}' => '&var=val',
-#       '{&list}' => '&list=red,green,blue',
-#       '{&list*}' => '&list=red&list=green&list=blue',
-#       '{&keys}' => [
-#         '&keys=semi,%3B,dot,.,comma,%2C',
-#         '&keys=dot,.,semi,%3B,comma,%2C',
-#         '&keys=comma,%2C,semi,%3B,dot,.',
-#         '&keys=semi,%3B,comma,%2C,dot,.',
-#         '&keys=dot,.,comma,%2C,semi,%3B',
-#         '&keys=comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{&keys*}' => [
-#         '&semi=%3B&dot=.&comma=%2C',
-#         '&dot=.&semi=%3B&comma=%2C',
-#         '&comma=%2C&semi=%3B&dot=.',
-#         '&semi=%3B&comma=%2C&dot=.',
-#         '&dot=.&comma=%2C&semi=%3B',
-#         '&comma=%2C&dot=.&semi=%3B'
-#       ]
-#     }
-#   end
-# end
+describe "Level 4" do
+  subject {
+    {
+      :var => "value",
+      :hello => "Hello World!",
+      :path => "/foo/bar",
+      :semi => ";",
+      :list => %w(red green blue),
+      :keys => {"semi" => ';', "dot" => '.', "comma" => ','}
+    }
+  }
+  context "Expansion with value modifiers" do
+    it_behaves_like 'expands', {
+      '{var:3}' => 'val',
+      '{var:30}' => 'value',
+      '{list}' => 'red,green,blue',
+      '{list*}' => 'red,green,blue',
+      '{keys}' => [
+        'semi,%3B,dot,.,comma,%2C',
+        'dot,.,semi,%3B,comma,%2C',
+        'comma,%2C,semi,%3B,dot,.',
+        'semi,%3B,comma,%2C,dot,.',
+        'dot,.,comma,%2C,semi,%3B',
+        'comma,%2C,dot,.,semi,%3B'
+      ],
+      '{keys*}' => [
+        'semi=%3B,dot=.,comma=%2C',
+        'dot=.,semi=%3B,comma=%2C',
+        'comma=%2C,semi=%3B,dot=.',
+        'semi=%3B,comma=%2C,dot=.',
+        'dot=.,comma=%2C,semi=%3B',
+        'comma=%2C,dot=.,semi=%3B'
+      ]
+    }
+  end
+  context "Operator + with value modifiers" do
+    it_behaves_like 'expands', {
+      '{+path:6}/here' => '/foo/b/here',
+      '{+list}' => 'red,green,blue',
+      '{+list*}' => 'red,green,blue',
+      '{+keys}' => [
+        'semi,;,dot,.,comma,,',
+        'dot,.,semi,;,comma,,',
+        'comma,,,semi,;,dot,.',
+        'semi,;,comma,,,dot,.',
+        'dot,.,comma,,,semi,;',
+        'comma,,,dot,.,semi,;'
+      ],
+      '{+keys*}' => [
+        'semi=;,dot=.,comma=,',
+        'dot=.,semi=;,comma=,',
+        'comma=,,semi=;,dot=.',
+        'semi=;,comma=,,dot=.',
+        'dot=.,comma=,,semi=;',
+        'comma=,,dot=.,semi=;'
+      ]
+    }
+  end
+  context "Operator # with value modifiers" do
+    it_behaves_like 'expands', {
+      '{#path:6}/here' => '#/foo/b/here',
+      '{#list}' => '#red,green,blue',
+      '{#list*}' => '#red,green,blue',
+      '{#keys}' => [
+        '#semi,;,dot,.,comma,,',
+        '#dot,.,semi,;,comma,,',
+        '#comma,,,semi,;,dot,.',
+        '#semi,;,comma,,,dot,.',
+        '#dot,.,comma,,,semi,;',
+        '#comma,,,dot,.,semi,;'
+      ],
+      '{#keys*}' => [
+        '#semi=;,dot=.,comma=,',
+        '#dot=.,semi=;,comma=,',
+        '#comma=,,semi=;,dot=.',
+        '#semi=;,comma=,,dot=.',
+        '#dot=.,comma=,,semi=;',
+        '#comma=,,dot=.,semi=;'
+      ]
+    }
+  end
+  context "Operator . with value modifiers" do
+    it_behaves_like 'expands', {
+      'X{.var:3}' => 'X.val',
+      'X{.list}' => 'X.red,green,blue',
+      'X{.list*}' => 'X.red.green.blue',
+      'X{.keys}' => [
+        'X.semi,%3B,dot,.,comma,%2C',
+        'X.dot,.,semi,%3B,comma,%2C',
+        'X.comma,%2C,semi,%3B,dot,.',
+        'X.semi,%3B,comma,%2C,dot,.',
+        'X.dot,.,comma,%2C,semi,%3B',
+        'X.comma,%2C,dot,.,semi,%3B'
+      ],
+      'X{.keys*}' => [
+        'X.semi=%3B.dot=..comma=%2C',
+        'X.dot=..semi=%3B.comma=%2C',
+        'X.comma=%2C.semi=%3B.dot=.',
+        'X.semi=%3B.comma=%2C.dot=.',
+        'X.dot=..comma=%2C.semi=%3B',
+        'X.comma=%2C.dot=..semi=%3B'
+      ]
+    }
+  end
+  context "Operator / with value modifiers" do
+    it_behaves_like 'expands', {
+      '{/var:1,var}' => '/v/value',
+      '{/list}' => '/red,green,blue',
+      '{/list*}' => '/red/green/blue',
+      '{/list*,path:4}' => '/red/green/blue/%2Ffoo',
+      '{/keys}' => [
+        '/semi,%3B,dot,.,comma,%2C',
+        '/dot,.,semi,%3B,comma,%2C',
+        '/comma,%2C,semi,%3B,dot,.',
+        '/semi,%3B,comma,%2C,dot,.',
+        '/dot,.,comma,%2C,semi,%3B',
+        '/comma,%2C,dot,.,semi,%3B'
+      ],
+      '{/keys*}' => [
+        '/semi=%3B/dot=./comma=%2C',
+        '/dot=./semi=%3B/comma=%2C',
+        '/comma=%2C/semi=%3B/dot=.',
+        '/semi=%3B/comma=%2C/dot=.',
+        '/dot=./comma=%2C/semi=%3B',
+        '/comma=%2C/dot=./semi=%3B'
+      ]
+    }
+  end
+  context "Operator ; with value modifiers" do
+    it_behaves_like 'expands', {
+      '{;hello:5}' => ';hello=Hello',
+      '{;list}' => ';list=red,green,blue',
+      '{;list*}' => ';list=red;list=green;list=blue',
+      '{;keys}' => [
+        ';keys=semi,%3B,dot,.,comma,%2C',
+        ';keys=dot,.,semi,%3B,comma,%2C',
+        ';keys=comma,%2C,semi,%3B,dot,.',
+        ';keys=semi,%3B,comma,%2C,dot,.',
+        ';keys=dot,.,comma,%2C,semi,%3B',
+        ';keys=comma,%2C,dot,.,semi,%3B'
+      ],
+      '{;keys*}' => [
+        ';semi=%3B;dot=.;comma=%2C',
+        ';dot=.;semi=%3B;comma=%2C',
+        ';comma=%2C;semi=%3B;dot=.',
+        ';semi=%3B;comma=%2C;dot=.',
+        ';dot=.;comma=%2C;semi=%3B',
+        ';comma=%2C;dot=.;semi=%3B'
+      ]
+    }
+  end
+  context "Operator ? with value modifiers" do
+    it_behaves_like 'expands', {
+      '{?var:3}' => '?var=val',
+      '{?list}' => '?list=red,green,blue',
+      '{?list*}' => '?list=red&list=green&list=blue',
+      '{?keys}' => [
+        '?keys=semi,%3B,dot,.,comma,%2C',
+        '?keys=dot,.,semi,%3B,comma,%2C',
+        '?keys=comma,%2C,semi,%3B,dot,.',
+        '?keys=semi,%3B,comma,%2C,dot,.',
+        '?keys=dot,.,comma,%2C,semi,%3B',
+        '?keys=comma,%2C,dot,.,semi,%3B'
+      ],
+      '{?keys*}' => [
+        '?semi=%3B&dot=.&comma=%2C',
+        '?dot=.&semi=%3B&comma=%2C',
+        '?comma=%2C&semi=%3B&dot=.',
+        '?semi=%3B&comma=%2C&dot=.',
+        '?dot=.&comma=%2C&semi=%3B',
+        '?comma=%2C&dot=.&semi=%3B'
+      ]
+    }
+  end
+  context "Operator & with value modifiers" do
+    it_behaves_like 'expands', {
+      '{&var:3}' => '&var=val',
+      '{&list}' => '&list=red,green,blue',
+      '{&list*}' => '&list=red&list=green&list=blue',
+      '{&keys}' => [
+        '&keys=semi,%3B,dot,.,comma,%2C',
+        '&keys=dot,.,semi,%3B,comma,%2C',
+        '&keys=comma,%2C,semi,%3B,dot,.',
+        '&keys=semi,%3B,comma,%2C,dot,.',
+        '&keys=dot,.,comma,%2C,semi,%3B',
+        '&keys=comma,%2C,dot,.,semi,%3B'
+      ],
+      '{&keys*}' => [
+        '&semi=%3B&dot=.&comma=%2C',
+        '&dot=.&semi=%3B&comma=%2C',
+        '&comma=%2C&semi=%3B&dot=.',
+        '&semi=%3B&comma=%2C&dot=.',
+        '&dot=.&comma=%2C&semi=%3B',
+        '&comma=%2C&dot=.&semi=%3B'
+      ]
+    }
+  end
+end
 describe "Modifiers" do
   subject {
     {
@@ -415,299 +415,299 @@ describe "Modifiers" do
     }
   end
 end
-# describe "Expansion" do
-#   subject {
-#     {
-#       :count => ["one", "two", "three"],
-#       :dom => ["example", "com"],
-#       :dub   => "me/too",
-#       :hello => "Hello World!",
-#       :half  => "50%",
-#       :var   => "value",
-#       :who   => "fred",
-#       :base  => "http://example.com/home/",
-#       :path  => "/foo/bar",
-#       :list  => ["red", "green", "blue"],
-#       :keys  => {"semi" => ";","dot" => ".","comma" => ","},
-#       :v     => "6",
-#       :x     => "1024",
-#       :y     => "768",
-#       :empty => "",
-#       :empty_keys  => {},
-#       :undef => nil
-#     }
-#   }
-#   context "concatenation" do
-#     it_behaves_like 'expands', {
-#       '{count}' => 'one,two,three',
-#       '{count*}' => 'one,two,three',
-#       '{/count}' => '/one,two,three',
-#       '{/count*}' => '/one/two/three',
-#       '{;count}' => ';count=one,two,three',
-#       '{;count*}' => ';count=one;count=two;count=three',
-#       '{?count}' => '?count=one,two,three',
-#       '{?count*}' => '?count=one&count=two&count=three',
-#       '{&count*}' => '&count=one&count=two&count=three'
-#     }
-#   end
-#   context "simple expansion" do
-#     it_behaves_like 'expands', {
-#       '{var}' => 'value',
-#       '{hello}' => 'Hello%20World%21',
-#       '{half}' => '50%25',
-#       'O{empty}X' => 'OX',
-#       'O{undef}X' => 'OX',
-#       '{x,y}' => '1024,768',
-#       '{x,hello,y}' => '1024,Hello%20World%21,768',
-#       '?{x,empty}' => '?1024,',
-#       '?{x,undef}' => '?1024',
-#       '?{undef,y}' => '?768',
-#       '{var:3}' => 'val',
-#       '{var:30}' => 'value',
-#       '{list}' => 'red,green,blue',
-#       '{list*}' => 'red,green,blue',
-#       '{keys}' => [
-#         'semi,%3B,dot,.,comma,%2C',
-#         'dot,.,semi,%3B,comma,%2C',
-#         'comma,%2C,semi,%3B,dot,.',
-#         'semi,%3B,comma,%2C,dot,.',
-#         'dot,.,comma,%2C,semi,%3B',
-#         'comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{keys*}' => [
-#         'semi=%3B,dot=.,comma=%2C',
-#         'dot=.,semi=%3B,comma=%2C',
-#         'comma=%2C,semi=%3B,dot=.',
-#         'semi=%3B,comma=%2C,dot=.',
-#         'dot=.,comma=%2C,semi=%3B',
-#         'comma=%2C,dot=.,semi=%3B'
-#       ]
-#     }
-#   end
-#   context "reserved expansion (+)" do
-#     it_behaves_like 'expands', {
-#       '{+var}' => 'value',
-#       '{+hello}' => 'Hello%20World!',
-#       '{+half}' => '50%25',
-#       '{base}index' => 'http%3A%2F%2Fexample.com%2Fhome%2Findex',
-#       '{+base}index' => 'http://example.com/home/index',
-#       'O{+empty}X' => 'OX',
-#       'O{+undef}X' => 'OX',
-#       '{+path}/here' => '/foo/bar/here',
-#       'here?ref={+path}' => 'here?ref=/foo/bar',
-#       'up{+path}{var}/here' => 'up/foo/barvalue/here',
-#       '{+x,hello,y}' => '1024,Hello%20World!,768',
-#       '{+path,x}/here' => '/foo/bar,1024/here',
-#       '{+path:6}/here' => '/foo/b/here',
-#       '{+list}' => 'red,green,blue',
-#       '{+list*}' => 'red,green,blue',
-#       '{+keys}' => [
-#         'semi,;,dot,.,comma,,',
-#         'dot,.,semi,;,comma,,',
-#         'comma,,,semi,;,dot,.',
-#         'semi,;,comma,,,dot,.',
-#         'dot,.,comma,,,semi,;',
-#         'comma,,,dot,.,semi,;'
-#       ],
-#       '{+keys*}' => [
-#         'semi=;,dot=.,comma=,',
-#         'dot=.,semi=;,comma=,',
-#         'comma=,,semi=;,dot=.',
-#         'semi=;,comma=,,dot=.',
-#         'dot=.,comma=,,semi=;',
-#         'comma=,,dot=.,semi=;'
-#       ]
-#     }
-#   end
-#   context "fragment expansion (#)" do
-#     it_behaves_like 'expands', {
-#       '{#var}' => '#value',
-#       '{#hello}' => '#Hello%20World!',
-#       '{#half}' => '#50%25',
-#       'foo{#empty}' => 'foo#',
-#       'foo{#undef}' => 'foo',
-#       '{#x,hello,y}' => '#1024,Hello%20World!,768',
-#       '{#path,x}/here' => '#/foo/bar,1024/here',
-#       '{#path:6}/here' => '#/foo/b/here',
-#       '{#list}' => '#red,green,blue',
-#       '{#list*}' => '#red,green,blue',
-#       '{#keys}' => [
-#         '#semi,;,dot,.,comma,,',
-#         '#dot,.,semi,;,comma,,',
-#         '#comma,,,semi,;,dot,.',
-#         '#semi,;,comma,,,dot,.',
-#         '#dot,.,comma,,,semi,;',
-#         '#comma,,,dot,.,semi,;'
-#       ],
-#       '{#keys*}' => [
-#         '#semi=;,dot=.,comma=,',
-#         '#dot=.,semi=;,comma=,',
-#         '#comma=,,semi=;,dot=.',
-#         '#semi=;,comma=,,dot=.',
-#         '#dot=.,comma=,,semi=;',
-#         '#comma=,,dot=.,semi=;'
-#       ]
-#     }
-#   end
-#   context "label expansion (.)" do
-#     it_behaves_like 'expands', {
-#       '{.who}' => '.fred',
-#       '{.who,who}' => '.fred.fred',
-#       '{.half,who}' => '.50%25.fred',
-#       'www{.dom*}' => 'www.example.com',
-#       'X{.var}' => 'X.value',
-#       'X{.empty}' => 'X.',
-#       'X{.undef}' => 'X',
-#       'X{.var:3}' => 'X.val',
-#       'X{.list}' => 'X.red,green,blue',
-#       'X{.list*}' => 'X.red.green.blue',
-#       'X{.keys}' => [
-#         'X.semi,%3B,dot,.,comma,%2C',
-#         'X.dot,.,semi,%3B,comma,%2C',
-#         'X.comma,%2C,semi,%3B,dot,.',
-#         'X.semi,%3B,comma,%2C,dot,.',
-#         'X.dot,.,comma,%2C,semi,%3B',
-#         'X.comma,%2C,dot,.,semi,%3B'
-#       ],
-#       'X{.keys*}' => [
-#         'X.semi=%3B.dot=..comma=%2C',
-#         'X.dot=..semi=%3B.comma=%2C',
-#         'X.comma=%2C.semi=%3B.dot=.',
-#         'X.semi=%3B.comma=%2C.dot=.',
-#         'X.dot=..comma=%2C.semi=%3B',
-#         'X.comma=%2C.dot=..semi=%3B'
-#       ],
-#       'X{.empty_keys}' => 'X',
-#       'X{.empty_keys*}' => 'X'
-#     }
-#   end
-#   context "path expansion (/)" do
-#     it_behaves_like 'expands', {
-#       '{/who}' => '/fred',
-#       '{/who,who}' => '/fred/fred',
-#       '{/half,who}' => '/50%25/fred',
-#       '{/who,dub}' => '/fred/me%2Ftoo',
-#       '{/var}' => '/value',
-#       '{/var,empty}' => '/value/',
-#       '{/var,undef}' => '/value',
-#       '{/var,x}/here' => '/value/1024/here',
-#       '{/var:1,var}' => '/v/value',
-#       '{/list}' => '/red,green,blue',
-#       '{/list*}' => '/red/green/blue',
-#       '{/list*,path:4}' => '/red/green/blue/%2Ffoo',
-#       '{/keys}' => [
-#         '/semi,%3B,dot,.,comma,%2C',
-#         '/dot,.,semi,%3B,comma,%2C',
-#         '/comma,%2C,semi,%3B,dot,.',
-#         '/semi,%3B,comma,%2C,dot,.',
-#         '/dot,.,comma,%2C,semi,%3B',
-#         '/comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{/keys*}' => [
-#         '/semi=%3B/dot=./comma=%2C',
-#         '/dot=./semi=%3B/comma=%2C',
-#         '/comma=%2C/semi=%3B/dot=.',
-#         '/semi=%3B/comma=%2C/dot=.',
-#         '/dot=./comma=%2C/semi=%3B',
-#         '/comma=%2C/dot=./semi=%3B'
-#       ]
-#     }
-#   end
-#   context "path-style expansion (;)" do
-#     it_behaves_like 'expands', {
-#       '{;who}' => ';who=fred',
-#       '{;half}' => ';half=50%25',
-#       '{;empty}' => ';empty',
-#       '{;v,empty,who}' => ';v=6;empty;who=fred',
-#       '{;v,bar,who}' => ';v=6;who=fred',
-#       '{;x,y}' => ';x=1024;y=768',
-#       '{;x,y,empty}' => ';x=1024;y=768;empty',
-#       '{;x,y,undef}' => ';x=1024;y=768',
-#       '{;hello:5}' => ';hello=Hello',
-#       '{;list}' => ';list=red,green,blue',
-#       '{;list*}' => ';list=red;list=green;list=blue',
-#       '{;keys}' => [
-#         ';keys=semi,%3B,dot,.,comma,%2C',
-#         ';keys=dot,.,semi,%3B,comma,%2C',
-#         ';keys=comma,%2C,semi,%3B,dot,.',
-#         ';keys=semi,%3B,comma,%2C,dot,.',
-#         ';keys=dot,.,comma,%2C,semi,%3B',
-#         ';keys=comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{;keys*}' => [
-#         ';semi=%3B;dot=.;comma=%2C',
-#         ';dot=.;semi=%3B;comma=%2C',
-#         ';comma=%2C;semi=%3B;dot=.',
-#         ';semi=%3B;comma=%2C;dot=.',
-#         ';dot=.;comma=%2C;semi=%3B',
-#         ';comma=%2C;dot=.;semi=%3B'
-#       ]
-#     }
-#   end
-#   context "form query expansion (?)" do
-#     it_behaves_like 'expands', {
-#       '{?who}' => '?who=fred',
-#       '{?half}' => '?half=50%25',
-#       '{?x,y}' => '?x=1024&y=768',
-#       '{?x,y,empty}' => '?x=1024&y=768&empty=',
-#       '{?x,y,undef}' => '?x=1024&y=768',
-#       '{?var:3}' => '?var=val',
-#       '{?list}' => '?list=red,green,blue',
-#       '{?list*}' => '?list=red&list=green&list=blue',
-#       '{?keys}' => [
-#         '?keys=semi,%3B,dot,.,comma,%2C',
-#         '?keys=dot,.,semi,%3B,comma,%2C',
-#         '?keys=comma,%2C,semi,%3B,dot,.',
-#         '?keys=semi,%3B,comma,%2C,dot,.',
-#         '?keys=dot,.,comma,%2C,semi,%3B',
-#         '?keys=comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{?keys*}' => [
-#         '?semi=%3B&dot=.&comma=%2C',
-#         '?dot=.&semi=%3B&comma=%2C',
-#         '?comma=%2C&semi=%3B&dot=.',
-#         '?semi=%3B&comma=%2C&dot=.',
-#         '?dot=.&comma=%2C&semi=%3B',
-#         '?comma=%2C&dot=.&semi=%3B'
-#       ]
-#     }
-#   end
-#   context "form query expansion (&)" do
-#     it_behaves_like 'expands', {
-#       '{&who}' => '&who=fred',
-#       '{&half}' => '&half=50%25',
-#       '?fixed=yes{&x}' => '?fixed=yes&x=1024',
-#       '{&x,y,empty}' => '&x=1024&y=768&empty=',
-#       '{&x,y,undef}' => '&x=1024&y=768',
-#       '{&var:3}' => '&var=val',
-#       '{&list}' => '&list=red,green,blue',
-#       '{&list*}' => '&list=red&list=green&list=blue',
-#       '{&keys}' => [
-#         '&keys=semi,%3B,dot,.,comma,%2C',
-#         '&keys=dot,.,semi,%3B,comma,%2C',
-#         '&keys=comma,%2C,semi,%3B,dot,.',
-#         '&keys=semi,%3B,comma,%2C,dot,.',
-#         '&keys=dot,.,comma,%2C,semi,%3B',
-#         '&keys=comma,%2C,dot,.,semi,%3B'
-#       ],
-#       '{&keys*}' => [
-#         '&semi=%3B&dot=.&comma=%2C',
-#         '&dot=.&semi=%3B&comma=%2C',
-#         '&comma=%2C&semi=%3B&dot=.',
-#         '&semi=%3B&comma=%2C&dot=.',
-#         '&dot=.&comma=%2C&semi=%3B',
-#         '&comma=%2C&dot=.&semi=%3B'
-#       ]
-#     }
-#   end
-#   context "non-string key in match data" do
-#     subject {Addressable::Template.new("http://example.com/{one}")}
+describe "Expansion" do
+  subject {
+    {
+      :count => ["one", "two", "three"],
+      :dom => ["example", "com"],
+      :dub   => "me/too",
+      :hello => "Hello World!",
+      :half  => "50%",
+      :var   => "value",
+      :who   => "fred",
+      :base  => "http://example.com/home/",
+      :path  => "/foo/bar",
+      :list  => ["red", "green", "blue"],
+      :keys  => {"semi" => ";","dot" => ".","comma" => ","},
+      :v     => "6",
+      :x     => "1024",
+      :y     => "768",
+      :empty => "",
+      :empty_keys  => {},
+      :undef => nil
+    }
+  }
+  context "concatenation" do
+    it_behaves_like 'expands', {
+      '{count}' => 'one,two,three',
+      '{count*}' => 'one,two,three',
+      '{/count}' => '/one,two,three',
+      '{/count*}' => '/one/two/three',
+      '{;count}' => ';count=one,two,three',
+      '{;count*}' => ';count=one;count=two;count=three',
+      '{?count}' => '?count=one,two,three',
+      '{?count*}' => '?count=one&count=two&count=three',
+      '{&count*}' => '&count=one&count=two&count=three'
+    }
+  end
+  context "simple expansion" do
+    it_behaves_like 'expands', {
+      '{var}' => 'value',
+      '{hello}' => 'Hello%20World%21',
+      '{half}' => '50%25',
+      'O{empty}X' => 'OX',
+      'O{undef}X' => 'OX',
+      '{x,y}' => '1024,768',
+      '{x,hello,y}' => '1024,Hello%20World%21,768',
+      '?{x,empty}' => '?1024,',
+      '?{x,undef}' => '?1024',
+      '?{undef,y}' => '?768',
+      '{var:3}' => 'val',
+      '{var:30}' => 'value',
+      '{list}' => 'red,green,blue',
+      '{list*}' => 'red,green,blue',
+      '{keys}' => [
+        'semi,%3B,dot,.,comma,%2C',
+        'dot,.,semi,%3B,comma,%2C',
+        'comma,%2C,semi,%3B,dot,.',
+        'semi,%3B,comma,%2C,dot,.',
+        'dot,.,comma,%2C,semi,%3B',
+        'comma,%2C,dot,.,semi,%3B'
+      ],
+      '{keys*}' => [
+        'semi=%3B,dot=.,comma=%2C',
+        'dot=.,semi=%3B,comma=%2C',
+        'comma=%2C,semi=%3B,dot=.',
+        'semi=%3B,comma=%2C,dot=.',
+        'dot=.,comma=%2C,semi=%3B',
+        'comma=%2C,dot=.,semi=%3B'
+      ]
+    }
+  end
+  context "reserved expansion (+)" do
+    it_behaves_like 'expands', {
+      '{+var}' => 'value',
+      '{+hello}' => 'Hello%20World!',
+      '{+half}' => '50%25',
+      '{base}index' => 'http%3A%2F%2Fexample.com%2Fhome%2Findex',
+      '{+base}index' => 'http://example.com/home/index',
+      'O{+empty}X' => 'OX',
+      'O{+undef}X' => 'OX',
+      '{+path}/here' => '/foo/bar/here',
+      'here?ref={+path}' => 'here?ref=/foo/bar',
+      'up{+path}{var}/here' => 'up/foo/barvalue/here',
+      '{+x,hello,y}' => '1024,Hello%20World!,768',
+      '{+path,x}/here' => '/foo/bar,1024/here',
+      '{+path:6}/here' => '/foo/b/here',
+      '{+list}' => 'red,green,blue',
+      '{+list*}' => 'red,green,blue',
+      '{+keys}' => [
+        'semi,;,dot,.,comma,,',
+        'dot,.,semi,;,comma,,',
+        'comma,,,semi,;,dot,.',
+        'semi,;,comma,,,dot,.',
+        'dot,.,comma,,,semi,;',
+        'comma,,,dot,.,semi,;'
+      ],
+      '{+keys*}' => [
+        'semi=;,dot=.,comma=,',
+        'dot=.,semi=;,comma=,',
+        'comma=,,semi=;,dot=.',
+        'semi=;,comma=,,dot=.',
+        'dot=.,comma=,,semi=;',
+        'comma=,,dot=.,semi=;'
+      ]
+    }
+  end
+  context "fragment expansion (#)" do
+    it_behaves_like 'expands', {
+      '{#var}' => '#value',
+      '{#hello}' => '#Hello%20World!',
+      '{#half}' => '#50%25',
+      'foo{#empty}' => 'foo#',
+      'foo{#undef}' => 'foo',
+      '{#x,hello,y}' => '#1024,Hello%20World!,768',
+      '{#path,x}/here' => '#/foo/bar,1024/here',
+      '{#path:6}/here' => '#/foo/b/here',
+      '{#list}' => '#red,green,blue',
+      '{#list*}' => '#red,green,blue',
+      '{#keys}' => [
+        '#semi,;,dot,.,comma,,',
+        '#dot,.,semi,;,comma,,',
+        '#comma,,,semi,;,dot,.',
+        '#semi,;,comma,,,dot,.',
+        '#dot,.,comma,,,semi,;',
+        '#comma,,,dot,.,semi,;'
+      ],
+      '{#keys*}' => [
+        '#semi=;,dot=.,comma=,',
+        '#dot=.,semi=;,comma=,',
+        '#comma=,,semi=;,dot=.',
+        '#semi=;,comma=,,dot=.',
+        '#dot=.,comma=,,semi=;',
+        '#comma=,,dot=.,semi=;'
+      ]
+    }
+  end
+  context "label expansion (.)" do
+    it_behaves_like 'expands', {
+      '{.who}' => '.fred',
+      '{.who,who}' => '.fred.fred',
+      '{.half,who}' => '.50%25.fred',
+      'www{.dom*}' => 'www.example.com',
+      'X{.var}' => 'X.value',
+      'X{.empty}' => 'X.',
+      'X{.undef}' => 'X',
+      'X{.var:3}' => 'X.val',
+      'X{.list}' => 'X.red,green,blue',
+      'X{.list*}' => 'X.red.green.blue',
+      'X{.keys}' => [
+        'X.semi,%3B,dot,.,comma,%2C',
+        'X.dot,.,semi,%3B,comma,%2C',
+        'X.comma,%2C,semi,%3B,dot,.',
+        'X.semi,%3B,comma,%2C,dot,.',
+        'X.dot,.,comma,%2C,semi,%3B',
+        'X.comma,%2C,dot,.,semi,%3B'
+      ],
+      'X{.keys*}' => [
+        'X.semi=%3B.dot=..comma=%2C',
+        'X.dot=..semi=%3B.comma=%2C',
+        'X.comma=%2C.semi=%3B.dot=.',
+        'X.semi=%3B.comma=%2C.dot=.',
+        'X.dot=..comma=%2C.semi=%3B',
+        'X.comma=%2C.dot=..semi=%3B'
+      ],
+      'X{.empty_keys}' => 'X',
+      'X{.empty_keys*}' => 'X'
+    }
+  end
+  context "path expansion (/)" do
+    it_behaves_like 'expands', {
+      '{/who}' => '/fred',
+      '{/who,who}' => '/fred/fred',
+      '{/half,who}' => '/50%25/fred',
+      '{/who,dub}' => '/fred/me%2Ftoo',
+      '{/var}' => '/value',
+      '{/var,empty}' => '/value/',
+      '{/var,undef}' => '/value',
+      '{/var,x}/here' => '/value/1024/here',
+      '{/var:1,var}' => '/v/value',
+      '{/list}' => '/red,green,blue',
+      '{/list*}' => '/red/green/blue',
+      '{/list*,path:4}' => '/red/green/blue/%2Ffoo',
+      '{/keys}' => [
+        '/semi,%3B,dot,.,comma,%2C',
+        '/dot,.,semi,%3B,comma,%2C',
+        '/comma,%2C,semi,%3B,dot,.',
+        '/semi,%3B,comma,%2C,dot,.',
+        '/dot,.,comma,%2C,semi,%3B',
+        '/comma,%2C,dot,.,semi,%3B'
+      ],
+      '{/keys*}' => [
+        '/semi=%3B/dot=./comma=%2C',
+        '/dot=./semi=%3B/comma=%2C',
+        '/comma=%2C/semi=%3B/dot=.',
+        '/semi=%3B/comma=%2C/dot=.',
+        '/dot=./comma=%2C/semi=%3B',
+        '/comma=%2C/dot=./semi=%3B'
+      ]
+    }
+  end
+  context "path-style expansion (;)" do
+    it_behaves_like 'expands', {
+      '{;who}' => ';who=fred',
+      '{;half}' => ';half=50%25',
+      '{;empty}' => ';empty',
+      '{;v,empty,who}' => ';v=6;empty;who=fred',
+      '{;v,bar,who}' => ';v=6;who=fred',
+      '{;x,y}' => ';x=1024;y=768',
+      '{;x,y,empty}' => ';x=1024;y=768;empty',
+      '{;x,y,undef}' => ';x=1024;y=768',
+      '{;hello:5}' => ';hello=Hello',
+      '{;list}' => ';list=red,green,blue',
+      '{;list*}' => ';list=red;list=green;list=blue',
+      '{;keys}' => [
+        ';keys=semi,%3B,dot,.,comma,%2C',
+        ';keys=dot,.,semi,%3B,comma,%2C',
+        ';keys=comma,%2C,semi,%3B,dot,.',
+        ';keys=semi,%3B,comma,%2C,dot,.',
+        ';keys=dot,.,comma,%2C,semi,%3B',
+        ';keys=comma,%2C,dot,.,semi,%3B'
+      ],
+      '{;keys*}' => [
+        ';semi=%3B;dot=.;comma=%2C',
+        ';dot=.;semi=%3B;comma=%2C',
+        ';comma=%2C;semi=%3B;dot=.',
+        ';semi=%3B;comma=%2C;dot=.',
+        ';dot=.;comma=%2C;semi=%3B',
+        ';comma=%2C;dot=.;semi=%3B'
+      ]
+    }
+  end
+  context "form query expansion (?)" do
+    it_behaves_like 'expands', {
+      '{?who}' => '?who=fred',
+      '{?half}' => '?half=50%25',
+      '{?x,y}' => '?x=1024&y=768',
+      '{?x,y,empty}' => '?x=1024&y=768&empty=',
+      '{?x,y,undef}' => '?x=1024&y=768',
+      '{?var:3}' => '?var=val',
+      '{?list}' => '?list=red,green,blue',
+      '{?list*}' => '?list=red&list=green&list=blue',
+      '{?keys}' => [
+        '?keys=semi,%3B,dot,.,comma,%2C',
+        '?keys=dot,.,semi,%3B,comma,%2C',
+        '?keys=comma,%2C,semi,%3B,dot,.',
+        '?keys=semi,%3B,comma,%2C,dot,.',
+        '?keys=dot,.,comma,%2C,semi,%3B',
+        '?keys=comma,%2C,dot,.,semi,%3B'
+      ],
+      '{?keys*}' => [
+        '?semi=%3B&dot=.&comma=%2C',
+        '?dot=.&semi=%3B&comma=%2C',
+        '?comma=%2C&semi=%3B&dot=.',
+        '?semi=%3B&comma=%2C&dot=.',
+        '?dot=.&comma=%2C&semi=%3B',
+        '?comma=%2C&dot=.&semi=%3B'
+      ]
+    }
+  end
+  context "form query expansion (&)" do
+    it_behaves_like 'expands', {
+      '{&who}' => '&who=fred',
+      '{&half}' => '&half=50%25',
+      '?fixed=yes{&x}' => '?fixed=yes&x=1024',
+      '{&x,y,empty}' => '&x=1024&y=768&empty=',
+      '{&x,y,undef}' => '&x=1024&y=768',
+      '{&var:3}' => '&var=val',
+      '{&list}' => '&list=red,green,blue',
+      '{&list*}' => '&list=red&list=green&list=blue',
+      '{&keys}' => [
+        '&keys=semi,%3B,dot,.,comma,%2C',
+        '&keys=dot,.,semi,%3B,comma,%2C',
+        '&keys=comma,%2C,semi,%3B,dot,.',
+        '&keys=semi,%3B,comma,%2C,dot,.',
+        '&keys=dot,.,comma,%2C,semi,%3B',
+        '&keys=comma,%2C,dot,.,semi,%3B'
+      ],
+      '{&keys*}' => [
+        '&semi=%3B&dot=.&comma=%2C',
+        '&dot=.&semi=%3B&comma=%2C',
+        '&comma=%2C&semi=%3B&dot=.',
+        '&semi=%3B&comma=%2C&dot=.',
+        '&dot=.&comma=%2C&semi=%3B',
+        '&comma=%2C&dot=.&semi=%3B'
+      ]
+    }
+  end
+  context "non-string key in match data" do
+    subject {Addressable::Template.new("http://example.com/{one}")}
 
-#     it "raises TypeError" do
-#       expect { subject.expand(Object.new => "1") }.to raise_error TypeError
-#     end
-#   end
-# end
+    it "raises TypeError" do
+      expect { subject.expand(Object.new => "1") }.to raise_error TypeError
+    end
+  end
+end
 
 # class ExampleTwoProcessor
 #   def self.restore(name, value)

@@ -5,8 +5,12 @@ module Addressable
   class TemplateLexer
     OPERATORS = {
       "/" => Addressable::TemplateMachine::OpPath,
-      "?" => Addressable::TemplateMachine::OpQuery,
-      "." => Addressable::TemplateMachine::OpDot,
+      "?" => Addressable::TemplateMachine::OpForm,
+      "&" => Addressable::TemplateMachine::OpFormContinuation,
+      "#" => Addressable::TemplateMachine::OpFragment,
+      "." => Addressable::TemplateMachine::OpLabel,
+      ";" => Addressable::TemplateMachine::OpPathParams,
+      "+" => Addressable::TemplateMachine::OpReserved,
       " " => Addressable::TemplateMachine::OpPlain,
     }.freeze
 
@@ -34,7 +38,7 @@ module Addressable
           end
         elsif lex_state == :expression
           case scanner.peek(1)
-          when '?', '/', '#', ':', '.'
+          when '?', '/', '#', ';', '.', '+', '&'
             op = scanner.getch
             op_class = OPERATORS[op]
           else
