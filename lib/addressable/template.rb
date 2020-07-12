@@ -44,6 +44,15 @@ module Addressable
       "(?:[#{
         Addressable::URI::CharacterClasses::UNRESERVED
       }]|%[a-fA-F0-9][a-fA-F0-9])"
+
+    WITHOUT_RESERVED = /[^#{
+      Addressable::URI::CharacterClasses::UNRESERVED
+    }]/
+    WITH_RESERVED = /[^#{
+      Addressable::URI::CharacterClasses::RESERVED +
+      Addressable::URI::CharacterClasses::UNRESERVED
+    }]/
+
     variable =
       "(?:#{var_char}(?:\\.?#{var_char})*)"
     varspec =
@@ -811,11 +820,9 @@ module Addressable
           if processor == nil || !processor.respond_to?(:transform)
             # Handle percent escaping
             if allow_reserved
-              encode_map =
-                Addressable::URI::CharacterClasses::RESERVED +
-                Addressable::URI::CharacterClasses::UNRESERVED
+              encode_map = WITH_RESERVED
             else
-              encode_map = Addressable::URI::CharacterClasses::UNRESERVED
+              encode_map = WITHOUT_RESERVED
             end
             if value.kind_of?(Array)
               transformed_value = value.map do |val|
