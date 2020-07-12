@@ -1,6 +1,38 @@
 # frozen_string_literal: true
 
 namespace :profile do
+  desc "Profile Memory for Template Expansions"
+  task :template_expand do
+    require "memory_profiler"
+    require "addressable/template"
+
+    start_at = Time.now.to_f
+    report = MemoryProfiler.report do
+      10_000.times do
+        Addressable::Template.new(
+          "https://google.com{/path}{?foo,bar:12}#cat"
+        ).expand("path" => "a", "foo" => "longstring", "bar" => "longeststringavailable")
+      end
+    end
+    end_at = Time.now.to_f
+    print_options = { scale_bytes: true, normalize_paths: true }
+    puts "\n\n"
+
+    if ENV["CI"]
+      report.pretty_print(print_options)
+    else
+      t_allocated = report.scale_bytes(report.total_allocated_memsize)
+      t_retained  = report.scale_bytes(report.total_retained_memsize)
+
+      puts "Total allocated: #{t_allocated} (#{report.total_allocated} objects)"
+      puts "Total retained:  #{t_retained} (#{report.total_retained} objects)"
+      puts "Total time #{end_at - start_at} seconds"
+
+      FileUtils.mkdir_p("tmp")
+      report.pretty_print(to_file: "tmp/memprof.txt", **print_options)
+    end
+  end
+
   desc "Profile memory allocations"
   task :memory do
     require "memory_profiler"
