@@ -41,7 +41,7 @@ namespace :profile do
     start_at = Time.now.to_f
     report = MemoryProfiler.report do
       10_000.times do
-        Addressable::Template.new(
+        Addressable::TemplateMachine.new(
           "https://google.com{/path}{?foo,bar:12}#cat"
         ).expand("path" => "a", "foo" => "longstring", "bar" => "longeststringavailable")
       end
