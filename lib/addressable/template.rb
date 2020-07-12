@@ -20,6 +20,7 @@
 
 require "addressable/version"
 require "addressable/uri"
+require "strscan"
 
 module Addressable
   ##
@@ -1029,10 +1030,12 @@ module Addressable
   end
 
   class TemplateMachine
+    class Variable < Struct.new(:name, :expand, :length)
+    end
     class VariableSpec
       def self.concat(mapping, variables)
         list = variables.map do |variable|
-          value(mapping, *variable)
+          value(mapping, variable)
         end
         unless list.empty?
           joined_values(list.compact)
@@ -1043,12 +1046,12 @@ module Addressable
         raise 'unimplemented'
       end
 
-      def self.value(mapping, name, explode, length)
-        value = mapping[name]
-        if explode
-          coerce_exploded(value, name, length)
+      def self.value(mapping, variable)
+        value = mapping[variable.name]
+        if variable.expand
+          coerce_exploded(value, variable.name, variable.length)
         else
-          coerce(value, name, length)
+          coerce(value, variable.name, variable.length)
         end
       end
 
@@ -1088,7 +1091,7 @@ module Addressable
     end
 
     def initialize(uri_template)
-      @nodes = TemplateLexer.new.parse_nodes_without_scanner(uri_template)
+      @nodes = TemplateLexer.new.parse_nodes(uri_template)
     end
 
     def expand(mapping)
@@ -1145,25 +1148,55 @@ module Addressable
     def initialize
     end
 
-
-    def parse_nodes_without_scanner(uri_template)
+    def parse_nodes(uri_template)
       node_list = []
-      uri_template.scan(/([^{}]+)|(#{Template::EXPRESSION})/) do |text, varspec, op, vars, *others|
-        if text
-          node_list << text
-        else
-          op_class = OPERATORS[op]
-          nodes = vars.split(',').map do |var|
-            if var.end_with?('*')
-              [var.chomp('*'), true, nil]
-            elsif var.include?(?:)
-              var, length = var.split(':')
-              [var, false, length.to_i]
+      curr_node = []
+      lex_state = :plain
+      scanner = StringScanner.new(uri_template)
+      until scanner.eos?
+        if lex_state == :plain
+          curr_node = []
+          op_class = nil
+          if scanner.check_until(/{/)
+            scanned = scanner.scan_until(/{/).chomp('{')
+            node_list << scanned unless scanned == ""
+            lex_state = :expression
+          else
+            node_list << scanner.rest
+            scanner.terminate
+          end
+        elsif lex_state == :expression
+          case scanner.peek(1)
+          when '?', '/', '#', ':', '.'
+            op = scanner.getch
+            op_class = OPERATORS[op]
+          else
+            op_class = OPERATORS[' ']
+          end
+          lex_state = :varspec
+        elsif lex_state == :varspec
+          scanned = scanner.scan(VARSPEC)
+          if scanned.nil?
+            case scanner.getch
+            when ","
+              # Continue pulling varspecs
+            when "}"
+              lex_state = :plain
+              node_list << [op_class, curr_node]
+              curr_node = []
+              op_class = nil
             else
-              [var, false, nil]
+              raise "Incomplete varspec"
+            end
+          else
+            if scanner[3] && scanner[3] != ""
+              curr_node << TemplateMachine::Variable.new(scanner[1], false, scanner[3].to_i)
+            elsif scanner[2] == "*"
+              curr_node << TemplateMachine::Variable.new(scanner[1], true, nil)
+            elsif scanner[1]
+              curr_node << TemplateMachine::Variable.new(scanner[1], false, nil)
             end
           end
-          node_list << [op_class, nodes]
         end
       end
       node_list
