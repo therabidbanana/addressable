@@ -1,0 +1,133 @@
+Total allocated: 11.05 MB (200007 objects)
+Total retained:  0 B (0 objects)
+Total time 1.2782127857208252 seconds
+
+allocated memory by gem
+-----------------------------------
+   9.37 MB  addressable/lib
+   1.68 MB  other
+
+allocated memory by file
+-----------------------------------
+   9.37 MB  addressable/lib/addressable/template.rb
+   1.68 MB  tasks/profile.rake
+
+allocated memory by location
+-----------------------------------
+   1.68 MB  tasks/profile.rake:15
+   1.61 MB  addressable/lib/addressable/template.rb:1095
+   1.36 MB  addressable/lib/addressable/template.rb:1108
+   1.20 MB  addressable/lib/addressable/template.rb:1048
+ 800.00 kB  addressable/lib/addressable/template.rb:1047
+ 800.00 kB  addressable/lib/addressable/template.rb:1051
+ 800.00 kB  addressable/lib/addressable/template.rb:1083
+ 800.00 kB  addressable/lib/addressable/template.rb:1089
+ 800.00 kB  addressable/lib/addressable/template.rb:1109
+ 800.00 kB  addressable/lib/addressable/template.rb:1113
+ 400.00 kB  addressable/lib/addressable/template.rb:1091
+  120.00 B  addressable/lib/addressable/template.rb:1102
+   80.00 B  addressable/lib/addressable/template.rb:1101
+   72.00 B  addressable/lib/addressable/template.rb:1100
+   40.00 B  tasks/profile.rake:11
+
+allocated memory by class
+-----------------------------------
+   4.97 MB  String
+   4.40 MB  Array
+   1.68 MB  Hash
+   40.00 B  Addressable::TemplateMachine
+
+allocated objects by gem
+-----------------------------------
+    190006  addressable/lib
+     10001  other
+
+allocated objects by file
+-----------------------------------
+    190006  addressable/lib/addressable/template.rb
+     10001  tasks/profile.rake
+
+allocated objects by location
+-----------------------------------
+     30000  addressable/lib/addressable/template.rb:1048
+     20000  addressable/lib/addressable/template.rb:1047
+     20000  addressable/lib/addressable/template.rb:1051
+     20000  addressable/lib/addressable/template.rb:1083
+     20000  addressable/lib/addressable/template.rb:1089
+     20000  addressable/lib/addressable/template.rb:1095
+     20000  addressable/lib/addressable/template.rb:1109
+     20000  addressable/lib/addressable/template.rb:1113
+     10000  addressable/lib/addressable/template.rb:1091
+     10000  addressable/lib/addressable/template.rb:1108
+     10000  tasks/profile.rake:15
+         3  addressable/lib/addressable/template.rb:1102
+         2  addressable/lib/addressable/template.rb:1101
+         1  addressable/lib/addressable/template.rb:1100
+         1  tasks/profile.rake:11
+
+allocated objects by class
+-----------------------------------
+    110006  Array
+     80000  String
+     10000  Hash
+         1  Addressable::TemplateMachine
+
+retained memory by gem
+-----------------------------------
+NO DATA
+
+retained memory by file
+-----------------------------------
+NO DATA
+
+retained memory by location
+-----------------------------------
+NO DATA
+
+retained memory by class
+-----------------------------------
+NO DATA
+
+retained objects by gem
+-----------------------------------
+NO DATA
+
+retained objects by file
+-----------------------------------
+NO DATA
+
+retained objects by location
+-----------------------------------
+NO DATA
+
+retained objects by class
+-----------------------------------
+NO DATA
+
+
+Allocated String Report
+-----------------------------------
+     10000  "/a"
+     10000  addressable/lib/addressable/template.rb:1083
+
+     10000  "?foo=longstring&bar=longeststrin"
+     10000  addressable/lib/addressable/template.rb:1095
+
+     10000  "a"
+     10000  addressable/lib/addressable/template.rb:1083
+
+     10000  "bar=longeststrin"
+     10000  addressable/lib/addressable/template.rb:1089
+
+     10000  "foo=longstring"
+     10000  addressable/lib/addressable/template.rb:1091
+
+     10000  "foo=longstring&bar=longeststrin"
+     10000  addressable/lib/addressable/template.rb:1095
+
+     10000  "https://google.com/a?foo=longstring&bar=longeststrin#cat"
+     10000  addressable/lib/addressable/template.rb:1108
+
+     10000  "longeststrin"
+     10000  addressable/lib/addressable/template.rb:1089
+
