@@ -701,7 +701,7 @@ describe "Expansion" do
     }
   end
   context "non-string key in match data" do
-    subject {Addressable::Template.new("http://example.com/{one}")}
+    subject {Addressable::UriTemplate.new("http://example.com/{one}")}
 
     it "raises TypeError" do
       expect { subject.expand(Object.new => "1") }.to raise_error TypeError
@@ -709,41 +709,41 @@ describe "Expansion" do
   end
 end
 
-# class ExampleTwoProcessor
-#   def self.restore(name, value)
-#     return value.gsub(/-/, " ") if name == "query"
-#     return value
-#   end
+class ExampleTwoProcessor
+  def self.restore(name, value)
+    return value.gsub(/-/, " ") if name == "query"
+    return value
+  end
 
-#   def self.match(name)
-#     return ".*?" if name == "first"
-#     return ".*"
-#   end
-#   def self.validate(name, value)
-#     return !!(value =~ /^[\w ]+$/) if name == "query"
-#     return true
-#   end
+  def self.match(name)
+    return ".*?" if name == "first"
+    return ".*"
+  end
+  def self.validate(name, value)
+    return !!(value =~ /^[\w ]+$/) if name == "query"
+    return true
+  end
 
-#   def self.transform(name, value)
-#     return value.gsub(/ /, "+") if name == "query"
-#     return value
-#   end
-# end
+  def self.transform(name, value)
+    return value.gsub(/ /, "+") if name == "query"
+    return value
+  end
+end
 
-# class DumbProcessor
-#   def self.match(name)
-#     return ".*?" if name == "first"
-#   end
-# end
+class DumbProcessor
+  def self.match(name)
+    return ".*?" if name == "first"
+  end
+end
 
-# describe Addressable::Template do
-#   describe 'initialize' do
-#     context 'with a non-string' do
-#       it 'raises a TypeError' do
-#         expect { Addressable::Template.new(nil) }.to raise_error(TypeError)
-#       end
-#     end
-#   end
+describe Addressable::UriTemplate do
+  describe 'initialize' do
+    context 'with a non-string' do
+      it 'raises a TypeError' do
+        expect { Addressable::UriTemplate.new(nil) }.to raise_error(TypeError)
+      end
+    end
+  end
 
 #   describe 'freeze' do
 #     subject { Addressable::Template.new("http://example.com/{first}/{+second}/") }
@@ -752,629 +752,629 @@ end
 #     end
 #   end
 
-#   describe "Matching" do
-#     let(:uri){
-#       Addressable::URI.parse(
-#         "http://example.com/search/an-example-search-query/"
-#       )
-#     }
-#     let(:uri2){
-#       Addressable::URI.parse("http://example.com/a/b/c/")
-#     }
-#     let(:uri3){
-#       Addressable::URI.parse("http://example.com/;a=1;b=2;c=3;first=foo")
-#     }
-#     let(:uri4){
-#       Addressable::URI.parse("http://example.com/?a=1&b=2&c=3&first=foo")
-#     }
-#     let(:uri5){
-#       "http://example.com/foo"
-#     }
-#     context "first uri with ExampleTwoProcessor" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/search/{query}/"
-#         ).match(uri, ExampleTwoProcessor)
-#       }
-#       its(:variables){ should == ["query"] }
-#       its(:captures){ should == ["an example search query"] }
-#     end
+  describe "Matching" do
+    let(:uri){
+      Addressable::URI.parse(
+        "http://example.com/search/an-example-search-query/"
+      )
+    }
+    let(:uri2){
+      Addressable::URI.parse("http://example.com/a/b/c/")
+    }
+    let(:uri3){
+      Addressable::URI.parse("http://example.com/;a=1;b=2;c=3;first=foo")
+    }
+    let(:uri4){
+      Addressable::URI.parse("http://example.com/?a=1&b=2&c=3&first=foo")
+    }
+    let(:uri5){
+      "http://example.com/foo"
+    }
+    context "first uri with ExampleTwoProcessor" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/search/{query}/"
+        ).match(uri, ExampleTwoProcessor)
+      }
+      its(:variables){ should == ["query"] }
+      its(:captures){ should == ["an example search query"] }
+    end
 
-#     context "second uri with ExampleTwoProcessor" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/{first}/{+second}/"
-#         ).match(uri2, ExampleTwoProcessor)
-#       }
-#       its(:variables){ should == ["first", "second"] }
-#       its(:captures){ should == ["a", "b/c"] }
-#     end
+    context "second uri with ExampleTwoProcessor" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/{first}/{+second}/"
+        ).match(uri2, ExampleTwoProcessor)
+      }
+      its(:variables){ should == ["first", "second"] }
+      its(:captures){ should == ["a", "b/c"] }
+    end
 
-#     context "second uri with DumbProcessor" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/{first}/{+second}/"
-#         ).match(uri2, DumbProcessor)
-#       }
-#       its(:variables){ should == ["first", "second"] }
-#       its(:captures){ should == ["a", "b/c"] }
-#     end
+    context "second uri with DumbProcessor" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/{first}/{+second}/"
+        ).match(uri2, DumbProcessor)
+      }
+      its(:variables){ should == ["first", "second"] }
+      its(:captures){ should == ["a", "b/c"] }
+    end
 
-#     context "second uri" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/{first}{/second*}/"
-#         ).match(uri2)
-#       }
-#       its(:variables){ should == ["first", "second"] }
-#       its(:captures){ should == ["a", ["b","c"]] }
-#     end
-#     context "third uri" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/{;hash*,first}"
-#         ).match(uri3)
-#       }
-#       its(:variables){ should == ["hash", "first"] }
-#       its(:captures){ should == [
-#         {"a" => "1", "b" => "2", "c" => "3", "first" => "foo"}, nil] }
-#     end
-#     # Note that this expansion is impossible to revert deterministically - the
-#     # * operator means first could have been a key of hash or a separate key.
-#     # Semantically, a separate key is more likely, but both are possible.
-#     context "fourth uri" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/{?hash*,first}"
-#         ).match(uri4)
-#       }
-#       its(:variables){ should == ["hash", "first"] }
-#       its(:captures){ should == [
-#         {"a" => "1", "b" => "2", "c" => "3", "first"=> "foo"}, nil] }
-#     end
-#     context "fifth uri" do
-#       subject {
-#         Addressable::Template.new(
-#           "http://example.com/{path}{?hash*,first}"
-#         ).match(uri5)
-#       }
-#       its(:variables){ should == ["path", "hash", "first"] }
-#       its(:captures){ should == ["foo", nil, nil] }
-#     end
-#   end
+    context "second uri" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/{first}{/second*}/"
+        ).match(uri2)
+      }
+      its(:variables){ should == ["first", "second"] }
+      its(:captures){ should == ["a", ["b","c"]] }
+    end
+    context "third uri" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/{;hash*,first}"
+        ).match(uri3)
+      }
+      its(:variables){ should == ["hash", "first"] }
+      its(:captures){ should == [
+        {"a" => "1", "b" => "2", "c" => "3", "first" => "foo"}, nil] }
+    end
+    # Note that this expansion is impossible to revert deterministically - the
+    # * operator means first could have been a key of hash or a separate key.
+    # Semantically, a separate key is more likely, but both are possible.
+    context "fourth uri" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/{?hash*,first}"
+        ).match(uri4)
+      }
+      its(:variables){ should == ["hash", "first"] }
+      its(:captures){ should == [
+        {"a" => "1", "b" => "2", "c" => "3", "first"=> "foo"}, nil] }
+    end
+    context "fifth uri" do
+      subject {
+        Addressable::UriTemplate.new(
+          "http://example.com/{path}{?hash*,first}"
+        ).match(uri5)
+      }
+      its(:variables){ should == ["path", "hash", "first"] }
+      its(:captures){ should == ["foo", nil, nil] }
+    end
+  end
 
-#   describe 'match' do
-#     subject { Addressable::Template.new('http://example.com/first/second/') }
-#     context 'when the URI is the same as the template' do
-#       it 'returns the match data itself with an empty mapping' do
-#         uri = Addressable::URI.parse('http://example.com/first/second/')
-#         match_data = subject.match(uri)
-#         expect(match_data).to be_an Addressable::Template::MatchData
-#         expect(match_data.uri).to eq(uri)
-#         expect(match_data.template).to eq(subject)
-#         expect(match_data.mapping).to be_empty
-#         expect(match_data.inspect).to be_an String
-#       end
-#     end
-#   end
+  describe 'match' do
+    subject { Addressable::UriTemplate.new('http://example.com/first/second/') }
+    context 'when the URI is the same as the template' do
+      it 'returns the match data itself with an empty mapping' do
+        uri = Addressable::URI.parse('http://example.com/first/second/')
+        match_data = subject.match(uri)
+        expect(match_data).to be_an Addressable::UriTemplate::MatchData
+        expect(match_data.uri).to eq(uri)
+        expect(match_data.template).to eq(subject)
+        expect(match_data.mapping).to be_empty
+        expect(match_data.inspect).to be_an String
+      end
+    end
+  end
 
-#   describe "extract" do
-#     let(:template) {
-#       Addressable::Template.new(
-#         "http://{host}{/segments*}/{?one,two,bogus}{#fragment}"
-#       )
-#     }
-#     let(:uri){ "http://example.com/a/b/c/?one=1&two=2#foo" }
-#     let(:uri2){ "http://example.com/a/b/c/#foo" }
-#     it "should be able to extract with queries" do
-#       expect(template.extract(uri)).to eq({
-#         "host" => "example.com",
-#         "segments" => %w(a b c),
-#         "one" => "1",
-#         "bogus" => nil,
-#         "two" => "2",
-#         "fragment" => "foo"
-#       })
-#     end
-#     it "should be able to extract without queries" do
-#       expect(template.extract(uri2)).to eq({
-#         "host" => "example.com",
-#         "segments" => %w(a b c),
-#         "one" => nil,
-#         "bogus" => nil,
-#         "two" => nil,
-#         "fragment" => "foo"
-#       })
-#     end
+  # describe "extract" do
+  #   let(:template) {
+  #     Addressable::Template.new(
+  #       "http://{host}{/segments*}/{?one,two,bogus}{#fragment}"
+  #     )
+  #   }
+  #   let(:uri){ "http://example.com/a/b/c/?one=1&two=2#foo" }
+  #   let(:uri2){ "http://example.com/a/b/c/#foo" }
+  #   it "should be able to extract with queries" do
+  #     expect(template.extract(uri)).to eq({
+  #       "host" => "example.com",
+  #       "segments" => %w(a b c),
+  #       "one" => "1",
+  #       "bogus" => nil,
+  #       "two" => "2",
+  #       "fragment" => "foo"
+  #     })
+  #   end
+  #   it "should be able to extract without queries" do
+  #     expect(template.extract(uri2)).to eq({
+  #       "host" => "example.com",
+  #       "segments" => %w(a b c),
+  #       "one" => nil,
+  #       "bogus" => nil,
+  #       "two" => nil,
+  #       "fragment" => "foo"
+  #     })
+  #   end
 
-#     context "issue #137" do
-#       subject { Addressable::Template.new('/path{?page,per_page}') }
+  #   context "issue #137" do
+  #     subject { Addressable::Template.new('/path{?page,per_page}') }
 
-#       it "can match empty" do
-#         data = subject.extract("/path")
-#         expect(data["page"]).to eq(nil)
-#         expect(data["per_page"]).to eq(nil)
-#         expect(data.keys.sort).to eq(['page', 'per_page'])
-#       end
+  #     it "can match empty" do
+  #       data = subject.extract("/path")
+  #       expect(data["page"]).to eq(nil)
+  #       expect(data["per_page"]).to eq(nil)
+  #       expect(data.keys.sort).to eq(['page', 'per_page'])
+  #     end
 
-#       it "can match first var" do
-#         data = subject.extract("/path?page=1")
-#         expect(data["page"]).to eq("1")
-#         expect(data["per_page"]).to eq(nil)
-#         expect(data.keys.sort).to eq(['page', 'per_page'])
-#       end
+  #     it "can match first var" do
+  #       data = subject.extract("/path?page=1")
+  #       expect(data["page"]).to eq("1")
+  #       expect(data["per_page"]).to eq(nil)
+  #       expect(data.keys.sort).to eq(['page', 'per_page'])
+  #     end
 
-#       it "can match second var" do
-#         data = subject.extract("/path?per_page=1")
-#         expect(data["page"]).to eq(nil)
-#         expect(data["per_page"]).to eq("1")
-#         expect(data.keys.sort).to eq(['page', 'per_page'])
-#       end
+  #     it "can match second var" do
+  #       data = subject.extract("/path?per_page=1")
+  #       expect(data["page"]).to eq(nil)
+  #       expect(data["per_page"]).to eq("1")
+  #       expect(data.keys.sort).to eq(['page', 'per_page'])
+  #     end
 
-#       it "can match both vars" do
-#         data = subject.extract("/path?page=2&per_page=1")
-#         expect(data["page"]).to eq("2")
-#         expect(data["per_page"]).to eq("1")
-#         expect(data.keys.sort).to eq(['page', 'per_page'])
-#       end
-#     end
-#   end
+  #     it "can match both vars" do
+  #       data = subject.extract("/path?page=2&per_page=1")
+  #       expect(data["page"]).to eq("2")
+  #       expect(data["per_page"]).to eq("1")
+  #       expect(data.keys.sort).to eq(['page', 'per_page'])
+  #     end
+  #   end
+  # end
 
-#   describe "Partial expand with symbols" do
-#     context "partial_expand with two simple values" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{one}/{two}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand(:one => "1").pattern).to eq(
-#           "http://example.com/1/{two}/"
-#         )
-#       end
-#     end
-#     context "partial_expand query with missing param in middle" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?one,two,three}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand(:one => "1", :three => "3").pattern).to eq(
-#           "http://example.com/?one=1{&two}&three=3/"
-#         )
-#       end
-#     end
-#     context "partial_expand form style query with missing param at beginning" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?one,two}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand(:two => "2").pattern).to eq(
-#           "http://example.com/?two=2{&one}/"
-#         )
-#       end
-#     end
-#     context "issue #307 - partial_expand form query with nil params" do
-#       subject do
-#         Addressable::Template.new("http://example.com/{?one,two,three}/")
-#       end
-#       it "builds a new pattern with two=nil" do
-#         expect(subject.partial_expand(two: nil).pattern).to eq(
-#           "http://example.com/{?one}{&three}/"
-#         )
-#       end
-#       it "builds a new pattern with one=nil and two=nil" do
-#         expect(subject.partial_expand(one: nil, two: nil).pattern).to eq(
-#           "http://example.com/{?three}/"
-#         )
-#       end
-#       it "builds a new pattern with one=1 and two=nil" do
-#         expect(subject.partial_expand(one: 1, two: nil).pattern).to eq(
-#           "http://example.com/?one=1{&three}/"
-#         )
-#       end
-#       it "builds a new pattern with one=nil and two=2" do
-#         expect(subject.partial_expand(one: nil, two: 2).pattern).to eq(
-#           "http://example.com/?two=2{&three}/"
-#         )
-#       end
-#       it "builds a new pattern with one=nil" do
-#         expect(subject.partial_expand(one: nil).pattern).to eq(
-#           "http://example.com/{?two}{&three}/"
-#         )
-#       end
-#     end
-#     context "partial_expand with query string" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?two,one}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand(:one => "1").pattern).to eq(
-#           "http://example.com/?one=1{&two}/"
-#         )
-#       end
-#     end
-#     context "partial_expand with path operator" do
-#       subject {
-#         Addressable::Template.new("http://example.com{/one,two}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand(:one => "1").pattern).to eq(
-#           "http://example.com/1{/two}/"
-#         )
-#       end
-#     end
-#     context "partial expand with unicode values" do
-#       subject do
-#         Addressable::Template.new("http://example.com/{resource}/{query}/")
-#       end
-#       it "normalizes unicode by default" do
-#         template = subject.partial_expand("query" => "Cafe\u0301")
-#         expect(template.pattern).to eq(
-#           "http://example.com/{resource}/Caf%C3%A9/"
-#         )
-#       end
+  # describe "Partial expand with symbols" do
+  #   context "partial_expand with two simple values" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{one}/{two}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand(:one => "1").pattern).to eq(
+  #         "http://example.com/1/{two}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand query with missing param in middle" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?one,two,three}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand(:one => "1", :three => "3").pattern).to eq(
+  #         "http://example.com/?one=1{&two}&three=3/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand form style query with missing param at beginning" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?one,two}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand(:two => "2").pattern).to eq(
+  #         "http://example.com/?two=2{&one}/"
+  #       )
+  #     end
+  #   end
+  #   context "issue #307 - partial_expand form query with nil params" do
+  #     subject do
+  #       Addressable::Template.new("http://example.com/{?one,two,three}/")
+  #     end
+  #     it "builds a new pattern with two=nil" do
+  #       expect(subject.partial_expand(two: nil).pattern).to eq(
+  #         "http://example.com/{?one}{&three}/"
+  #       )
+  #     end
+  #     it "builds a new pattern with one=nil and two=nil" do
+  #       expect(subject.partial_expand(one: nil, two: nil).pattern).to eq(
+  #         "http://example.com/{?three}/"
+  #       )
+  #     end
+  #     it "builds a new pattern with one=1 and two=nil" do
+  #       expect(subject.partial_expand(one: 1, two: nil).pattern).to eq(
+  #         "http://example.com/?one=1{&three}/"
+  #       )
+  #     end
+  #     it "builds a new pattern with one=nil and two=2" do
+  #       expect(subject.partial_expand(one: nil, two: 2).pattern).to eq(
+  #         "http://example.com/?two=2{&three}/"
+  #       )
+  #     end
+  #     it "builds a new pattern with one=nil" do
+  #       expect(subject.partial_expand(one: nil).pattern).to eq(
+  #         "http://example.com/{?two}{&three}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand with query string" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?two,one}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand(:one => "1").pattern).to eq(
+  #         "http://example.com/?one=1{&two}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand with path operator" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com{/one,two}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand(:one => "1").pattern).to eq(
+  #         "http://example.com/1{/two}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial expand with unicode values" do
+  #     subject do
+  #       Addressable::Template.new("http://example.com/{resource}/{query}/")
+  #     end
+  #     it "normalizes unicode by default" do
+  #       template = subject.partial_expand("query" => "Cafe\u0301")
+  #       expect(template.pattern).to eq(
+  #         "http://example.com/{resource}/Caf%C3%A9/"
+  #       )
+  #     end
 
-#       it "does not normalize unicode when byte semantics requested" do
-#         template = subject.partial_expand({"query" => "Cafe\u0301"}, nil, false)
-#         expect(template.pattern).to eq(
-#           "http://example.com/{resource}/Cafe%CC%81/"
-#         )
-#       end
-#     end
-#   end
-#   describe "Partial expand with strings" do
-#     context "partial_expand with two simple values" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{one}/{two}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1").pattern).to eq(
-#           "http://example.com/1/{two}/"
-#         )
-#       end
-#     end
-#     context "partial_expand query with missing param in middle" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?one,two,three}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1", "three" => "3").pattern).to eq(
-#           "http://example.com/?one=1{&two}&three=3/"
-#         )
-#       end
-#     end
-#     context "partial_expand with query string" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?two,one}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1").pattern).to eq(
-#           "http://example.com/?one=1{&two}/"
-#         )
-#       end
-#     end
-#     context "partial_expand with path operator" do
-#       subject {
-#         Addressable::Template.new("http://example.com{/one,two}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1").pattern).to eq(
-#           "http://example.com/1{/two}/"
-#         )
-#       end
-#     end
-#   end
-#   describe "Expand" do
-#     context "expand with unicode values" do
-#       subject do
-#         Addressable::Template.new("http://example.com/search/{query}/")
-#       end
-#       it "normalizes unicode by default" do
-#         uri = subject.expand("query" => "Cafe\u0301").to_str
-#         expect(uri).to eq("http://example.com/search/Caf%C3%A9/")
-#       end
+  #     it "does not normalize unicode when byte semantics requested" do
+  #       template = subject.partial_expand({"query" => "Cafe\u0301"}, nil, false)
+  #       expect(template.pattern).to eq(
+  #         "http://example.com/{resource}/Cafe%CC%81/"
+  #       )
+  #     end
+  #   end
+  # end
+  # describe "Partial expand with strings" do
+  #   context "partial_expand with two simple values" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{one}/{two}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1").pattern).to eq(
+  #         "http://example.com/1/{two}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand query with missing param in middle" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?one,two,three}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1", "three" => "3").pattern).to eq(
+  #         "http://example.com/?one=1{&two}&three=3/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand with query string" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?two,one}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1").pattern).to eq(
+  #         "http://example.com/?one=1{&two}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand with path operator" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com{/one,two}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1").pattern).to eq(
+  #         "http://example.com/1{/two}/"
+  #       )
+  #     end
+  #   end
+  # end
+  # describe "Expand" do
+  #   context "expand with unicode values" do
+  #     subject do
+  #       Addressable::Template.new("http://example.com/search/{query}/")
+  #     end
+  #     it "normalizes unicode by default" do
+  #       uri = subject.expand("query" => "Cafe\u0301").to_str
+  #       expect(uri).to eq("http://example.com/search/Caf%C3%A9/")
+  #     end
 
-#       it "does not normalize unicode when byte semantics requested" do
-#         uri = subject.expand({ "query" => "Cafe\u0301" }, nil, false).to_str
-#         expect(uri).to eq("http://example.com/search/Cafe%CC%81/")
-#       end
-#     end
-#     context "expand with a processor" do
-#       subject {
-#         Addressable::Template.new("http://example.com/search/{query}/")
-#       }
-#       it "processes spaces" do
-#         expect(subject.expand({"query" => "an example search query"},
-#                       ExampleTwoProcessor).to_str).to eq(
-#           "http://example.com/search/an+example+search+query/"
-#         )
-#       end
-#       it "validates" do
-#         expect{
-#           subject.expand({"query" => "Bogus!"},
-#                       ExampleTwoProcessor).to_str
-#         }.to raise_error(Addressable::Template::InvalidTemplateValueError)
-#       end
-#     end
-#     context "partial_expand query with missing param in middle" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?one,two,three}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1", "three" => "3").pattern).to eq(
-#           "http://example.com/?one=1{&two}&three=3/"
-#         )
-#       end
-#     end
-#     context "partial_expand with query string" do
-#       subject {
-#         Addressable::Template.new("http://example.com/{?two,one}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1").pattern).to eq(
-#           "http://example.com/?one=1{&two}/"
-#         )
-#       end
-#     end
-#     context "partial_expand with path operator" do
-#       subject {
-#         Addressable::Template.new("http://example.com{/one,two}/")
-#       }
-#       it "builds a new pattern" do
-#         expect(subject.partial_expand("one" => "1").pattern).to eq(
-#           "http://example.com/1{/two}/"
-#         )
-#       end
-#     end
-#   end
-#   context "Matching with operators" do
-#     describe "Level 1:" do
-#       subject { Addressable::Template.new("foo{foo}/{bar}baz") }
-#       it "can match" do
-#         data = subject.match("foofoo/bananabaz")
-#         expect(data.mapping["foo"]).to eq("foo")
-#         expect(data.mapping["bar"]).to eq("banana")
-#       end
-#       it "can fail" do
-#         expect(subject.match("bar/foo")).to be_nil
-#         expect(subject.match("foobaz")).to be_nil
-#       end
-#       it "can match empty" do
-#         data = subject.match("foo/baz")
-#         expect(data.mapping["foo"]).to eq(nil)
-#         expect(data.mapping["bar"]).to eq(nil)
-#       end
-#       it "lists vars" do
-#         expect(subject.variables).to eq(["foo", "bar"])
-#       end
-#     end
+  #     it "does not normalize unicode when byte semantics requested" do
+  #       uri = subject.expand({ "query" => "Cafe\u0301" }, nil, false).to_str
+  #       expect(uri).to eq("http://example.com/search/Cafe%CC%81/")
+  #     end
+  #   end
+  #   context "expand with a processor" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/search/{query}/")
+  #     }
+  #     it "processes spaces" do
+  #       expect(subject.expand({"query" => "an example search query"},
+  #                     ExampleTwoProcessor).to_str).to eq(
+  #         "http://example.com/search/an+example+search+query/"
+  #       )
+  #     end
+  #     it "validates" do
+  #       expect{
+  #         subject.expand({"query" => "Bogus!"},
+  #                     ExampleTwoProcessor).to_str
+  #       }.to raise_error(Addressable::Template::InvalidTemplateValueError)
+  #     end
+  #   end
+  #   context "partial_expand query with missing param in middle" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?one,two,three}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1", "three" => "3").pattern).to eq(
+  #         "http://example.com/?one=1{&two}&three=3/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand with query string" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com/{?two,one}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1").pattern).to eq(
+  #         "http://example.com/?one=1{&two}/"
+  #       )
+  #     end
+  #   end
+  #   context "partial_expand with path operator" do
+  #     subject {
+  #       Addressable::Template.new("http://example.com{/one,two}/")
+  #     }
+  #     it "builds a new pattern" do
+  #       expect(subject.partial_expand("one" => "1").pattern).to eq(
+  #         "http://example.com/1{/two}/"
+  #       )
+  #     end
+  #   end
+  # end
+  context "Matching with operators" do
+    describe "Level 1:" do
+      subject { Addressable::UriTemplate.new("foo{foo}/{bar}baz") }
+      it "can match" do
+        data = subject.match("foofoo/bananabaz")
+        expect(data.mapping["foo"]).to eq("foo")
+        expect(data.mapping["bar"]).to eq("banana")
+      end
+      it "can fail" do
+        expect(subject.match("bar/foo")).to be_nil
+        expect(subject.match("foobaz")).to be_nil
+      end
+      it "can match empty" do
+        data = subject.match("foo/baz")
+        expect(data.mapping["foo"]).to eq(nil)
+        expect(data.mapping["bar"]).to eq(nil)
+      end
+      it "lists vars" do
+        expect(subject.variables).to eq(["foo", "bar"])
+      end
+    end
 
-#     describe "Level 2:" do
-#       subject { Addressable::Template.new("foo{+foo}{#bar}baz") }
-#       it "can match" do
-#         data = subject.match("foo/test/banana#bazbaz")
-#         expect(data.mapping["foo"]).to eq("/test/banana")
-#         expect(data.mapping["bar"]).to eq("baz")
-#       end
-#       it "can match empty level 2 #" do
-#         data = subject.match("foo/test/bananabaz")
-#         expect(data.mapping["foo"]).to eq("/test/banana")
-#         expect(data.mapping["bar"]).to eq(nil)
-#         data = subject.match("foo/test/banana#baz")
-#         expect(data.mapping["foo"]).to eq("/test/banana")
-#         expect(data.mapping["bar"]).to eq("")
-#       end
-#       it "can match empty level 2 +" do
-#         data = subject.match("foobaz")
-#         expect(data.mapping["foo"]).to eq(nil)
-#         expect(data.mapping["bar"]).to eq(nil)
-#         data = subject.match("foo#barbaz")
-#         expect(data.mapping["foo"]).to eq(nil)
-#         expect(data.mapping["bar"]).to eq("bar")
-#       end
-#       it "lists vars" do
-#         expect(subject.variables).to eq(["foo", "bar"])
-#       end
-#     end
+    describe "Level 2:" do
+      subject { Addressable::UriTemplate.new("foo{+foo}{#bar}baz") }
+      it "can match" do
+        data = subject.match("foo/test/banana#bazbaz")
+        expect(data.mapping["foo"]).to eq("/test/banana")
+        expect(data.mapping["bar"]).to eq("baz")
+      end
+      it "can match empty level 2 #" do
+        data = subject.match("foo/test/bananabaz")
+        expect(data.mapping["foo"]).to eq("/test/banana")
+        expect(data.mapping["bar"]).to eq(nil)
+        data = subject.match("foo/test/banana#baz")
+        expect(data.mapping["foo"]).to eq("/test/banana")
+        expect(data.mapping["bar"]).to eq("")
+      end
+      it "can match empty level 2 +" do
+        data = subject.match("foobaz")
+        expect(data.mapping["foo"]).to eq(nil)
+        expect(data.mapping["bar"]).to eq(nil)
+        data = subject.match("foo#barbaz")
+        expect(data.mapping["foo"]).to eq(nil)
+        expect(data.mapping["bar"]).to eq("bar")
+      end
+      it "lists vars" do
+        expect(subject.variables).to eq(["foo", "bar"])
+      end
+    end
 
-#     describe "Level 3:" do
-#       context "no operator" do
-#         subject { Addressable::Template.new("foo{foo,bar}baz") }
-#         it "can match" do
-#           data = subject.match("foofoo,barbaz")
-#           expect(data.mapping["foo"]).to eq("foo")
-#           expect(data.mapping["bar"]).to eq("bar")
-#         end
-#         it "lists vars" do
-#           expect(subject.variables).to eq(["foo", "bar"])
-#         end
-#       end
-#       context "+ operator" do
-#         subject { Addressable::Template.new("foo{+foo,bar}baz") }
-#         it "can match" do
-#           data = subject.match("foofoo/bar,barbaz")
-#           expect(data.mapping["bar"]).to eq("foo/bar,bar")
-#           expect(data.mapping["foo"]).to eq("")
-#         end
-#         it "lists vars" do
-#           expect(subject.variables).to eq(["foo", "bar"])
-#         end
-#       end
-#       context ". operator" do
-#         subject { Addressable::Template.new("foo{.foo,bar}baz") }
-#         it "can match" do
-#           data = subject.match("foo.foo.barbaz")
-#           expect(data.mapping["foo"]).to eq("foo")
-#           expect(data.mapping["bar"]).to eq("bar")
-#         end
-#         it "lists vars" do
-#           expect(subject.variables).to eq(["foo", "bar"])
-#         end
-#       end
-#       context "/ operator" do
-#         subject { Addressable::Template.new("foo{/foo,bar}baz") }
-#         it "can match" do
-#           data = subject.match("foo/foo/barbaz")
-#           expect(data.mapping["foo"]).to eq("foo")
-#           expect(data.mapping["bar"]).to eq("bar")
-#         end
-#         it "lists vars" do
-#           expect(subject.variables).to eq(["foo", "bar"])
-#         end
-#       end
-#       context "; operator" do
-#         subject { Addressable::Template.new("foo{;foo,bar,baz}baz") }
-#         it "can match" do
-#           data = subject.match("foo;foo=bar%20baz;bar=foo;bazbaz")
-#           expect(data.mapping["foo"]).to eq("bar baz")
-#           expect(data.mapping["bar"]).to eq("foo")
-#           expect(data.mapping["baz"]).to eq("")
-#         end
-#         it "lists vars" do
-#           expect(subject.variables).to eq(%w(foo bar baz))
-#         end
-#       end
-#       context "? operator" do
-#         context "test" do
-#           subject { Addressable::Template.new("foo{?foo,bar}baz") }
-#           it "can match" do
-#             data = subject.match("foo?foo=bar%20baz&bar=foobaz")
-#             expect(data.mapping["foo"]).to eq("bar baz")
-#             expect(data.mapping["bar"]).to eq("foo")
-#           end
-#           it "lists vars" do
-#             expect(subject.variables).to eq(%w(foo bar))
-#           end
-#         end
+    describe "Level 3:" do
+      context "no operator" do
+        subject { Addressable::UriTemplate.new("foo{foo,bar}baz") }
+        it "can match" do
+          data = subject.match("foofoo,barbaz")
+          expect(data.mapping["foo"]).to eq("foo")
+          expect(data.mapping["bar"]).to eq("bar")
+        end
+        it "lists vars" do
+          expect(subject.variables).to eq(["foo", "bar"])
+        end
+      end
+      context "+ operator" do
+        subject { Addressable::UriTemplate.new("foo{+foo,bar}baz") }
+        it "can match" do
+          data = subject.match("foofoo/bar,barbaz")
+          expect(data.mapping["bar"]).to eq("foo/bar,bar")
+          expect(data.mapping["foo"]).to eq("")
+        end
+        it "lists vars" do
+          expect(subject.variables).to eq(["foo", "bar"])
+        end
+      end
+      context ". operator" do
+        subject { Addressable::UriTemplate.new("foo{.foo,bar}baz") }
+        it "can match" do
+          data = subject.match("foo.foo.barbaz")
+          expect(data.mapping["foo"]).to eq("foo")
+          expect(data.mapping["bar"]).to eq("bar")
+        end
+        it "lists vars" do
+          expect(subject.variables).to eq(["foo", "bar"])
+        end
+      end
+      context "/ operator" do
+        subject { Addressable::UriTemplate.new("foo{/foo,bar}baz") }
+        it "can match" do
+          data = subject.match("foo/foo/barbaz")
+          expect(data.mapping["foo"]).to eq("foo")
+          expect(data.mapping["bar"]).to eq("bar")
+        end
+        it "lists vars" do
+          expect(subject.variables).to eq(["foo", "bar"])
+        end
+      end
+      context "; operator" do
+        subject { Addressable::UriTemplate.new("foo{;foo,bar,baz}baz") }
+        it "can match" do
+          data = subject.match("foo;foo=bar%20baz;bar=foo;bazbaz")
+          expect(data.mapping["foo"]).to eq("bar baz")
+          expect(data.mapping["bar"]).to eq("foo")
+          expect(data.mapping["baz"]).to eq("")
+        end
+        it "lists vars" do
+          expect(subject.variables).to eq(%w(foo bar baz))
+        end
+      end
+      context "? operator" do
+        context "test" do
+          subject { Addressable::UriTemplate.new("foo{?foo,bar}baz") }
+          it "can match" do
+            data = subject.match("foo?foo=bar%20baz&bar=foobaz")
+            expect(data.mapping["foo"]).to eq("bar baz")
+            expect(data.mapping["bar"]).to eq("foo")
+          end
+          it "lists vars" do
+            expect(subject.variables).to eq(%w(foo bar))
+          end
+        end
 
-#         context "issue #137" do
-#           subject { Addressable::Template.new('/path{?page,per_page}') }
+        context "issue #137" do
+          subject { Addressable::UriTemplate.new('/path{?page,per_page}') }
 
-#           it "can match empty" do
-#             data = subject.match("/path")
-#             expect(data.mapping["page"]).to eq(nil)
-#             expect(data.mapping["per_page"]).to eq(nil)
-#             expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
-#           end
+          it "can match empty" do
+            data = subject.match("/path")
+            expect(data.mapping["page"]).to eq(nil)
+            expect(data.mapping["per_page"]).to eq(nil)
+            expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
+          end
 
-#           it "can match first var" do
-#             data = subject.match("/path?page=1")
-#             expect(data.mapping["page"]).to eq("1")
-#             expect(data.mapping["per_page"]).to eq(nil)
-#             expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
-#           end
+          it "can match first var" do
+            data = subject.match("/path?page=1")
+            expect(data.mapping["page"]).to eq("1")
+            expect(data.mapping["per_page"]).to eq(nil)
+            expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
+          end
 
-#           it "can match second var" do
-#             data = subject.match("/path?per_page=1")
-#             expect(data.mapping["page"]).to eq(nil)
-#             expect(data.mapping["per_page"]).to eq("1")
-#             expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
-#           end
+          it "can match second var" do
+            data = subject.match("/path?per_page=1")
+            expect(data.mapping["page"]).to eq(nil)
+            expect(data.mapping["per_page"]).to eq("1")
+            expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
+          end
 
-#           it "can match both vars" do
-#             data = subject.match("/path?page=2&per_page=1")
-#             expect(data.mapping["page"]).to eq("2")
-#             expect(data.mapping["per_page"]).to eq("1")
-#             expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
-#           end
-#         end
+          it "can match both vars" do
+            data = subject.match("/path?page=2&per_page=1")
+            expect(data.mapping["page"]).to eq("2")
+            expect(data.mapping["per_page"]).to eq("1")
+            expect(data.mapping.keys.sort).to eq(['page', 'per_page'])
+          end
+        end
 
-#         context "issue #71" do
-#           subject { Addressable::Template.new("http://cyberscore.dev/api/users{?username}") }
-#           it "can match" do
-#             data = subject.match("http://cyberscore.dev/api/users?username=foobaz")
-#             expect(data.mapping["username"]).to eq("foobaz")
-#           end
-#           it "lists vars" do
-#             expect(subject.variables).to eq(%w(username))
-#             expect(subject.keys).to eq(%w(username))
-#           end
-#         end
-#       end
-#       context "& operator" do
-#         subject { Addressable::Template.new("foo{&foo,bar}baz") }
-#         it "can match" do
-#           data = subject.match("foo&foo=bar%20baz&bar=foobaz")
-#           expect(data.mapping["foo"]).to eq("bar baz")
-#           expect(data.mapping["bar"]).to eq("foo")
-#         end
-#         it "lists vars" do
-#           expect(subject.variables).to eq(%w(foo bar))
-#         end
-#       end
-#     end
-#   end
+        context "issue #71" do
+          subject { Addressable::UriTemplate.new("http://cyberscore.dev/api/users{?username}") }
+          it "can match" do
+            data = subject.match("http://cyberscore.dev/api/users?username=foobaz")
+            expect(data.mapping["username"]).to eq("foobaz")
+          end
+          it "lists vars" do
+            expect(subject.variables).to eq(%w(username))
+            expect(subject.keys).to eq(%w(username))
+          end
+        end
+      end
+      context "& operator" do
+        subject { Addressable::UriTemplate.new("foo{&foo,bar}baz") }
+        it "can match" do
+          data = subject.match("foo&foo=bar%20baz&bar=foobaz")
+          expect(data.mapping["foo"]).to eq("bar baz")
+          expect(data.mapping["bar"]).to eq("foo")
+        end
+        it "lists vars" do
+          expect(subject.variables).to eq(%w(foo bar))
+        end
+      end
+    end
+  end
 
-#   context "support regexes:" do
-#     context "EXPRESSION" do
-#       subject { Addressable::Template::EXPRESSION }
-#       it "should be able to match an expression" do
-#         expect(subject).to match("{foo}")
-#         expect(subject).to match("{foo,9}")
-#         expect(subject).to match("{foo.bar,baz}")
-#         expect(subject).to match("{+foo.bar,baz}")
-#         expect(subject).to match("{foo,foo%20bar}")
-#         expect(subject).to match("{#foo:20,baz*}")
-#         expect(subject).to match("stuff{#foo:20,baz*}things")
-#       end
-#       it "should fail on non vars" do
-#         expect(subject).not_to match("!{foo")
-#         expect(subject).not_to match("{foo.bar.}")
-#         expect(subject).not_to match("!{}")
-#       end
-#     end
-#     context "VARNAME" do
-#       subject { Addressable::Template::VARNAME }
-#       it "should be able to match a variable" do
-#         expect(subject).to match("foo")
-#         expect(subject).to match("9")
-#         expect(subject).to match("foo.bar")
-#         expect(subject).to match("foo_bar")
-#         expect(subject).to match("foo_bar.baz")
-#         expect(subject).to match("foo%20bar")
-#         expect(subject).to match("foo%20bar.baz")
-#       end
-#       it "should fail on non vars" do
-#         expect(subject).not_to match("!foo")
-#         expect(subject).not_to match("foo.bar.")
-#         expect(subject).not_to match("foo%2%00bar")
-#         expect(subject).not_to match("foo_ba%r")
-#         expect(subject).not_to match("foo_bar*")
-#         expect(subject).not_to match("foo_bar:20")
-#       end
-#     end
-#     context "VARIABLE_LIST" do
-#       subject { Addressable::Template::VARIABLE_LIST }
-#       it "should be able to match a variable list" do
-#         expect(subject).to match("foo,bar")
-#         expect(subject).to match("foo")
-#         expect(subject).to match("foo,bar*,baz")
-#         expect(subject).to match("foo.bar,bar_baz*,baz:12")
-#       end
-#       it "should fail on non vars" do
-#         expect(subject).not_to match(",foo,bar*,baz")
-#         expect(subject).not_to match("foo,*bar,baz")
-#         expect(subject).not_to match("foo,,bar*,baz")
-#       end
-#     end
-#     context "VARSPEC" do
-#       subject { Addressable::Template::VARSPEC }
-#       it "should be able to match a variable with modifier" do
-#         expect(subject).to match("9:8")
-#         expect(subject).to match("foo.bar*")
-#         expect(subject).to match("foo_bar:12")
-#         expect(subject).to match("foo_bar.baz*")
-#         expect(subject).to match("foo%20bar:12")
-#         expect(subject).to match("foo%20bar.baz*")
-#       end
-#       it "should fail on non vars" do
-#         expect(subject).not_to match("!foo")
-#         expect(subject).not_to match("*foo")
-#         expect(subject).not_to match("fo*o")
-#         expect(subject).not_to match("fo:o")
-#         expect(subject).not_to match("foo:")
-#       end
-#     end
-#   end
-# end
+  # context "support regexes:" do
+  #   context "EXPRESSION" do
+  #     subject { Addressable::Template::EXPRESSION }
+  #     it "should be able to match an expression" do
+  #       expect(subject).to match("{foo}")
+  #       expect(subject).to match("{foo,9}")
+  #       expect(subject).to match("{foo.bar,baz}")
+  #       expect(subject).to match("{+foo.bar,baz}")
+  #       expect(subject).to match("{foo,foo%20bar}")
+  #       expect(subject).to match("{#foo:20,baz*}")
+  #       expect(subject).to match("stuff{#foo:20,baz*}things")
+  #     end
+  #     it "should fail on non vars" do
+  #       expect(subject).not_to match("!{foo")
+  #       expect(subject).not_to match("{foo.bar.}")
+  #       expect(subject).not_to match("!{}")
+  #     end
+  #   end
+  #   context "VARNAME" do
+  #     subject { Addressable::Template::VARNAME }
+  #     it "should be able to match a variable" do
+  #       expect(subject).to match("foo")
+  #       expect(subject).to match("9")
+  #       expect(subject).to match("foo.bar")
+  #       expect(subject).to match("foo_bar")
+  #       expect(subject).to match("foo_bar.baz")
+  #       expect(subject).to match("foo%20bar")
+  #       expect(subject).to match("foo%20bar.baz")
+  #     end
+  #     it "should fail on non vars" do
+  #       expect(subject).not_to match("!foo")
+  #       expect(subject).not_to match("foo.bar.")
+  #       expect(subject).not_to match("foo%2%00bar")
+  #       expect(subject).not_to match("foo_ba%r")
+  #       expect(subject).not_to match("foo_bar*")
+  #       expect(subject).not_to match("foo_bar:20")
+  #     end
+  #   end
+  #   context "VARIABLE_LIST" do
+  #     subject { Addressable::Template::VARIABLE_LIST }
+  #     it "should be able to match a variable list" do
+  #       expect(subject).to match("foo,bar")
+  #       expect(subject).to match("foo")
+  #       expect(subject).to match("foo,bar*,baz")
+  #       expect(subject).to match("foo.bar,bar_baz*,baz:12")
+  #     end
+  #     it "should fail on non vars" do
+  #       expect(subject).not_to match(",foo,bar*,baz")
+  #       expect(subject).not_to match("foo,*bar,baz")
+  #       expect(subject).not_to match("foo,,bar*,baz")
+  #     end
+  #   end
+  #   context "VARSPEC" do
+  #     subject { Addressable::Template::VARSPEC }
+  #     it "should be able to match a variable with modifier" do
+  #       expect(subject).to match("9:8")
+  #       expect(subject).to match("foo.bar*")
+  #       expect(subject).to match("foo_bar:12")
+  #       expect(subject).to match("foo_bar.baz*")
+  #       expect(subject).to match("foo%20bar:12")
+  #       expect(subject).to match("foo%20bar.baz*")
+  #     end
+  #     it "should fail on non vars" do
+  #       expect(subject).not_to match("!foo")
+  #       expect(subject).not_to match("*foo")
+  #       expect(subject).not_to match("fo*o")
+  #       expect(subject).not_to match("fo:o")
+  #       expect(subject).not_to match("foo:")
+  #     end
+  #   end
+  # end
+end
 
 # describe Addressable::Template::MatchData do
 #   let(:template) { Addressable::Template.new('{foo}/{bar}') }
