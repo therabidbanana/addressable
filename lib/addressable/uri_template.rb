@@ -114,7 +114,8 @@ module Addressable
       alias_method :keys, :variables
       alias_method :names, :variables
     end
-    def match(uri_or_string)
+
+    def match(uri_or_string, processor = nil)
       scanner = StringScanner.new(uri_or_string.to_s)
       mapping = {}
       @nodes.each do |node|
@@ -123,9 +124,8 @@ module Addressable
           extracted = scanner.scan(node)
           raise NoMatch unless extracted
         else
-          extracted = node[0].extract_values(scanner, node[1])
+          extracted = node[0].extract_values(scanner, mapping, node[1])
           raise NoMatch unless extracted
-          mapping.merge!(extracted)
         end
       end
       MatchData.new(uri_or_string, self, mapping)

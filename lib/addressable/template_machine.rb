@@ -16,7 +16,13 @@ module Addressable
       "(?:(?:[#{variable_char_class}]|%[a-fA-F0-9][a-fA-F0-9])+)"
     RESERVED =
       "(?:[#{anything}]|%[a-fA-F0-9][a-fA-F0-9])"
-    UNRESERVED =
+
+    UNRESERVED_SCAN =
+      "((?:[#{
+        Addressable::URI::CharacterClasses::UNRESERVED
+      }]|%[a-fA-F0-9][a-fA-F0-9]|,)*)"
+
+    UNRESERVED_SET =
       "(?:[#{
         Addressable::URI::CharacterClasses::UNRESERVED
       }]|%[a-fA-F0-9][a-fA-F0-9])"
@@ -50,9 +56,43 @@ module Addressable
       '/' => '/'
     }.freeze
 
-    TaggedValue = Struct.new(:name, :value, :keypairs) do
-      def to_str(with_name)
-        if with_name && !keypairs
+    class TaggedValue < Struct.new(:name, :value, :keypairs)
+      def to_str
+        if value.is_a?(Array)
+          value.map(&:to_str)
+        else
+          value.to_str
+        end
+      end
+    end
+
+    class PathParamTaggedValue < TaggedValue
+      def to_str
+        if !keypairs
+          if value.is_a?(Array)
+            value.map do |inner|
+              if inner == ""
+                name
+              else
+                "#{name}=#{inner}"
+              end
+            end
+          else
+            if value == ""
+              name
+            else
+              "#{name}=#{value}"
+            end
+          end
+        else
+          super
+        end
+      end
+    end
+
+    class NamedTaggedValue < TaggedValue
+      def to_str
+        if !keypairs
           if value.is_a?(Array)
             value.map do |inner|
               "#{name}=#{inner}"
@@ -61,11 +101,7 @@ module Addressable
             "#{name}=#{value}"
           end
         else
-          if value.is_a?(Array)
-            value.map(&:to_str)
-          else
-            value.to_str
-          end
+          super
         end
       end
     end
@@ -79,6 +115,21 @@ module Addressable
         @explode = explode
         @prefix = prefix
       end
+
+      def unencode(value)
+        if value.is_a?(Hash)
+          value = value.inject({}){|acc, (k, v)|
+            acc[Addressable::URI.unencode_component(k)] =
+              Addressable::URI.unencode_component(v)
+            acc
+          }
+        elsif value.is_a?(Array)
+          value = value.map{|v| Addressable::URI.unencode_component(v) }
+        else
+          value = Addressable::URI.unencode_component(value)
+        end
+      end
+
 
       ##
       # Takes Array, Hash, or String and runs IDNA unicode normalization.
@@ -184,7 +235,7 @@ module Addressable
               end
             end
           end
-          TaggedValue.new(name, transformed_value, keypairs)
+          op.tagged_value.new(name, transformed_value, keypairs)
         end
       end
     end
@@ -194,16 +245,17 @@ module Addressable
         false
       end
 
-      def self.prefer_keypairs?
-        false
+      def self.tagged_value
+        TaggedValue
       end
 
       def self.concat(mapping, variables)
         list = variables.map do |variable|
           variable.expand_with(mapping[variable.name])
         end
+        list.compact!
         unless list.empty?
-          joined_values(list.compact)
+          joined_values(list)
         end
       end
 
@@ -212,15 +264,78 @@ module Addressable
 
       def self.joined_values(list)
         leader + list.flat_map{|val|
-          val.to_str(prefer_keypairs?)
+          val.to_str
         }.join(joiner)
       end
 
-      def self.extract_values(scanner, list)
-        raise 'unimplemented'
-      end
-
-      def self.normalize_value(value)
+      def self.extract_values(scanner, matches, variables)
+        scanner = StringScanner.new(scanner) unless scanner.is_a?(StringScanner)
+        scanned = scanner.scan(/#{self.leader}/)
+        if scanned
+          variables.each do |var|
+            scanned = nil
+            if var.explode
+              scanning_set = /((?:#{UNRESERVED_SET}|#{self.joiner}|,|=)*)/
+              scanned = scanner.scan(scanning_set)
+              if scanned
+                if scanner[1] =~ /#{self.joiner}/
+                  results = scanner[1].split(self.joiner)
+                else
+                  results = scanner[1].split(',')
+                end
+                results.map do |result|
+                  vals = result.split('=')
+                  if vals.size == 1
+                    case matches[var.name]
+                    when Array
+                      matches[var.name] << var.unencode(vals.first)
+                    when String
+                      matches[var.name] = [matches[var.name], var.unencode(vals.first)]
+                    when Hash
+                      matches[var.name][var.unencode(vals.first)] = ""
+                    else
+                      matches[var.name] = var.unencode(vals.first)
+                    end
+                  else
+                    matches[var.name] ||= {}
+                    matches[var.name][var.unencode(vals.first)] = var.unencode(vals.last)
+                  end
+                end
+              else
+                matches[var.name] = nil
+              end
+            elsif var.prefix
+              scanned = scanner.scan(/((?:#{UNRESERVED_SET}|,){0,#{var.prefix}})/)
+              if scanned
+                if scanner[1] =~ /,/
+                  matches[var.name] = var.unencode(scanner[1].split(','))
+                else
+                  matches[var.name] = var.unencode(scanner[1])
+                end
+              else
+                matches[var.name] = nil
+              end
+            else
+              scanned = scanner.scan(/#{UNRESERVED_SCAN}/)
+              if scanned
+                if scanner[1] =~ /,/
+                  matches[var.name] = var.unencode(scanner[1].split(','))
+                else
+                  matches[var.name] = var.unencode(scanner[1])
+                end
+              else
+                matches[var.name] = nil
+              end
+            end
+          end
+          matches
+        else
+          # If leader was not found, 
+          variables.each do |var|
+            matches[var.name] = nil
+          end
+          matches
+        end
       end
     end
 
@@ -241,17 +356,6 @@ module Addressable
     class OpPath < Expression
       def self.leader; "/"; end
       def self.joiner; "/"; end
-      def self.extract_values(scanner, list)
-        matches = {}
-        list.each do |var|
-          if var.explode
-          else
-            scanned = scanner.scan(/\/(#{UNRESERVED}*)/)
-            matches[var.name] = scanner[1]
-          end
-        end
-        matches
-      end
     end
 
     class OpLabel < Expression
@@ -262,41 +366,40 @@ module Addressable
     class OpPathParams < Expression
       def self.leader; ";"; end
       def self.joiner; ";"; end
-      def self.prefer_keypairs?; true; end
+      def self.tagged_value; PathParamTaggedValue; end
     end
 
     class OpFormContinuation < Expression
       def self.leader; "&"; end
       def self.joiner; "&"; end
-      def self.prefer_keypairs?; true; end
+      def self.tagged_value; NamedTaggedValue; end
     end
 
     class OpForm < Expression
       def self.leader; "?"; end
       def self.joiner; "&"; end
-      def self.prefer_keypairs?; true; end
-      def self.extract_values(scanner, list)
-        matches = {}
-        scan_state = :start
-        list.each do |var|
-          scanned = scanner.getch
-          if scan_state == :start
-            return unless scanned == "?"
-            scanned = scanner.scan(/(#{var.name})=(#{UNRESERVED}*)/)
-            if scanned
-              matches[var.name] = scanner[2]
-            end
-            scan_state = :next
-          else
-            return unless scanned == "&"
-            scanned = scanner.scan(/(#{var.name})=(#{UNRESERVED}*)/)
-            if scanned
-              matches[var.name] = scanner[2]
-            end
-          end
-        end
-        matches
-      end
+      def self.tagged_value; NamedTaggedValue; end
+      # def self.extract_values(scanner, matches, variables)
+      #   scan_state = :start
+      #   variables.each do |var|
+      #     scanned = scanner.getch
+      #     if scan_state == :start
+      #       return unless scanned == "?"
+      #       scanned = scanner.scan(/(#{var.name})=#{UNRESERVED_SCAN}/)
+      #       if scanned
+      #         matches[var.name] = scanner[2]
+      #       end
+      #       scan_state = :next
+      #     else
+      #       return unless scanned == "&"
+      #       scanned = scanner.scan(/(#{var.name})=#{UNRESERVED_SCAN}/)
+      #       if scanned
+      #         matches[var.name] = scanner[2]
+      #       end
+      #     end
+      #   end
+      #   matches
+      # end
     end
   end
 end
