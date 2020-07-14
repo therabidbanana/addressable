@@ -64,7 +64,7 @@ module Addressable
           end
         end
       end
-      result
+      return Addressable::URI.parse(result)
     end
 
     def expand_varspec(mapping, op, vars)
