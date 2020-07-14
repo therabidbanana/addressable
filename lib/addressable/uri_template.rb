@@ -59,7 +59,7 @@ module Addressable
         if node.is_a?(String)
           result << node
         else
-          expand_varspec(mapping, *node) do |expansion|
+          expand_varspec(mapping, node) do |expansion|
             result << expansion
           end
         end
@@ -67,8 +67,8 @@ module Addressable
       return Addressable::URI.parse(result)
     end
 
-    def expand_varspec(mapping, op, vars)
-      val = op.concat(mapping, vars)
+    def expand_varspec(mapping, varspec)
+      val = varspec.join_expansions(mapping)
       yield val if val
     end
 
@@ -124,7 +124,7 @@ module Addressable
           extracted = scanner.scan(node)
           raise NoMatch unless extracted
         else
-          extracted = node[0].extract_values(scanner, mapping, node[1])
+          extracted = node.extract_values(scanner, mapping)
           raise NoMatch unless extracted
         end
       end
