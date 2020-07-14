@@ -1,76 +1,127 @@
-Total allocated: 11.05 MB (200007 objects)
+Total allocated: 44.51 MB (750000 objects)
 Total retained:  0 B (0 objects)
-Total time 1.2782127857208252 seconds
 
 allocated memory by gem
 -----------------------------------
-   9.37 MB  addressable/lib
-   1.68 MB  other
+  44.51 MB  addressable/lib
 
 allocated memory by file
 -----------------------------------
-   9.37 MB  addressable/lib/addressable/template.rb
-   1.68 MB  tasks/profile.rake
+  29.77 MB  addressable/lib/addressable/uri.rb
+   9.46 MB  addressable/lib/addressable/template_machine.rb
+   4.08 MB  addressable/lib/addressable/uri_template.rb
+   1.20 MB  addressable/lib/addressable/idna/native.rb
 
 allocated memory by location
 -----------------------------------
-   1.68 MB  tasks/profile.rake:15
-   1.61 MB  addressable/lib/addressable/template.rb:1095
-   1.36 MB  addressable/lib/addressable/template.rb:1108
-   1.20 MB  addressable/lib/addressable/template.rb:1048
- 800.00 kB  addressable/lib/addressable/template.rb:1047
- 800.00 kB  addressable/lib/addressable/template.rb:1051
- 800.00 kB  addressable/lib/addressable/template.rb:1083
- 800.00 kB  addressable/lib/addressable/template.rb:1089
- 800.00 kB  addressable/lib/addressable/template.rb:1109
- 800.00 kB  addressable/lib/addressable/template.rb:1113
- 400.00 kB  addressable/lib/addressable/template.rb:1091
-  120.00 B  addressable/lib/addressable/template.rb:1102
-   80.00 B  addressable/lib/addressable/template.rb:1101
-   72.00 B  addressable/lib/addressable/template.rb:1100
-   40.00 B  tasks/profile.rake:11
+  12.49 MB  addressable/lib/addressable/uri.rb:111
+   2.88 MB  addressable/lib/addressable/uri_template.rb:40
+   2.08 MB  addressable/lib/addressable/uri.rb:902
+   1.93 MB  addressable/lib/addressable/template_machine.rb:266
+   1.68 MB  addressable/lib/addressable/uri.rb:150
+   1.44 MB  addressable/lib/addressable/uri.rb:1361
+   1.36 MB  addressable/lib/addressable/uri.rb:2343
+   1.20 MB  addressable/lib/addressable/idna/native.rb:34
+   1.20 MB  addressable/lib/addressable/template_machine.rb:174
+   1.20 MB  addressable/lib/addressable/template_machine.rb:238
+   1.20 MB  addressable/lib/addressable/uri.rb:400
+   1.20 MB  addressable/lib/addressable/uri.rb:409
+   1.20 MB  addressable/lib/addressable/uri.rb:412
+   1.13 MB  addressable/lib/addressable/template_machine.rb:268
+   1.04 MB  addressable/lib/addressable/uri.rb:140
+ 880.00 kB  addressable/lib/addressable/uri.rb:2347
+ 800.00 kB  addressable/lib/addressable/template_machine.rb:106
+ 800.00 kB  addressable/lib/addressable/template_machine.rb:231
+ 800.00 kB  addressable/lib/addressable/template_machine.rb:253
+ 800.00 kB  addressable/lib/addressable/uri.rb:1853
+ 800.00 kB  addressable/lib/addressable/uri.rb:2467
+ 800.00 kB  addressable/lib/addressable/uri_template.rb:62
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:357
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:358
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:379
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:380
+ 400.00 kB  addressable/lib/addressable/uri.rb:1225
+ 400.00 kB  addressable/lib/addressable/uri.rb:129
+ 400.00 kB  addressable/lib/addressable/uri.rb:131
+ 400.00 kB  addressable/lib/addressable/uri.rb:1567
+ 400.00 kB  addressable/lib/addressable/uri.rb:2344
+ 400.00 kB  addressable/lib/addressable/uri.rb:2345
+ 400.00 kB  addressable/lib/addressable/uri.rb:2348
+ 400.00 kB  addressable/lib/addressable/uri.rb:2461
+ 400.00 kB  addressable/lib/addressable/uri.rb:906
+ 400.00 kB  addressable/lib/addressable/uri_template.rb:56
 
 allocated memory by class
 -----------------------------------
-   4.97 MB  String
-   4.40 MB  Array
-   1.68 MB  Hash
-   40.00 B  Addressable::TemplateMachine
+  22.51 MB  String
+   7.84 MB  Array
+   6.96 MB  MatchData
+   4.56 MB  Hash
+   1.04 MB  Addressable::URI
+ 800.00 kB  Addressable::TemplateMachine::NamedTaggedValue
+ 400.00 kB  Addressable::TemplateMachine::TaggedValue
+ 400.00 kB  Range
 
 allocated objects by gem
 -----------------------------------
-    190006  addressable/lib
-     10001  other
+    750000  addressable/lib
 
 allocated objects by file
 -----------------------------------
-    190006  addressable/lib/addressable/template.rb
-     10001  tasks/profile.rake
+    430000  addressable/lib/addressable/uri.rb
+    220000  addressable/lib/addressable/template_machine.rb
+     70000  addressable/lib/addressable/uri_template.rb
+     30000  addressable/lib/addressable/idna/native.rb
 
 allocated objects by location
 -----------------------------------
-     30000  addressable/lib/addressable/template.rb:1048
-     20000  addressable/lib/addressable/template.rb:1047
-     20000  addressable/lib/addressable/template.rb:1051
-     20000  addressable/lib/addressable/template.rb:1083
-     20000  addressable/lib/addressable/template.rb:1089
-     20000  addressable/lib/addressable/template.rb:1095
-     20000  addressable/lib/addressable/template.rb:1109
-     20000  addressable/lib/addressable/template.rb:1113
-     10000  addressable/lib/addressable/template.rb:1091
-     10000  addressable/lib/addressable/template.rb:1108
-     10000  tasks/profile.rake:15
-         3  addressable/lib/addressable/template.rb:1102
-         2  addressable/lib/addressable/template.rb:1101
-         1  addressable/lib/addressable/template.rb:1100
-         1  tasks/profile.rake:11
+    140000  addressable/lib/addressable/uri.rb:111
+     40000  addressable/lib/addressable/template_machine.rb:266
+     40000  addressable/lib/addressable/uri_template.rb:40
+     30000  addressable/lib/addressable/idna/native.rb:34
+     30000  addressable/lib/addressable/template_machine.rb:174
+     30000  addressable/lib/addressable/template_machine.rb:238
+     30000  addressable/lib/addressable/uri.rb:400
+     30000  addressable/lib/addressable/uri.rb:409
+     30000  addressable/lib/addressable/uri.rb:412
+     20000  addressable/lib/addressable/template_machine.rb:106
+     20000  addressable/lib/addressable/template_machine.rb:231
+     20000  addressable/lib/addressable/template_machine.rb:253
+     20000  addressable/lib/addressable/template_machine.rb:268
+     20000  addressable/lib/addressable/uri.rb:1853
+     20000  addressable/lib/addressable/uri.rb:2467
+     20000  addressable/lib/addressable/uri.rb:902
+     20000  addressable/lib/addressable/uri_template.rb:62
+     10000  addressable/lib/addressable/template_machine.rb:357
+     10000  addressable/lib/addressable/template_machine.rb:358
+     10000  addressable/lib/addressable/template_machine.rb:379
+     10000  addressable/lib/addressable/template_machine.rb:380
+     10000  addressable/lib/addressable/uri.rb:1225
+     10000  addressable/lib/addressable/uri.rb:129
+     10000  addressable/lib/addressable/uri.rb:131
+     10000  addressable/lib/addressable/uri.rb:1361
+     10000  addressable/lib/addressable/uri.rb:140
+     10000  addressable/lib/addressable/uri.rb:150
+     10000  addressable/lib/addressable/uri.rb:1567
+     10000  addressable/lib/addressable/uri.rb:2343
+     10000  addressable/lib/addressable/uri.rb:2344
+     10000  addressable/lib/addressable/uri.rb:2345
+     10000  addressable/lib/addressable/uri.rb:2347
+     10000  addressable/lib/addressable/uri.rb:2348
+     10000  addressable/lib/addressable/uri.rb:2461
+     10000  addressable/lib/addressable/uri.rb:906
+     10000  addressable/lib/addressable/uri_template.rb:56
 
 allocated objects by class
 -----------------------------------
-    110006  Array
-     80000  String
-     10000  Hash
-         1  Addressable::TemplateMachine
+    470000  String
+    150000  Array
+     50000  Hash
+     30000  MatchData
+     20000  Addressable::TemplateMachine::NamedTaggedValue
+     10000  Addressable::TemplateMachine::TaggedValue
+     10000  Addressable::URI
+     10000  Range
 
 retained memory by gem
 -----------------------------------
@@ -107,27 +158,89 @@ NO DATA
 
 Allocated String Report
 -----------------------------------
-     10000  "/a"
-     10000  addressable/lib/addressable/template.rb:1083
+     50000  "https"
+     20000  addressable/lib/addressable/uri.rb:1853
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:902
+     10000  addressable/lib/addressable/uri.rb:906
 
-     10000  "?foo=longstring&bar=longeststrin"
-     10000  addressable/lib/addressable/template.rb:1095
+     40000  "/"
+     10000  addressable/lib/addressable/template_machine.rb:357
+     10000  addressable/lib/addressable/template_machine.rb:358
+     10000  addressable/lib/addressable/uri.rb:1567
+     10000  addressable/lib/addressable/uri.rb:2461
 
-     10000  "a"
-     10000  addressable/lib/addressable/template.rb:1083
+     40000  "a"
+     10000  addressable/lib/addressable/idna/native.rb:34
+     10000  addressable/lib/addressable/template_machine.rb:268
+     10000  addressable/lib/addressable/uri.rb:409
+     10000  addressable/lib/addressable/uri.rb:412
+
+     40000  "google.com"
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:1225
+     10000  addressable/lib/addressable/uri.rb:129
+     10000  addressable/lib/addressable/uri.rb:131
+
+     30000  "/a"
+     10000  addressable/lib/addressable/template_machine.rb:266
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:2467
+
+     30000  "?foo=longstring&bar=longeststrin"
+     10000  addressable/lib/addressable/template_machine.rb:266
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:2347
+
+     30000  "https://google.com/a?foo=longstring&bar=longeststrin#cat"
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:2343
+     10000  addressable/lib/addressable/uri_template.rb:56
+
+     30000  "longeststrin"
+     10000  addressable/lib/addressable/template_machine.rb:231
+     10000  addressable/lib/addressable/uri.rb:409
+     10000  addressable/lib/addressable/uri.rb:412
+
+     30000  "longstring"
+     10000  addressable/lib/addressable/idna/native.rb:34
+     10000  addressable/lib/addressable/uri.rb:409
+     10000  addressable/lib/addressable/uri.rb:412
+
+     20000  "#cat"
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:2348
+
+     20000  "//google.com"
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:2345
+
+     20000  "foo=longstring&bar=longeststrin"
+     10000  addressable/lib/addressable/template_machine.rb:268
+     10000  addressable/lib/addressable/uri.rb:111
+
+     20000  "https:"
+     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:2344
+
+     10000  "&"
+     10000  addressable/lib/addressable/template_machine.rb:380
+
+     10000  "//"
+     10000  addressable/lib/addressable/uri.rb:2467
+
+     10000  "?"
+     10000  addressable/lib/addressable/template_machine.rb:379
 
      10000  "bar=longeststrin"
-     10000  addressable/lib/addressable/template.rb:1089
+     10000  addressable/lib/addressable/template_machine.rb:106
+
+     10000  "cat"
+     10000  addressable/lib/addressable/uri.rb:111
 
      10000  "foo=longstring"
-     10000  addressable/lib/addressable/template.rb:1091
+     10000  addressable/lib/addressable/template_machine.rb:106
 
-     10000  "foo=longstring&bar=longeststrin"
-     10000  addressable/lib/addressable/template.rb:1095
-
-     10000  "https://google.com/a?foo=longstring&bar=longeststrin#cat"
-     10000  addressable/lib/addressable/template.rb:1108
-
-     10000  "longeststrin"
-     10000  addressable/lib/addressable/template.rb:1089
+     10000  "longeststringavailable"
+     10000  addressable/lib/addressable/idna/native.rb:34
 
