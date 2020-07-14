@@ -1,9 +1,9 @@
-Total allocated: 72.27 MB (1250000 objects)
+Total allocated: 71.87 MB (1240000 objects)
 Total retained:  0 B (0 objects)
 
 allocated memory by gem
 -----------------------------------
-  71.87 MB  addressable/lib
+  71.47 MB  addressable/lib
  400.00 kB  other
 
 allocated memory by file
@@ -11,67 +11,67 @@ allocated memory by file
   29.77 MB  addressable/lib/addressable/uri.rb
   26.96 MB  addressable/lib/addressable/template_lexer.rb
    9.46 MB  addressable/lib/addressable/template_machine.rb
-   4.48 MB  addressable/lib/addressable/uri_template.rb
+   4.08 MB  addressable/lib/addressable/uri_template.rb
    1.20 MB  addressable/lib/addressable/idna/native.rb
  400.00 kB  tasks/profile.rake
 
 allocated memory by location
 -----------------------------------
-  12.49 MB  addressable/lib/addressable/uri.rb:111
-   4.80 MB  addressable/lib/addressable/template_lexer.rb:72
-   2.88 MB  addressable/lib/addressable/uri_template.rb:40
-   2.40 MB  addressable/lib/addressable/template_lexer.rb:32
-   2.40 MB  addressable/lib/addressable/template_lexer.rb:64
-   2.08 MB  addressable/lib/addressable/uri.rb:902
-   2.00 MB  addressable/lib/addressable/template_lexer.rb:23
-   1.93 MB  addressable/lib/addressable/template_machine.rb:266
-   1.76 MB  addressable/lib/addressable/template_lexer.rb:26
-   1.68 MB  addressable/lib/addressable/uri.rb:150
-   1.44 MB  addressable/lib/addressable/uri.rb:1361
-   1.36 MB  addressable/lib/addressable/uri.rb:2343
+  12.49 MB  addressable/lib/addressable/uri.rb:109
+   4.80 MB  addressable/lib/addressable/template_lexer.rb:70
+   2.88 MB  addressable/lib/addressable/uri_template.rb:41
+   2.40 MB  addressable/lib/addressable/template_lexer.rb:30
+   2.40 MB  addressable/lib/addressable/template_lexer.rb:62
+   2.08 MB  addressable/lib/addressable/uri.rb:900
+   2.00 MB  addressable/lib/addressable/template_lexer.rb:21
+   1.93 MB  addressable/lib/addressable/template_machine.rb:275
+   1.76 MB  addressable/lib/addressable/template_lexer.rb:24
+   1.68 MB  addressable/lib/addressable/uri.rb:148
+   1.44 MB  addressable/lib/addressable/uri.rb:1359
+   1.36 MB  addressable/lib/addressable/uri.rb:2341
    1.20 MB  addressable/lib/addressable/idna/native.rb:34
-   1.20 MB  addressable/lib/addressable/template_lexer.rb:29
+   1.20 MB  addressable/lib/addressable/template_lexer.rb:27
+   1.20 MB  addressable/lib/addressable/template_lexer.rb:47
    1.20 MB  addressable/lib/addressable/template_lexer.rb:49
-   1.20 MB  addressable/lib/addressable/template_lexer.rb:51
-   1.20 MB  addressable/lib/addressable/template_lexer.rb:63
+   1.20 MB  addressable/lib/addressable/template_lexer.rb:61
    1.20 MB  addressable/lib/addressable/template_machine.rb:174
    1.20 MB  addressable/lib/addressable/template_machine.rb:238
-   1.20 MB  addressable/lib/addressable/uri.rb:400
-   1.20 MB  addressable/lib/addressable/uri.rb:409
-   1.20 MB  addressable/lib/addressable/uri.rb:412
-   1.13 MB  addressable/lib/addressable/template_machine.rb:268
-   1.04 MB  addressable/lib/addressable/uri.rb:140
- 880.00 kB  addressable/lib/addressable/uri.rb:2347
+   1.20 MB  addressable/lib/addressable/uri.rb:398
+   1.20 MB  addressable/lib/addressable/uri.rb:407
+   1.20 MB  addressable/lib/addressable/uri.rb:410
+   1.13 MB  addressable/lib/addressable/template_machine.rb:277
+   1.04 MB  addressable/lib/addressable/uri.rb:138
+ 880.00 kB  addressable/lib/addressable/uri.rb:2345
+ 800.00 kB  addressable/lib/addressable/template_lexer.rb:29
  800.00 kB  addressable/lib/addressable/template_lexer.rb:31
- 800.00 kB  addressable/lib/addressable/template_lexer.rb:33
+ 800.00 kB  addressable/lib/addressable/template_lexer.rb:38
  800.00 kB  addressable/lib/addressable/template_lexer.rb:40
- 800.00 kB  addressable/lib/addressable/template_lexer.rb:42
- 800.00 kB  addressable/lib/addressable/template_lexer.rb:56
- 800.00 kB  addressable/lib/addressable/template_lexer.rb:57
+ 800.00 kB  addressable/lib/addressable/template_lexer.rb:54
+ 800.00 kB  addressable/lib/addressable/template_lexer.rb:55
+ 800.00 kB  addressable/lib/addressable/template_lexer.rb:63
  800.00 kB  addressable/lib/addressable/template_lexer.rb:65
- 800.00 kB  addressable/lib/addressable/template_lexer.rb:67
+ 800.00 kB  addressable/lib/addressable/template_lexer.rb:69
  800.00 kB  addressable/lib/addressable/template_lexer.rb:71
- 800.00 kB  addressable/lib/addressable/template_lexer.rb:73
  800.00 kB  addressable/lib/addressable/template_machine.rb:106
  800.00 kB  addressable/lib/addressable/template_machine.rb:231
- 800.00 kB  addressable/lib/addressable/template_machine.rb:253
- 800.00 kB  addressable/lib/addressable/uri.rb:1853
- 800.00 kB  addressable/lib/addressable/uri.rb:2467
- 800.00 kB  addressable/lib/addressable/uri_template.rb:62
- 400.00 kB  addressable/lib/addressable/template_lexer.rb:24
- 400.00 kB  addressable/lib/addressable/template_lexer.rb:36
- 400.00 kB  addressable/lib/addressable/template_machine.rb:357
- 400.00 kB  addressable/lib/addressable/template_machine.rb:358
- 400.00 kB  addressable/lib/addressable/template_machine.rb:379
- 400.00 kB  addressable/lib/addressable/template_machine.rb:380
- 400.00 kB  addressable/lib/addressable/uri.rb:1225
+ 800.00 kB  addressable/lib/addressable/template_machine.rb:262
+ 800.00 kB  addressable/lib/addressable/uri.rb:1851
+ 800.00 kB  addressable/lib/addressable/uri.rb:2465
+ 400.00 kB  addressable/lib/addressable/template_lexer.rb:22
+ 400.00 kB  addressable/lib/addressable/template_lexer.rb:34
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:369
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:370
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:391
+ 400.00 kB  addressable/lib/addressable/template_machine.rb:392
+ 400.00 kB  addressable/lib/addressable/uri.rb:1223
+ 400.00 kB  addressable/lib/addressable/uri.rb:127
  400.00 kB  addressable/lib/addressable/uri.rb:129
- 400.00 kB  addressable/lib/addressable/uri.rb:131
+ 400.00 kB  addressable/lib/addressable/uri.rb:1565
 
 allocated memory by class
 -----------------------------------
   35.31 MB  String
-  13.04 MB  Array
+  11.84 MB  Array
    9.60 MB  Hash
    6.96 MB  MatchData
    2.16 MB  Addressable::TemplateMachine::Variable
@@ -79,13 +79,15 @@ allocated memory by class
    1.04 MB  Addressable::URI
  800.00 kB  Addressable::TemplateMachine::NamedTaggedValue
  400.00 kB  Addressable::TemplateLexer
+ 400.00 kB  Addressable::TemplateMachine::OpForm
+ 400.00 kB  Addressable::TemplateMachine::OpPath
  400.00 kB  Addressable::TemplateMachine::TaggedValue
  400.00 kB  Addressable::UriTemplate
  400.00 kB  Range
 
 allocated objects by gem
 -----------------------------------
-   1240000  addressable/lib
+   1230000  addressable/lib
      10000  other
 
 allocated objects by file
@@ -93,72 +95,74 @@ allocated objects by file
     480000  addressable/lib/addressable/template_lexer.rb
     430000  addressable/lib/addressable/uri.rb
     220000  addressable/lib/addressable/template_machine.rb
-     80000  addressable/lib/addressable/uri_template.rb
+     70000  addressable/lib/addressable/uri_template.rb
      30000  addressable/lib/addressable/idna/native.rb
      10000  tasks/profile.rake
 
 allocated objects by location
 -----------------------------------
-    140000  addressable/lib/addressable/uri.rb:111
-     60000  addressable/lib/addressable/template_lexer.rb:32
-     40000  addressable/lib/addressable/template_lexer.rb:72
-     40000  addressable/lib/addressable/template_machine.rb:266
-     40000  addressable/lib/addressable/uri_template.rb:40
+    140000  addressable/lib/addressable/uri.rb:109
+     60000  addressable/lib/addressable/template_lexer.rb:30
+     40000  addressable/lib/addressable/template_lexer.rb:70
+     40000  addressable/lib/addressable/template_machine.rb:275
+     40000  addressable/lib/addressable/uri_template.rb:41
      30000  addressable/lib/addressable/idna/native.rb:34
-     30000  addressable/lib/addressable/template_lexer.rb:29
+     30000  addressable/lib/addressable/template_lexer.rb:27
+     30000  addressable/lib/addressable/template_lexer.rb:47
      30000  addressable/lib/addressable/template_lexer.rb:49
-     30000  addressable/lib/addressable/template_lexer.rb:51
-     30000  addressable/lib/addressable/template_lexer.rb:63
+     30000  addressable/lib/addressable/template_lexer.rb:61
      30000  addressable/lib/addressable/template_machine.rb:174
      30000  addressable/lib/addressable/template_machine.rb:238
-     30000  addressable/lib/addressable/uri.rb:400
-     30000  addressable/lib/addressable/uri.rb:409
-     30000  addressable/lib/addressable/uri.rb:412
+     30000  addressable/lib/addressable/uri.rb:398
+     30000  addressable/lib/addressable/uri.rb:407
+     30000  addressable/lib/addressable/uri.rb:410
+     20000  addressable/lib/addressable/template_lexer.rb:29
      20000  addressable/lib/addressable/template_lexer.rb:31
-     20000  addressable/lib/addressable/template_lexer.rb:33
+     20000  addressable/lib/addressable/template_lexer.rb:38
      20000  addressable/lib/addressable/template_lexer.rb:40
-     20000  addressable/lib/addressable/template_lexer.rb:42
-     20000  addressable/lib/addressable/template_lexer.rb:56
-     20000  addressable/lib/addressable/template_lexer.rb:57
-     20000  addressable/lib/addressable/template_lexer.rb:64
+     20000  addressable/lib/addressable/template_lexer.rb:54
+     20000  addressable/lib/addressable/template_lexer.rb:55
+     20000  addressable/lib/addressable/template_lexer.rb:62
+     20000  addressable/lib/addressable/template_lexer.rb:63
      20000  addressable/lib/addressable/template_lexer.rb:65
-     20000  addressable/lib/addressable/template_lexer.rb:67
+     20000  addressable/lib/addressable/template_lexer.rb:69
      20000  addressable/lib/addressable/template_lexer.rb:71
-     20000  addressable/lib/addressable/template_lexer.rb:73
      20000  addressable/lib/addressable/template_machine.rb:106
      20000  addressable/lib/addressable/template_machine.rb:231
-     20000  addressable/lib/addressable/template_machine.rb:253
-     20000  addressable/lib/addressable/template_machine.rb:268
-     20000  addressable/lib/addressable/uri.rb:1853
-     20000  addressable/lib/addressable/uri.rb:2467
-     20000  addressable/lib/addressable/uri.rb:902
-     20000  addressable/lib/addressable/uri_template.rb:62
-     10000  addressable/lib/addressable/template_lexer.rb:23
+     20000  addressable/lib/addressable/template_machine.rb:262
+     20000  addressable/lib/addressable/template_machine.rb:277
+     20000  addressable/lib/addressable/uri.rb:1851
+     20000  addressable/lib/addressable/uri.rb:2465
+     20000  addressable/lib/addressable/uri.rb:900
+     10000  addressable/lib/addressable/template_lexer.rb:21
+     10000  addressable/lib/addressable/template_lexer.rb:22
      10000  addressable/lib/addressable/template_lexer.rb:24
-     10000  addressable/lib/addressable/template_lexer.rb:26
-     10000  addressable/lib/addressable/template_lexer.rb:36
-     10000  addressable/lib/addressable/template_machine.rb:357
-     10000  addressable/lib/addressable/template_machine.rb:358
-     10000  addressable/lib/addressable/template_machine.rb:379
-     10000  addressable/lib/addressable/template_machine.rb:380
-     10000  addressable/lib/addressable/uri.rb:1225
+     10000  addressable/lib/addressable/template_lexer.rb:34
+     10000  addressable/lib/addressable/template_machine.rb:369
+     10000  addressable/lib/addressable/template_machine.rb:370
+     10000  addressable/lib/addressable/template_machine.rb:391
+     10000  addressable/lib/addressable/template_machine.rb:392
+     10000  addressable/lib/addressable/uri.rb:1223
+     10000  addressable/lib/addressable/uri.rb:127
      10000  addressable/lib/addressable/uri.rb:129
-     10000  addressable/lib/addressable/uri.rb:131
-     10000  addressable/lib/addressable/uri.rb:1361
-     10000  addressable/lib/addressable/uri.rb:140
-     10000  addressable/lib/addressable/uri.rb:150
-     10000  addressable/lib/addressable/uri.rb:1567
-     10000  addressable/lib/addressable/uri.rb:2343
+     10000  addressable/lib/addressable/uri.rb:1359
+     10000  addressable/lib/addressable/uri.rb:138
+     10000  addressable/lib/addressable/uri.rb:148
+     10000  addressable/lib/addressable/uri.rb:1565
+     10000  addressable/lib/addressable/uri.rb:2341
+     10000  addressable/lib/addressable/uri.rb:2342
 
 allocated objects by class
 -----------------------------------
     790000  String
-    240000  Array
+    210000  Array
      80000  Hash
      30000  Addressable::TemplateMachine::Variable
      30000  MatchData
      20000  Addressable::TemplateMachine::NamedTaggedValue
      10000  Addressable::TemplateLexer
+     10000  Addressable::TemplateMachine::OpForm
+     10000  Addressable::TemplateMachine::OpPath
      10000  Addressable::TemplateMachine::TaggedValue
      10000  Addressable::URI
      10000  Addressable::UriTemplate
@@ -201,137 +205,137 @@ NO DATA
 Allocated String Report
 -----------------------------------
      60000  "/"
+     10000  addressable/lib/addressable/template_lexer.rb:38
      10000  addressable/lib/addressable/template_lexer.rb:40
-     10000  addressable/lib/addressable/template_lexer.rb:42
-     10000  addressable/lib/addressable/template_machine.rb:357
-     10000  addressable/lib/addressable/template_machine.rb:358
-     10000  addressable/lib/addressable/uri.rb:1567
-     10000  addressable/lib/addressable/uri.rb:2461
+     10000  addressable/lib/addressable/template_machine.rb:369
+     10000  addressable/lib/addressable/template_machine.rb:370
+     10000  addressable/lib/addressable/uri.rb:1565
+     10000  addressable/lib/addressable/uri.rb:2459
 
      50000  "https"
-     20000  addressable/lib/addressable/uri.rb:1853
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:902
-     10000  addressable/lib/addressable/uri.rb:906
+     20000  addressable/lib/addressable/uri.rb:1851
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:900
+     10000  addressable/lib/addressable/uri.rb:904
 
      40000  ""
-     20000  addressable/lib/addressable/template_lexer.rb:33
-     10000  addressable/lib/addressable/template_lexer.rb:32
-     10000  addressable/lib/addressable/template_lexer.rb:63
+     20000  addressable/lib/addressable/template_lexer.rb:31
+     10000  addressable/lib/addressable/template_lexer.rb:30
+     10000  addressable/lib/addressable/template_lexer.rb:61
 
      40000  "a"
      10000  addressable/lib/addressable/idna/native.rb:34
-     10000  addressable/lib/addressable/template_machine.rb:268
-     10000  addressable/lib/addressable/uri.rb:409
-     10000  addressable/lib/addressable/uri.rb:412
+     10000  addressable/lib/addressable/template_machine.rb:277
+     10000  addressable/lib/addressable/uri.rb:407
+     10000  addressable/lib/addressable/uri.rb:410
 
      40000  "google.com"
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:1225
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:1223
+     10000  addressable/lib/addressable/uri.rb:127
      10000  addressable/lib/addressable/uri.rb:129
-     10000  addressable/lib/addressable/uri.rb:131
 
      40000  "{"
-     30000  addressable/lib/addressable/template_lexer.rb:32
-     10000  addressable/lib/addressable/template_lexer.rb:31
+     30000  addressable/lib/addressable/template_lexer.rb:30
+     10000  addressable/lib/addressable/template_lexer.rb:29
 
      30000  "#cat"
-     10000  addressable/lib/addressable/template_lexer.rb:36
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:2348
+     10000  addressable/lib/addressable/template_lexer.rb:34
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2346
 
      30000  "/a"
-     10000  addressable/lib/addressable/template_machine.rb:266
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:2467
+     10000  addressable/lib/addressable/template_machine.rb:275
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2465
 
      30000  "12"
-     20000  addressable/lib/addressable/template_lexer.rb:63
-     10000  addressable/lib/addressable/template_lexer.rb:65
+     20000  addressable/lib/addressable/template_lexer.rb:61
+     10000  addressable/lib/addressable/template_lexer.rb:63
 
      30000  "?"
+     10000  addressable/lib/addressable/template_lexer.rb:38
      10000  addressable/lib/addressable/template_lexer.rb:40
-     10000  addressable/lib/addressable/template_lexer.rb:42
-     10000  addressable/lib/addressable/template_machine.rb:379
+     10000  addressable/lib/addressable/template_machine.rb:391
 
      30000  "?foo=longstring&bar=longeststrin"
-     10000  addressable/lib/addressable/template_machine.rb:266
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:2347
+     10000  addressable/lib/addressable/template_machine.rb:275
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2345
 
      30000  "foo"
-     10000  addressable/lib/addressable/template_lexer.rb:49
+     10000  addressable/lib/addressable/template_lexer.rb:47
+     10000  addressable/lib/addressable/template_lexer.rb:69
      10000  addressable/lib/addressable/template_lexer.rb:71
-     10000  addressable/lib/addressable/template_lexer.rb:73
 
      30000  "https://google.com/a?foo=longstring&bar=longeststrin#cat"
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:2343
-     10000  addressable/lib/addressable/uri_template.rb:56
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2341
+     10000  addressable/lib/addressable/uri_template.rb:57
 
      30000  "longeststrin"
      10000  addressable/lib/addressable/template_machine.rb:231
-     10000  addressable/lib/addressable/uri.rb:409
-     10000  addressable/lib/addressable/uri.rb:412
+     10000  addressable/lib/addressable/uri.rb:407
+     10000  addressable/lib/addressable/uri.rb:410
 
      30000  "longstring"
      10000  addressable/lib/addressable/idna/native.rb:34
-     10000  addressable/lib/addressable/uri.rb:409
-     10000  addressable/lib/addressable/uri.rb:412
+     10000  addressable/lib/addressable/uri.rb:407
+     10000  addressable/lib/addressable/uri.rb:410
 
      30000  "path"
-     10000  addressable/lib/addressable/template_lexer.rb:49
+     10000  addressable/lib/addressable/template_lexer.rb:47
+     10000  addressable/lib/addressable/template_lexer.rb:69
      10000  addressable/lib/addressable/template_lexer.rb:71
-     10000  addressable/lib/addressable/template_lexer.rb:73
 
      20000  "*"
-     20000  addressable/lib/addressable/template_lexer.rb:67
+     20000  addressable/lib/addressable/template_lexer.rb:65
 
      20000  "//google.com"
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:2345
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2343
 
      20000  "foo=longstring&bar=longeststrin"
-     10000  addressable/lib/addressable/template_machine.rb:268
-     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/template_machine.rb:277
+     10000  addressable/lib/addressable/uri.rb:109
 
      20000  "https:"
-     10000  addressable/lib/addressable/uri.rb:111
-     10000  addressable/lib/addressable/uri.rb:2344
+     10000  addressable/lib/addressable/uri.rb:109
+     10000  addressable/lib/addressable/uri.rb:2342
 
      20000  "https://google.com{"
-     10000  addressable/lib/addressable/template_lexer.rb:31
-     10000  addressable/lib/addressable/template_lexer.rb:32
+     10000  addressable/lib/addressable/template_lexer.rb:29
+     10000  addressable/lib/addressable/template_lexer.rb:30
 
      20000  "}"
-     20000  addressable/lib/addressable/template_lexer.rb:51
+     20000  addressable/lib/addressable/template_lexer.rb:49
 
      10000  "&"
-     10000  addressable/lib/addressable/template_machine.rb:380
+     10000  addressable/lib/addressable/template_machine.rb:392
 
      10000  ","
-     10000  addressable/lib/addressable/template_lexer.rb:51
+     10000  addressable/lib/addressable/template_lexer.rb:49
 
      10000  "//"
-     10000  addressable/lib/addressable/uri.rb:2467
+     10000  addressable/lib/addressable/uri.rb:2465
 
      10000  "bar"
-     10000  addressable/lib/addressable/template_lexer.rb:65
+     10000  addressable/lib/addressable/template_lexer.rb:63
 
      10000  "bar:12"
-     10000  addressable/lib/addressable/template_lexer.rb:49
+     10000  addressable/lib/addressable/template_lexer.rb:47
 
      10000  "bar=longeststrin"
      10000  addressable/lib/addressable/template_machine.rb:106
 
      10000  "cat"
-     10000  addressable/lib/addressable/uri.rb:111
+     10000  addressable/lib/addressable/uri.rb:109
 
      10000  "foo=longstring"
      10000  addressable/lib/addressable/template_machine.rb:106
 
      10000  "https://google.com"
-     10000  addressable/lib/addressable/template_lexer.rb:32
+     10000  addressable/lib/addressable/template_lexer.rb:30
 
      10000  "longeststringavailable"
      10000  addressable/lib/addressable/idna/native.rb:34

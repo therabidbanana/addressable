@@ -75,7 +75,7 @@ context "Addressable::TemplateMachine::OpPath" do
   let(:name) { "foo" }
   let(:var) { Addressable::TemplateMachine::Variable.new(op: op, name: name, explode: true) }
 
-  subject(:op) { Addressable::TemplateMachine::OpPath }
+  subject(:op) { Addressable::TemplateMachine::OpPath.new([var]) }
 
   context '#extract_with(scanner)' do
     it "normalizes simple types" do

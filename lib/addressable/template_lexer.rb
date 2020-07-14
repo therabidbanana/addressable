@@ -17,8 +17,6 @@ module Addressable
     def initialize
     end
 
-    # StringScanner saves a lot of allocations over similar regex based scans
-    # (for 10,000 initializations, saved 50MB of allocations and 40% of compute time)
     def parse_nodes(uri_template)
       node_list = []
       curr_node = []
@@ -53,7 +51,7 @@ module Addressable
               # Continue pulling varspecs
             when "}"
               lex_state = :plain
-              node_list << [op_class, curr_node]
+              node_list << op_class.new(curr_node)
               curr_node = []
               op_class = nil
             else

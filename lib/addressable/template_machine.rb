@@ -241,6 +241,11 @@ module Addressable
     end
 
     class Expression
+      attr_reader :variables
+      def initialize(variables)
+        @variables = variables
+      end
+
       def self.allows_reserved?
         false
       end
@@ -249,7 +254,11 @@ module Addressable
         TaggedValue
       end
 
-      def self.concat(mapping, variables)
+      def tagged_value
+        self.class.tagged_value
+      end
+
+      def join_expansions(mapping)
         list = variables.map do |variable|
           variable.expand_with(mapping[variable.name])
         end
@@ -262,24 +271,27 @@ module Addressable
       def self.leader; ""; end
       def self.joiner; ","; end
 
-      def self.joined_values(list)
-        leader + list.flat_map{|val|
+      def joined_values(list)
+        self.class.leader + list.flat_map{|val|
           val.to_str
-        }.join(joiner)
+        }.join(self.class.joiner)
       end
 
-      def self.extract_values(scanner, matches, variables)
+      def extract_values(scanner, matches)
         scanner = StringScanner.new(scanner) unless scanner.is_a?(StringScanner)
-        scanned = scanner.scan(/#{self.leader}/)
+        scanned = scanner.scan(/#{Regexp.escape(self.class.leader)}/)
         if scanned
           variables.each do |var|
             scanned = nil
-            if var.explode
-              scanning_set = /((?:#{UNRESERVED_SET}|#{self.joiner}|,|=)*)/
+            # TODO: Fixme
+            # Explode seems to work better than other conditions.
+            # Need to break up some of this nasty logic.
+            if var.explode or true
+              scanning_set = /((?:#{UNRESERVED_SET}|#{self.class.joiner}|,|=)*)/
               scanned = scanner.scan(scanning_set)
               if scanned
-                if scanner[1] =~ /#{self.joiner}/
-                  results = scanner[1].split(self.joiner)
+                if scanner[1] =~ /#{self.class.joiner}/
+                  results = scanner[1].split(self.class.joiner)
                 else
                   results = scanner[1].split(',')
                 end
