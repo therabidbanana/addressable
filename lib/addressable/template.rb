@@ -486,7 +486,10 @@ module Addressable
     ##
     # Expands a URI template into another URI template.
     #
-    # @param [Hash] mapping The mapping that corresponds to the pattern.
+    # @param [Hash] mapping
+    #   The mapping that corresponds to the pattern. Must be a Hash, use
+    #   `#expand` if you want to use a lambda - partial expansion doesn't make
+    #   sense when a value can be generated for every key.
     # @param [#validate, #transform] processor
     #   An optional processor object may be supplied.
     # @param [Boolean] normalize_values
@@ -523,7 +526,7 @@ module Addressable
     #   #=> "http://example.com/?one=1{&two}&three=3"
     def partial_expand(mapping, processor=nil, normalize_values=true)
       result = self.pattern.dup
-      mapping = normalize_keys(mapping)
+      mapping = normalize_keys(mapping, true)
       result.gsub!( EXPRESSION ) do |capture|
         transform_partial_capture(mapping, capture, processor, normalize_values)
       end
@@ -533,7 +536,9 @@ module Addressable
     ##
     # Expands a URI template into a full URI.
     #
-    # @param [Hash] mapping The mapping that corresponds to the pattern.
+    # @param [Hash, #[]] mapping The mapping that corresponds to the pattern,
+    #   Can be a Hash (which will be normalized to have string keys) or a callable
+    #   that takes a single string argument and returns the mapped value.
     # @param [#validate, #transform] processor
     #   An optional processor object may be supplied.
     # @param [Boolean] normalize_values
@@ -917,24 +922,33 @@ module Addressable
     ##
     # Generates a hash with string keys
     #
-    # @param [Hash] mapping A mapping hash to normalize
+    # @param [Hash, #[]] mapping A mapping hash to normalize, or respond to #[]
+    # @param [Boolean] partial_mapping
+    #   Optional flag to disallow callables, default: false
     #
-    # @return [Hash]
-    #   A hash with stringified keys
-    def normalize_keys(mapping)
-      return mapping unless mapping.respond_to?(:inject)
-      return mapping.inject({}) do |accu, pair|
-        name, value = pair
-        if Symbol === name
-          name = name.to_s
-        elsif name.respond_to?(:to_str)
-          name = name.to_str
-        else
-          raise TypeError,
-            "Can't convert #{name.class} into String."
+    # @return [Hash, #[]]
+    #   A hash with stringified keys, or the object responding to #[] passed in
+    def normalize_keys(mapping, partial_mapping = false)
+      if mapping.respond_to?(:inject)
+        return mapping.inject({}) do |accu, pair|
+          name, value = pair
+          if Symbol === name
+            name = name.to_s
+          elsif name.respond_to?(:to_str)
+            name = name.to_str
+          else
+            raise TypeError,
+              "Can't convert #{name.class} into String."
+          end
+          accu[name] = value
+          accu
         end
-        accu[name] = value
-        accu
+      elsif mapping.respond_to?(:[]) && !partial_mapping
+        mapping
+      elsif mapping.respond_to?(:[]) && partial_mapping
+        raise ArgumentError, "mapping must be a Hash for `#partial_expand` to work as expected, otherwise use `#expand`"
+      else
+        raise ArgumentError, "mapping must be a Hash or something that responds to `#[]`"
       end
     end
 
