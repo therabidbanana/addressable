@@ -1,0 +1,131 @@
+# frozen_string_literal: true
+
+# coding: utf-8
+# Copyright (C) Bob Aman
+#
+#    Licensed under the Apache License, Version 2.0 (the "License");
+#    you may not use this file except in compliance with the License.
+#    You may obtain a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS,
+#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#    See the License for the specific language governing permissions and
+#    limitations under the License.
+
+require "spec_helper"
+
+require "timeout"
+require "addressable/template"
+
+describe Addressable::Template::Lexer do
+  machine = Addressable::Template::Machine
+
+  # Each node as a literal string, or [operator class, [name, explode,
+  # prefix] for each variable].
+  def nodes(pattern)
+    described_class.new.parse_nodes(pattern).map do |node|
+      next node if node.is_a?(String)
+      [node.class, node.variables.map { |v| [v.name, v.explode, v.prefix] }]
+    end
+  end
+
+  {
+    "" => [],
+    "a/b" => ["a/b"],
+    "{a}" => [[machine::OpPlain, [["a", false, nil]]]],
+    "x{+a}y" => ["x", [machine::OpReserved, [["a", false, nil]]], "y"],
+    "{#a}" => [[machine::OpFragment, [["a", false, nil]]]],
+    "{.a}" => [[machine::OpLabel, [["a", false, nil]]]],
+    "{/a}" => [[machine::OpPath, [["a", false, nil]]]],
+    "{;a}" => [[machine::OpPathParams, [["a", false, nil]]]],
+    "{?a}" => [[machine::OpForm, [["a", false, nil]]]],
+    "{&a}" => [[machine::OpFormContinuation, [["a", false, nil]]]],
+    "{a*,b:3,c}" => [[machine::OpPlain, [
+      ["a", true, nil], ["b", false, 3], ["c", false, nil]
+    ]]],
+    "{a:9999}" => [[machine::OpPlain, [["a", false, 9999]]]],
+    "{42}" => [[machine::OpPlain, [["42", false, nil]]]],
+    "{%41b}" => [[machine::OpPlain, [["%41b", false, nil]]]],
+    # A non-ASCII name is written pct-encoded (RFC 6570 section 2.3).
+    "{%C3%A9}" => [[machine::OpPlain, [["%C3%A9", false, nil]]]],
+    "{a.b.c}" => [[machine::OpPlain, [["a.b.c", false, nil]]]],
+    "{a_1}" => [[machine::OpPlain, [["a_1", false, nil]]]],
+    "é{a}é" => ["é", [machine::OpPlain, [["a", false, nil]]], "é"]
+  }.each do |pattern, expected|
+    it "lexes #{pattern.inspect}" do
+      expect(nodes(pattern)).to eq(expected)
+    end
+  end
+
+  # The :machine engine raises the error Template raises, with the same
+  # message, from the first operation that needs a valid pattern.
+  [
+    "{", "}", "{a", "a}", "{}", "{{a}}", "{a}{", "}{a}", "{a}}",
+    "{/?a}", "{a b}", "{ a}", "{a }", "{$a}", "{*a?}", "{a-b}", "{~a}",
+    "{a:0}", "{a:01}", "{a:10000}", "{a:}", "{a:x}", "{a:2*}", "{a*:2}",
+    "{a*,}", "{a,}", "{a,,b}", "{a.}", "{.a.}", "{a..b}", "{%2x}", "{%}",
+    "{a)}", "{?a){&b*}",
+    "{!a}", "{=a}", "{,a}", "{@a}", "{|a}", "/{@a}",
+    "é{!a}", "éé}", "{é}", "{a,é}", "{a}{!b}{c}", "{!a}{b", "{a}{b c}{!d}",
+    # Valid expressions between non-ASCII text, so the error's position
+    # depends on counting each one's length in characters.
+    "é{a}é{%C3%A9:3}é{+b*,c}é{!d}", "{a:١}", "{a:٣}"
+  ].each do |pattern|
+    it "raises Template's error for #{pattern.inspect}" do
+      regexp = Addressable::Template.new(pattern, engine: :regexp)
+      expected = begin
+        regexp.expand({})
+        raise "#{pattern.inspect} is valid for the :regexp engine"
+      rescue Addressable::Template::InvalidTemplateError => e
+        e
+      end
+      template = Addressable::Template.new(pattern, engine: :machine)
+      expect(template.freeze).to be_frozen
+      [lambda { template.expand({}) }, lambda { template.match("") }].each do
+        |operation|
+        expect(&operation).to raise_error(expected.class, expected.message)
+      end
+    end
+  end
+
+  it "lexes long patterns with non-ASCII literals in linear time" do
+    # Compared with ASCII literals on the same runner, so that a slow or
+    # busy runner doesn't fail the spec. Counting each position in
+    # characters from the start, which is quadratic, took over ten times as
+    # long at this size.
+    size = 30_000
+    fastest = lambda do |pattern|
+      3.times.map do
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        described_class.new.parse_nodes(pattern)
+        Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      end.min
+    end
+    ascii_time = fastest.call(("a{a}" * size) + "}")
+    non_ascii_time = fastest.call(("é{a}" * size) + "}")
+    expect(non_ascii_time).to be < (ascii_time * 4) + 0.05
+  end
+
+  it "lexes long patterns in linear time" do
+    [
+      "{" * 100_000,
+      "}" * 100_000,
+      "{a" * 50_000,
+      "{" + ("a." * 50_000) + "}",
+      "{" + ("a," * 50_000) + "!}",
+      "{" + ("%2" * 50_000) + "}",
+      ("{a}" * 30_000) + "{",
+      ("é{a}" * 30_000) + "}",
+      ("é" * 100_000) + "{é}",
+      "{" + ("a" * 100_000) + ":1}",
+      ("{a*}" * 30_000)
+    ].each do |pattern|
+      expect do
+        Timeout.timeout(10) { described_class.new.parse_nodes(pattern) }
+      end.not_to raise_error
+    end
+  end
+end

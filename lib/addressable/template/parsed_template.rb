@@ -42,19 +42,12 @@ module Addressable
       end
 
       # Parses the template's pattern. Like Template.new, this never raises
-      # for a pattern that isn't valid: the error is kept and raised by the
-      # first operation that needs the nodes.
+      # for a pattern that isn't valid: the first invalid token's error is
+      # raised by the first operation that needs a valid pattern.
       def initialize(template)
         @template = template
-        @nodes = nil
-        @parse_error = nil
-        begin
-          @nodes = Lexer.new.parse_nodes(template.pattern)
-        rescue StandardError => e
-          # The lexer raises RuntimeError for now; phase 1's parsing piece
-          # makes it raise InvalidTemplateError, and narrows this rescue.
-          @parse_error = e
-        end
+        @nodes = Lexer.new.parse_nodes(template.pattern)
+        @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
       end
 
       def expand(mapping, processor, normalize_values, &block)
@@ -112,10 +105,10 @@ module Addressable
 
       private
 
-      # The pattern's literals and expressions, or the error from parsing
-      # it.
+      # The pattern's literals and expressions, or Template's error for its
+      # first invalid token.
       def nodes
-        raise @parse_error if @parse_error
+        raise @invalid.error_class, @invalid.message if @invalid
         @nodes
       end
 

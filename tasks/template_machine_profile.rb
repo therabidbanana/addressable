@@ -77,6 +77,19 @@ module TemplateMachineProfile
   ADVERSARIAL_SIZES = [500, 2000].freeze
   ADVERSARIAL_TIMEOUT = 10
 
+  # Patterns modelled on "checks long templates in linear time" in
+  # spec/addressable/template_spec.rb. Each is invalid, so the first expand
+  # parses it and raises.
+  ADVERSARIAL_PARSE = {
+    "{ * n" => lambda { |n| "{" * n },
+    "{a * n" => lambda { |n| "{a" * n },
+    "{a.a.…!}" => lambda { |n| "{" + ("a." * n) + "!}" },
+    "{a,a,…!}" => lambda { |n| "{" + ("a," * n) + "!}" },
+    "{%2%2…}" => lambda { |n| "{" + ("%2" * n) + "}" },
+    "é{a} * n + }" => lambda { |n| ("é{a}" * n) + "}" }
+  }.freeze
+  ADVERSARIAL_PARSE_SIZES = [10_000, 40_000].freeze
+
   REPORT_DIR = "tmp/template_machine"
 
   module_function
@@ -88,6 +101,8 @@ module TemplateMachineProfile
     compare_operations(iterations)
     puts
     compare_adversarial
+    puts
+    compare_adversarial_parse
     puts
     puts "MemoryProfiler reports: #{REPORT_DIR}/"
   end
@@ -180,8 +195,7 @@ module TemplateMachineProfile
     if machine_error && !template_error
       "missing"
     elsif machine_error || template_error
-      # Both should raise the same error; the :machine engine has its own
-      # copies of the error classes until phase 1 shares them.
+      # Both should raise the same error.
       error_name(machine_error) == error_name(template_error) ? "same" : "differs"
     else
       machine_result == template_result ? "same" : "differs"
@@ -252,6 +266,57 @@ module TemplateMachineProfile
   rescue Timeout::Error
     ">#{ADVERSARIAL_TIMEOUT}s"
   rescue StandardError => e
+    e.class.name.split("::").last
+  end
+
+  def compare_adversarial_parse
+    sizes = ADVERSARIAL_PARSE_SIZES
+    puts "Adversarial parse (every pattern is invalid). Time for the first " \
+      "expand of a new template, in ms; x#{sizes.last / sizes.first} input " \
+      "should take about x#{sizes.last / sizes.first} time if it's linear."
+    puts format(
+      "%-36s %-12s %10s %10s %7s",
+      "pattern", "", *sizes.map { |n| "n=#{n}" }, "growth"
+    )
+    ADVERSARIAL_PARSE.each do |name, pattern|
+      ENGINES.each do |engine|
+        times = sizes.map { |n| parse_time(engine, pattern.call(n)) }
+        growth =
+          if times.all? { |t| t.is_a?(Float) }
+            ratio(times.last, times.first)
+          else
+            ""
+          end
+        puts format(
+          "%-36s %-12s %10s %10s %7s",
+          name, engine, *times.map { |t| t.is_a?(Float) ? number(t) : t },
+          growth
+        )
+      end
+    end
+  end
+
+  # The fastest of three first expands, in ms, or why there's no time.
+  def parse_time(engine, pattern)
+    best = nil
+    3.times do
+      template = Addressable::Template.new(pattern, engine: engine)
+      seconds = Benchmark.realtime do
+        Timeout.timeout(ADVERSARIAL_TIMEOUT) do
+          begin
+            template.expand({})
+            return "valid"
+          rescue Addressable::Template::InvalidTemplateError
+            # Expected: the pattern is invalid.
+          end
+        end
+      end
+      best = seconds if best.nil? || seconds < best
+    end
+    best * 1000
+  rescue Timeout::Error
+    ">#{ADVERSARIAL_TIMEOUT}s"
+  rescue StandardError, NotImplementedError => e
     e.class.name.split("::").last
   end
 

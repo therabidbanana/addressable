@@ -176,9 +176,8 @@ increase the machine-mode failures.
      template needs it and lexes the pattern then. A parse error is kept
      and raised by the first operation, so `new` and `freeze` never raise
      for an invalid pattern, and `freeze` freezes the `ParsedTemplate`
-     too. Its `rescue StandardError` narrows to `InvalidTemplateError` in
-     piece 6. It still has its own error classes and `MatchData` (piece
-     3). The public `UriTemplate` is
+     too. (Piece 6 replaced its `rescue StandardError` with
+     `Machine::Invalid` nodes.) The public `UriTemplate` is
      gone, and so is its `require` in `lib/addressable.rb`.
    - **The machine never falls back to the regexp code.** An operation
      it lacks (`partial_expand`, `variables` and its aliases,
@@ -247,6 +246,25 @@ increase the machine-mode failures.
 6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,
    `variables` and `variable_defaults`, each as its own piece. Add a
    parse case to the profile's adversarial section.
+   - **Done: the lexer.** It splits a pattern into `Template`'s tokens
+     (literal text, `{...}` up to the next `}` or the end, an unmatched
+     `}`) and checks each expression against `Template`'s grammar
+     (`Machine::VARSPEC` now has atomic name characters and prefixes of 1
+     to 9999). It never raises: a token that isn't valid becomes a
+     `Machine::Invalid` holding `Template`'s error class and message, and
+     `ParsedTemplate` raises the first one from `expand` and `match`. The
+     broad `rescue` is gone. `variables` will skip `Invalid` nodes, as
+     `Template#variables` leaves out invalid expressions. Positions count
+     characters by adding token lengths; `StringScanner#charpos` was
+     quadratic on non-ASCII patterns, which the new parse table in the
+     profile showed and a spec now checks. `partial_expand` and
+     `named_captures` still raise `NotImplementedError` before looking at
+     the pattern. A pattern that isn't valid UTF-8 raises `ArgumentError`
+     from the lexer, from `freeze` too, as `Template` does today (next
+     part). Specs: `spec/addressable/template_lexer_spec.rb`. The machine
+     builds every node before reaching a late error, so on long invalid
+     patterns it's up to 9× slower than `Template`'s check, though linear.
+     On normal patterns, "expand, new" is 0.44–0.74× `Template`'s time.
 
 ## Where the branch stands
 
@@ -254,16 +272,17 @@ The machine's code, from 2020 (rebased cleanly):
 
 - `lib/addressable/template/lexer.rb` (was `template_lexer.rb`):
   `Template::Lexer`, a `StringScanner` lexer that turns a pattern into
-  literal strings and `Expression` nodes
+  literal strings, `Expression` nodes, and `Machine::Invalid` nodes
+  (rewritten in phase 1, piece 6)
 - `lib/addressable/template/machine.rb` (was `template_machine.rb`):
   `Template::Machine`, with `Variable`, one `Expression`
   subclass per operator (`OpPlain`, `OpReserved`, `OpFragment`, `OpPath`,
   `OpLabel`, `OpPathParams`, `OpForm`, `OpFormContinuation`), and tagged
   values that join expansions
 - `lib/addressable/template/parsed_template.rb` (was `uri_template.rb`):
-  `Template::ParsedTemplate`, the `:machine` engine, with `#expand`, a
-  rough `#match`, and its own copies of `Template`'s error classes and
-  `MatchData`.
+  `Template::ParsedTemplate`, the `:machine` engine, with `#expand` and a
+  rough `#match`. It uses `Template`'s error classes, `MatchData`, and
+  `Template::Values` (phase 1, piece 3).
 - `spec/addressable/template_machine_spec.rb`: unit specs for the nodes
 
 Added since the rebase (002aecc onwards):
@@ -290,6 +309,8 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `:regexp` (default) | 1,909 | 0 |
 | `TEMPLATE_MODE=machine`, end of phase 0 (constant swap) | 1,909 | 1,388 |
 | `TEMPLATE_MODE=machine`, after piece 2 (engine switch) | 1,909 | 1,037, plus 240 pending |
+| `TEMPLATE_MODE=machine`, after piece 3 (shared pieces) | 1,909 | 799, plus 240 pending |
+| `TEMPLATE_MODE=machine`, after piece 6's lexer | 1,909 | 721, plus 240 pending |
 
 The 240 pending are the reference-oracle examples, skipped in machine mode
 because they test the regexp builder (see "Spec inventory"). The rest of
@@ -324,7 +345,8 @@ query and prefix; exploded; reserved and fragment), it runs `expand`,
 reports µs and objects per call. It also checks each pair of outputs:
 `same`, `differs` (the machine's numbers don't count), or `missing` (the
 machine raises, so it isn't timed). Then it times `match` on adversarial
-payloads at two sizes and reports how the time grows. `ITERATIONS=n`
+payloads at two sizes and reports how the time grows, and does the same
+for the first `expand` of long invalid patterns (the parse table). `ITERATIONS=n`
 sets the calls per timing (default 20,000, about a minute). MemoryProfiler
 reports go to `tmp/template_machine/`.
 
@@ -436,7 +458,8 @@ the default engine at every step.
 - Done: the `:machine` engine is `UriTemplate`'s code, moved behind
   `Template` as `Template::ParsedTemplate` (`@api private`). The public
   `UriTemplate` class is gone.
-- Everything that isn't an operation lives once, in `Template`, and the
+- Done (piece 3, except `resolve_mapping`): everything that isn't an
+  operation lives once, in `Template`, and the
   machine uses it instead of copies: the error classes (they keep their
   public `Addressable::Template::` names), `MatchData`, `MappingLookup`,
   `normalize_value` and `utf8_value` (removing the copy made in
@@ -449,7 +472,7 @@ the default engine at every step.
 
 Then parsing:
 
-- Lexer accepts everything `Template` accepts (pct-encoded names, names
+- Done (piece 6): lexer accepts everything `Template` accepts (pct-encoded names, names
   that start with a digit, dots, `:` prefixes up to 9999) and raises
   `InvalidTemplateError` / `InvalidTemplateOperatorError` for the rest,
   with `Template`'s messages. Like `Template`, `new` never raises for an

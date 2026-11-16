@@ -265,16 +265,15 @@ describe Addressable::Template, "engine" do
       expect(template.match("x/y").mapping).to eq("a" => "x", "b" => "y")
     end
 
-    # The lexer raises RuntimeError for "{!a}" until phase 1's parsing piece
-    # makes it raise InvalidTemplateError, as Template does.
     it "raises a parse error from the first operation, not new or freeze" do
       invalid = Addressable::Template.new("{!a}", engine: :machine)
       expect(invalid.freeze).to be_frozen
+      message = 'Invalid template operator "!" in "{!a}" at position 0'
       expect { invalid.expand({}) }.to raise_error(
-        RuntimeError, "Incomplete varspec"
+        Addressable::Template::InvalidTemplateOperatorError, message
       )
       expect { invalid.match("") }.to raise_error(
-        RuntimeError, "Incomplete varspec"
+        Addressable::Template::InvalidTemplateOperatorError, message
       )
     end
 

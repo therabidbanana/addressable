@@ -20,8 +20,9 @@ class Addressable::Template
       Addressable::URI::CharacterClasses::ALPHA +
       Addressable::URI::CharacterClasses::DIGIT + '_'
 
+    # Atomic, as in Template, so a long name can't backtrack.
     var_char =
-      "(?:(?:[#{variable_char_class}]|%[a-fA-F0-9][a-fA-F0-9])+)"
+      "(?>(?:[#{variable_char_class}]|%[a-fA-F0-9][a-fA-F0-9])+)"
     RESERVED =
       "(?:[#{anything}]|%[a-fA-F0-9][a-fA-F0-9])"
 
@@ -46,8 +47,13 @@ class Addressable::Template
     variable =
       "(?:#{var_char}(?:\\.?#{var_char})*)"
     varspec =
-      "(?:(#{variable})(\\*|:(\\d+))?)"
+      "(?:(#{variable})(\\*|:([1-9]\\d{0,3}))?)"
     VARSPEC = /#{varspec}/
+
+    # A token that isn't valid: the error Template raises for it, which
+    # ParsedTemplate raises from the first operation that needs a valid
+    # pattern.
+    Invalid = Struct.new(:error_class, :message)
     LEADERS = {
       '?' => '?',
       '/' => '/',
