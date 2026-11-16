@@ -276,12 +276,58 @@ increase the machine-mode failures.
        positions as `Template`.
 
      `template_lexer_spec.rb` now pins all of this against the `:regexp`
-     engine. The `ArgumentError` is `Template`'s own behaviour, so changing
-     it would be a `Template` change and isn't part of this branch.
+     engine. The `ArgumentError` is `Template`'s own behaviour; see
+     "`Template` bugs found along the way".
 
      What does differ is how literals are used. The machine copies literal
      text into an expansion as it is, and matches it only as written.
      Phases 2 and 3 now list both.
+   - **Done: `variables`, `keys`, `names`, and `variable_defaults`.**
+     `ParsedTemplate#variables` lists each expression node's names, in
+     order, once each, worked out from the nodes on each call. It's rarely
+     called, so keeping the list would cost every template for little, and
+     a frozen `ParsedTemplate` couldn't save it later anyway.
+     Like `Template`'s, it doesn't raise for an invalid pattern. To match
+     `Template` exactly, it also includes names from a valid expression
+     nested inside an invalid token. `Template` scans the whole pattern for
+     `EXPRESSION`, so `{{a}}` lists `a`. The lexer finds these with
+     `names_in_invalid_token` and keeps them on `Machine::Invalid#names`. Trying
+     each `{` in the token stops at the next `{` at the latest, so this is
+     linear, and the lexer spec checks it.
+     `variable_defaults` returns `{}`, as `Template`'s always does.
+     `MatchData#values`, `#to_a` and `#captures` now work on the machine.
+     The lexer spec compares `variables` with the `:regexp` engine for
+     every valid and invalid pattern it has. Machine mode: 674 failures,
+     from 721. This finishes phase 1; phase 2 (expansion) is next.
+
+## `Template` bugs found along the way
+
+The machine matches `Template` exactly, bugs included, so each of these
+has a spec that compares the two engines. Fixing one is a `Template`
+change, with its own `CHANGELOG.md` entry and, where it changes output,
+the compatibility rules in `CLAUDE.md`. The machine then follows the fix.
+
+- **`variables` lists names from inside invalid expressions.** It scans
+  the pattern for `EXPRESSION` anywhere instead of using the tokens that
+  `check_expressions` validates. So it lists `a` for `{{a}}`, `b` for
+  `{a{b}`, and `b` for `{?a){&b*}`, although `expand` and `match` raise
+  `InvalidTemplateError` for each. Invalid varspecs themselves aren't
+  listed (`{a b}`, `{a:0}` and `{a,}` give `[]`). Fixing this deletes the
+  lexer's `names_in_invalid_token` and `Machine::Invalid#names`.
+- **`variable_defaults` always returns `{}`.** Its doc says it maps
+  variables to their defaults. It came with the pre-RFC `{var=default}`
+  syntax (7411808, 2009), which `expand` used. The RFC 6570 rewrite
+  (9268509, 2012) dropped that syntax, since RFC 6570 has no defaults,
+  but kept the method. `ordered_variable_defaults` now returns only
+  names, so `reject { |k, v| v.nil? }` drops everything. It isn't a
+  hook either: nothing in the library reads it (`freeze` computes it and
+  throws it away), and `expand` ignores defaults. It's public API and
+  pinned by `template_spec.rb`, so keep it, document it as always empty,
+  and consider deprecating it at the next major.
+- **A UTF-8 pattern that isn't valid raises `ArgumentError`** ("invalid
+  byte sequence in UTF-8") from `freeze` and every operation, including
+  `variables`, rather than `InvalidTemplateError`. A UTF-16 pattern raises
+  `Encoding::CompatibilityError` the same way.
 
 ## Where the branch stands
 
@@ -328,6 +374,7 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, after piece 2 (engine switch) | 1,909 | 1,037, plus 240 pending |
 | `TEMPLATE_MODE=machine`, after piece 3 (shared pieces) | 1,909 | 799, plus 240 pending |
 | `TEMPLATE_MODE=machine`, after piece 6's lexer | 1,909 | 721, plus 240 pending |
+| `TEMPLATE_MODE=machine`, end of phase 1 | 1,909 | 674, plus 240 pending |
 
 The 240 pending are the reference-oracle examples, skipped in machine mode
 because they test the regexp builder (see "Spec inventory"). The rest of
@@ -499,7 +546,7 @@ Then parsing:
   does, for parsing. Values were already shared through
   `Template::Values`. Literals in expansion are phase 2, and URIs in
   matching are phase 3.
-- `variables`, `keys`, `names`, `variable_defaults`.
+- Done (piece 6): `variables`, `keys`, `names`, `variable_defaults`.
 - Parsing must stay linear: templates can come from untrusted input, such
   as the URI templates in hypermedia API responses that Octokit and Sawyer
   expand. `template_spec.rb` already covers this for `Template`: "checks

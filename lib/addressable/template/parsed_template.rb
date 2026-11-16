@@ -91,12 +91,24 @@ module Addressable
       rescue NoMatch
       end
 
+      # Like Template#variables, this doesn't raise for a pattern that isn't
+      # valid: it lists the names of the expressions Template's scan finds,
+      # in order, once each.
       def variables
-        unsupported("variables")
+        @nodes.flat_map do |node|
+          if node.is_a?(String)
+            []
+          elsif node.is_a?(Machine::Invalid)
+            node.names
+          else
+            node.variables.map(&:name)
+          end
+        end.uniq
       end
 
+      # Template has no syntax for default values, so it always returns {}.
       def variable_defaults
-        unsupported("variable_defaults")
+        {}
       end
 
       def named_captures

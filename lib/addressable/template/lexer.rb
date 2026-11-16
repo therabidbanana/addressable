@@ -27,8 +27,12 @@ class Addressable::Template
     LITERAL = /[^{}]+/
     EXPRESSION_TOKEN = /\{[^}]*\}?/
     OPEN_BRACE = /\{/
+    NEXT_OPEN_BRACE = /(?=\{)/
     CLOSE_BRACE = /\}/
     COMMA = /,/
+    # Template's RESERVED_OPERATORS, which RFC 6570 reserves for extensions.
+    # Written out because template.rb loads this file before defining it.
+    RESERVED_OPERATOR = /[=,!@|]/
 
     def parse_nodes(pattern)
       nodes = []
@@ -43,7 +47,8 @@ class Addressable::Template
           position += literal.length
         elsif scanner.skip(CLOSE_BRACE)
           nodes << Machine::Invalid.new(
-            InvalidTemplateError, "Unmatched \"}\" at position #{position}"
+            InvalidTemplateError, "Unmatched \"}\" at position #{position}",
+            []
           )
           position += 1
         else
@@ -70,12 +75,24 @@ class Addressable::Template
 
     private
 
-    # Reads an expression at the scanner's "{", or returns nil, leaving the
-    # scanner wherever it stopped, if it isn't valid.
+    # Reads a valid expression at the scanner's "{", or returns nil, leaving
+    # the scanner wherever it stopped.
     def expression(scanner)
+      reserved, node = read_expression(scanner)
+      node unless reserved
+    end
+
+    # Reads an expression at the scanner's "{": an operator, which may be
+    # one RFC 6570 reserves, and varspecs up to "}". Returns whether the
+    # operator is reserved, and the node, or nil, leaving the scanner
+    # wherever it stopped, if the text doesn't fit.
+    def read_expression(scanner)
       scanner.skip(OPEN_BRACE)
-      op_class = OPERATORS[scanner.peek(1)]
-      if op_class
+      reserved = false
+      if scanner.skip(RESERVED_OPERATOR)
+        reserved = true
+        op_class = Machine::OpPlain
+      elsif (op_class = OPERATORS[scanner.peek(1)])
         scanner.pos += 1
       else
         op_class = Machine::OpPlain
@@ -85,9 +102,26 @@ class Addressable::Template
         # Machine's VARSPEC, not Template's.
         return nil unless scanner.scan(Machine::VARSPEC)
         variables << variable(op_class, scanner)
-        return op_class.new(variables) if scanner.skip(CLOSE_BRACE)
+        return [reserved, op_class.new(variables)] if scanner.skip(CLOSE_BRACE)
         return nil unless scanner.skip(COMMA)
       end
+    end
+
+    # The names Template#variables lists for an invalid token that ends in
+    # "}". Template scans the whole pattern for expressions, and that scan
+    # finds at most one in such a token: the one from the leftmost "{" that
+    # reads to the token's "}". Its names are left out if its operator is
+    # reserved. A try stops at the next "{" at the latest, so this is
+    # linear.
+    def names_in_invalid_token(token)
+      scanner = StringScanner.new(token)
+      while scanner.skip_until(NEXT_OPEN_BRACE)
+        start = scanner.pos
+        reserved, node = read_expression(scanner)
+        return reserved ? [] : node.variables.map(&:name) if node
+        scanner.pos = start + 1
+      end
+      []
     end
 
     def variable(op_class, scanner)
@@ -104,24 +138,27 @@ class Addressable::Template
 
     def invalid_token(token, position)
       if !token.end_with?("}")
-        Machine::Invalid.new(
+        return Machine::Invalid.new(
           InvalidTemplateError,
           "Unclosed template expression #{token.inspect} " \
-          "at position #{position}"
+          "at position #{position}",
+          []
         )
-      # Template's RESERVED_OPERATORS: RFC 6570 reserves them for
-      # extensions.
-      elsif RESERVED_OPERATORS.include?(token[1])
+      end
+      names = names_in_invalid_token(token)
+      if RESERVED_OPERATORS.include?(token[1])
         Machine::Invalid.new(
           InvalidTemplateOperatorError,
           "Invalid template operator #{token[1].inspect} in " \
-          "#{token.inspect} at position #{position}"
+          "#{token.inspect} at position #{position}",
+          names
         )
       else
         Machine::Invalid.new(
           InvalidTemplateError,
           "Invalid template expression #{token.inspect} " \
-          "at position #{position}"
+          "at position #{position}",
+          names
         )
       end
     end

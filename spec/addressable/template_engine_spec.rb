@@ -207,6 +207,20 @@ describe Addressable::Template, "engine" do
       expect(data.template).to equal(template)
       expect(data["a"]).to eq("x")
       expect(data.to_s).to eq("x/y")
+      expect(data.variables).to eq(["a", "b"])
+      expect(data.values).to eq(["x", "y"])
+      expect(data.to_a).to eq(["x/y", "x", "y"])
+    end
+
+    it "lists its variables, and returns a copy each time" do
+      expect(template.variables).to eq(["a", "b"])
+      template.variables << "c"
+      expect(template.variables).to eq(["a", "b"])
+      expect(template.variable_defaults).to eq({})
+    end
+
+    it "lists its variables once frozen" do
+      expect(template.freeze.variables).to eq(["a", "b"])
     end
 
     it "extracts with its own match" do
@@ -240,10 +254,6 @@ describe Addressable::Template, "engine" do
     # The method called, its arguments, and the operation the error names.
     [
       [:partial_expand, [{"a" => "x"}], "partial_expand"],
-      [:variables, [], "variables"],
-      [:keys, [], "variables"],
-      [:names, [], "variables"],
-      [:variable_defaults, [], "variable_defaults"],
       [:named_captures, [], "named_captures"]
     ].each do |method, args, operation|
       it "doesn't have ##{method} yet" do

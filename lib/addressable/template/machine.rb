@@ -52,8 +52,8 @@ class Addressable::Template
 
     # A token that isn't valid: the error Template raises for it, which
     # ParsedTemplate raises from the first operation that needs a valid
-    # pattern.
-    Invalid = Struct.new(:error_class, :message)
+    # pattern, and the names Template#variables still finds in it.
+    Invalid = Struct.new(:error_class, :message, :names)
     LEADERS = {
       '?' => '?',
       '/' => '/',

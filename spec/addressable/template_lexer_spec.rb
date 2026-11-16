@@ -72,7 +72,10 @@ describe Addressable::Template::Lexer do
     "é{!a}", "éé}", "{é}", "{a,é}", "{a}{!b}{c}", "{!a}{b", "{a}{b c}{!d}",
     # Valid expressions between non-ASCII text, so the error's position
     # depends on counting each one's length in characters.
-    "é{a}é{%C3%A9:3}é{+b*,c}é{!d}", "{a:١}", "{a:٣}"
+    "é{a}é{%C3%A9:3}é{+b*,c}é{!d}", "{a:١}", "{a:٣}",
+    # A valid expression at the end of an invalid token, which Template
+    # still lists in #variables, unless its operator is reserved.
+    "{a{b}", "{!{a}", "{{!a}", "{?a){=b}", "{a,{b,c}{d}", "{%{a*}x{"
   ].each do |pattern|
     it "raises Template's error for #{pattern.inspect}" do
       regexp = Addressable::Template.new(pattern, engine: :regexp)
@@ -88,6 +91,28 @@ describe Addressable::Template::Lexer do
         |operation|
         expect(&operation).to raise_error(expected.class, expected.message)
       end
+    end
+
+    it "lists Template's variables for #{pattern.inspect}" do
+      regexp = Addressable::Template.new(pattern, engine: :regexp)
+      template = Addressable::Template.new(pattern, engine: :machine)
+      expect(template.variables).to eq(regexp.variables)
+      expect(template.variable_defaults).to eq(regexp.variable_defaults)
+    end
+  end
+
+  [
+    "", "a/b", "{a}", "{a}{b}{a}", "{a,b,a}", "{+a}{#b}{.c}{/d}{;e}{?f}{&g}",
+    "{a*,b:3}", "{42}", "{%41b}", "{a.b}", "{%C3%A9}", "x{a}y{b}{a}z",
+    "a\xFF{a}".b
+  ].each do |pattern|
+    it "lists Template's variables for the valid #{pattern.inspect}" do
+      regexp = Addressable::Template.new(pattern, engine: :regexp)
+      template = Addressable::Template.new(pattern, engine: :machine)
+      expect(template.variables).to eq(regexp.variables)
+      expect(template.keys).to eq(regexp.variables)
+      expect(template.names).to eq(regexp.variables)
+      expect(template.variable_defaults).to eq({})
     end
   end
 
@@ -168,7 +193,11 @@ describe Addressable::Template::Lexer do
       ("é{a}" * 30_000) + "}",
       ("é" * 100_000) + "{é}",
       "{" + ("a" * 100_000) + ":1}",
-      ("{a*}" * 30_000)
+      ("{a*}" * 30_000),
+      # Each "{" in an invalid token is tried as the start of an expression.
+      ("{a" * 50_000) + "}",
+      ("{!" * 50_000) + "a}",
+      "{" + ("a,{" * 30_000) + "a}"
     ].each do |pattern|
       expect do
         Timeout.timeout(10) { described_class.new.parse_nodes(pattern) }
