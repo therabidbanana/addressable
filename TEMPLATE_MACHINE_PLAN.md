@@ -78,42 +78,41 @@ Largest groups of machine failures:
 
 ### Performance today
 
-From `rake profile:template_machine` (Ruby 3.3.1, pattern
-`https://google.com{/path}{?foo,bar:12}#cat`). Time is for 20,000 expands;
-memory is for 10,000 expands of a new template:
+`rake profile:template_machine` (`tasks/template_machine_profile.rb`)
+compares the two implementations. For four templates (simple; path,
+query and prefix; exploded; reserved and fragment), it runs `expand`,
+`partial_expand`, `match`, and `extract` on new and reused templates and
+reports µs and objects per call. It also checks each pair of outputs:
+`same`, `differs` (the machine's numbers don't count), or `missing` (the
+machine raises, so it isn't timed). Then it times `match` on adversarial
+payloads at two sizes and reports how the time grows. `ITERATIONS=n`
+sets the calls per timing (default 20,000, about a minute). MemoryProfiler
+reports go to `tmp/template_machine/`.
 
-| | `Template` | `UriTemplate` |
-|---|---:|---:|
-| expand, new template | 0.55 s | 2.15 s |
-| expand, reused template | 0.55 s | 1.92 s |
-| allocated, new template | 154 MB (1.99 M objects, ~15 KB/call) | 498 MB (3.49 M objects, ~50 KB/call) |
-| retained | 750 kB (parse cache) | 0 |
+Results on Ruby 3.3.1 at the end of phase 0, reused templates:
 
-Measured separately, 10,000 reused-template calls: `Template#match` and
-`#extract` allocate 329 objects (~19.7 KB) per call. `UriTemplate#match`
-allocates 125 objects (~11 KB) but returns wrong results, and there's no
-`UriTemplate#extract` yet.
+| Operation | Output | Machine time vs `Template` | Machine objects vs `Template` |
+|---|---|---:|---:|
+| expand | same in all 4 cases | 0.47–0.52× | 44–99 vs 92–231 |
+| partial_expand | missing | – | – |
+| match | same in 2 cases, differs in 2 | 0.20–0.27× (where same) | 46–115 vs 196–355 |
+| extract | missing | – | – |
+| adversarial match | the machine matches payloads it should reject | – | – |
 
-The 2020 "10× faster expand" no longer holds. `Template` has been
-optimized since then, and the machine calls the deprecated
-`Addressable::IDNA.unicode_normalize_kc` once per value. Each call goes
-through RubyGems' deprecation helper and prints a warning, which
-accounts for about 19 KB of the machine's ~29 KB per reused expand.
-After copying `Template`'s normalization (NFC, values transcoded to UTF-8,
-invalid UTF-8 left as it is) into the machine, its reused-template expand
-went from 1.92 s to 0.26 s, and its allocations for new templates from
-498 MB to 84 MB. That removed the cost of the deprecated call; it doesn't
-measure the state machine design.
+`Template`'s adversarial match time grows about 3–4× for 4× the input
+(linear), helped by Ruby 3.3's regex memoization.
 
-The machine's numbers are now below `Template`'s (0.52 s, 154 MB), but
-that comparison isn't meaningful yet: the machine's `expand` skips work
-`Template`'s does on every call (`MappingLookup`, processors, value
-validation, keeping pct-encoded triplets). Compare the two only after
-phase 2, on inputs where both give identical output, across a wider set
-of patterns, and alongside `match` and `extract`. The machine's `match` returns
-`{"path"=>"a", "foo"=>{"foo"=>"longstring", "bar"=>"longeststrin"}}`
-where `Template` gives
-`{"path"=>"a", "foo"=>"longstring", "bar"=>"longeststrin"}`.
+These ratios only cover what the machine already does. Its `expand` still
+skips work `Template`'s does on every call (`MappingLookup`, processors,
+value validation, keeping pct-encoded triplets), so the comparison means
+something only once phase 2 makes the outputs agree across the specs.
+Check goal 3 then, and on every runtime.
+
+History: in 2020 the machine's `expand` was about 10× faster than
+`Template`'s. At the start of this plan it was about 4× slower and used
+3× the memory, almost all of it from calling the deprecated
+`Addressable::IDNA.unicode_normalize_kc` once per value. Copying
+`Template`'s NFC normalization into the machine removed that.
 
 ## Spec inventory
 
@@ -159,15 +158,21 @@ Each phase ends with both modes run and the failure count recorded here.
 
 ### 0. Baseline
 
-- Commit the uncommitted changes above.
-- Fix the 5 broken `template_machine_spec.rb` examples.
-- Extend `tasks/profile.rake` so the same harness compares both
+- Done: commit the uncommitted changes above.
+- Done: fix the 5 broken `template_machine_spec.rb` examples (one is
+  pending until phase 3).
+- Done: extend `tasks/profile.rake` so the same harness compares both
   implementations on `expand`, `partial_expand`, `match`, and `extract`
   (new and reused templates, time and allocations), and drop the
   machine-only `template_machine_match` task. Write reports to `tmp/`, not
   `profiling/`. Include an adversarial `match` case to track backtracking.
 - Run `TEMPLATE_MODE=machine` in CI as a non-blocking job, so the count is
   tracked on every runtime.
+- Last: add a "Starting phase 1" section to this plan with enough for a
+  fresh agent to pick up phase 1 with no other context: the commands to
+  run, the current failure counts and their causes, the files involved,
+  the conventions to follow (CLAUDE.md, the review-each-piece workflow),
+  and phase 1's first concrete step.
 
 ### 1. Parsing
 
@@ -204,6 +209,10 @@ Each phase ends with both modes run and the failure count recorded here.
 - Exploded lists and hashes, named operators (`;`, `?`, `&`), prefixes,
   processors' `match` and `restore`.
 - `MatchData` and `extract`.
+- Match only when the whole URI is consumed. `UriTemplate#match` ignores
+  whatever follows the last node, so it matches every adversarial payload
+  in the profile (e.g. `{/foo*}` matches `/a/a/…/a/!`), where `Template`
+  returns `nil`.
 - Target: `template_match_spec.rb` "with adversarial input" passes on every
   runtime, and match and extract are at least as fast as `Template`.
 
