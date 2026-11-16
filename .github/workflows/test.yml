@@ -202,3 +202,63 @@ jobs:
       - name: >-
           Run specs outcome: ${{ steps.specs.outcome }}
         run: echo NOOP
+
+  # Runs the Addressable::Template specs against the template machine
+  # (Addressable::UriTemplate) to track its progress; see
+  # TEMPLATE_MACHINE_PLAN.md. Most of them fail until the machine is
+  # finished, so this job never fails the workflow.
+  template-machine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # the oldest Ruby, the last one without regex memoization, the
+        # latest one, and the other runtimes
+        ruby: [2.3, 3.1, ruby, jruby-10.0, truffleruby]
+    env:
+      BUNDLE_WITHOUT: development:coverage
+      TEMPLATE_MODE: machine
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install libidn
+        run: sudo apt-get install libidn11-dev
+
+      - name: Setup ruby
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          bundler-cache: false
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Install gems
+        run: bundle install
+
+      - name: Run the Template specs against the template machine
+        run: >-
+          bundle exec rspec
+          spec/addressable/template_spec.rb
+          spec/addressable/template_match_spec.rb
+          spec/addressable/template_match_forms_spec.rb
+          spec/addressable/template_conformance_spec.rb
+          --format progress --format json --out tmp/template_machine.json
+
+      - name: Summarize
+        if: always()
+        run: |
+          ruby -rjson -e '
+            puts "### Template machine on #{RUBY_DESCRIPTION}"
+            puts
+            path = "tmp/template_machine.json"
+            if File.exist?(path)
+              s = JSON.parse(File.read(path))["summary"]
+              puts "#{s["example_count"]} examples, #{s["failure_count"]} failures, " \
+                "#{s["pending_count"]} pending, " \
+                "#{s["errors_outside_of_examples_count"]} errors outside examples"
+            else
+              puts "The specs did not run; see the log."
+            end
+          ' >> "$GITHUB_STEP_SUMMARY"

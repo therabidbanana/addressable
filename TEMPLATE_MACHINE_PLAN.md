@@ -166,8 +166,9 @@ Each phase ends with both modes run and the failure count recorded here.
   (new and reused templates, time and allocations), and drop the
   machine-only `template_machine_match` task. Write reports to `tmp/`, not
   `profiling/`. Include an adversarial `match` case to track backtracking.
-- Run `TEMPLATE_MODE=machine` in CI as a non-blocking job, so the count is
-  tracked on every runtime.
+- Done: run `TEMPLATE_MODE=machine` in CI as a non-blocking job, so the
+  count is tracked on every runtime (`template-machine` in
+  `.github/workflows/test.yml`; the count is in each job's summary).
 - Last: add a "Starting phase 1" section to this plan with enough for a
   fresh agent to pick up phase 1 with no other context: the commands to
   run, the current failure counts and their causes, the files involved,
