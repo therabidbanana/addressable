@@ -265,6 +265,23 @@ increase the machine-mode failures.
      builds every node before reaching a late error, so on long invalid
      patterns it's up to 9× slower than `Template`'s check, though linear.
      On normal patterns, "expand, new" is 0.44–0.74× `Template`'s time.
+   - **Done: text that isn't valid UTF-8, for parsing.** No lexer change
+     was needed. Both engines already behave the same:
+     - A pattern in an ASCII-compatible encoding (binary, ISO-8859-1,
+       Shift_JIS, US-ASCII) lexes, with its literal bytes kept as they are.
+     - A UTF-8 pattern that isn't valid raises `ArgumentError` ("invalid
+       byte sequence") from `freeze` and every operation.
+     - A UTF-16 pattern raises `Encoding::CompatibilityError` the same way.
+     - A Shift_JIS pattern that isn't valid gives the same tokens and
+       positions as `Template`.
+
+     `template_lexer_spec.rb` now pins all of this against the `:regexp`
+     engine. The `ArgumentError` is `Template`'s own behaviour, so changing
+     it would be a `Template` change and isn't part of this branch.
+
+     What does differ is how literals are used. The machine copies literal
+     text into an expansion as it is, and matches it only as written.
+     Phases 2 and 3 now list both.
 
 ## Where the branch stands
 
@@ -478,7 +495,10 @@ Then parsing:
   with `Template`'s messages. Like `Template`, `new` never raises for an
   invalid pattern; the error comes from the first operation that needs a
   valid one.
-- Handle text that isn't valid UTF-8 the way `Template` does.
+- Done (piece 6): handle text that isn't valid UTF-8 the way `Template`
+  does, for parsing. Values were already shared through
+  `Template::Values`. Literals in expansion are phase 2, and URIs in
+  matching are phase 3.
 - `variables`, `keys`, `names`, `variable_defaults`.
 - Parsing must stay linear: templates can come from untrusted input, such
   as the URI templates in hypermedia API responses that Octokit and Sawyer
@@ -508,6 +528,14 @@ Then parsing:
   (`{x:3}` with `["a", "b"]`; the machine truncates instead of raising).
 - Keep pct-encoded triplets in `+` and `#` expansions: `{+x}` with `%41`
   gives `%41`, but the machine gives `%2541`.
+- Encode non-ASCII literals as `Template` does (RFC 6570 section 3.1; see
+  `map_literals` and `LITERAL_ENCODE`), and run its
+  `encode_later_number_signs` step. Today the machine copies literal text
+  as it is: `é/{a}` expands to `é/v`, not `%C3%A9/v`. In a pattern that
+  isn't UTF-8, `Template` pct-encodes the literal's bytes as they are:
+  ISO-8859-1 `a b\xE9/{a}` gives `a b%E9/v`, where the machine gives the
+  raw byte. Literals don't change between calls, so the lexer or
+  `ParsedTemplate` can encode each one once.
 - `partial_expand`, including fragments and undefined variables.
 - Target: all expansion specs and the conformance suite pass. Expand is at
   least as fast as `Template`.
@@ -521,8 +549,13 @@ Then parsing:
   (node, position) so the work stays polynomial.
 - Exploded lists and hashes, named operators (`;`, `?`, `&`), prefixes,
   processors' `match` and `restore`.
-- `extract`, and `match` returning `Addressable::Template::MatchData`, the
-  same class `Template` returns, instead of the machine's own copy.
+- Done in phase 1: `extract`, and `match` returning
+  `Addressable::Template::MatchData` (piece 3).
+- Match a non-ASCII literal written either as it is or pct-encoded, as
+  `Template` does (see `literal_regexp`). Today `é/{a}` matches `é/v`,
+  and matching `%C3%A9/v` raises `NoMethodError`. Don't match a URI that
+  isn't valid UTF-8 (`valid_utf8?`; the specs are under "with text that
+  isn't valid UTF-8" in `template_spec.rb`).
 - Match only when the whole URI is consumed. `ParsedTemplate#match` ignores
   whatever follows the last node, so it matches every adversarial payload
   in the profile (e.g. `{/foo*}` matches `/a/a/…/a/!`), where `Template`

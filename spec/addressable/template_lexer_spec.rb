@@ -91,6 +91,53 @@ describe Addressable::Template::Lexer do
     end
   end
 
+  # A pattern in an ASCII-compatible encoding lexes in that encoding, with
+  # its literal bytes as they are.
+  {
+    "binary" => "a\xFF{a}".b,
+    "binary that is valid UTF-8" => "caf\xC3\xA9{a}".b,
+    "ISO-8859-1" => "a b\xE9{a}".dup.force_encoding("ISO-8859-1"),
+    "Shift_JIS" => "日{a}".encode("Shift_JIS"),
+    "US-ASCII" => "x/{a}".dup.force_encoding("US-ASCII")
+  }.each do |label, pattern|
+    it "lexes a #{label} pattern" do
+      literal = pattern[0, pattern.index("{")]
+      lexed = nodes(pattern)
+      expect(lexed).to eq([literal, [machine::OpPlain, [["a", false, nil]]]])
+      expect(lexed.first.encoding).to eq(pattern.encoding)
+    end
+  end
+
+  # Template raises these from freeze and every operation; so does the
+  # :machine engine.
+  {
+    "UTF-8 that isn't valid" => "a\xFF{a}".dup.force_encoding("UTF-8"),
+    "UTF-8 that isn't valid, in an expression" =>
+      "{a\xFF}".dup.force_encoding("UTF-8"),
+    "Shift_JIS that isn't valid" => "\x81{a}".dup.force_encoding("Shift_JIS"),
+    "UTF-16LE" => "x/{a}".encode("UTF-16LE")
+  }.each do |label, pattern|
+    it "raises Template's error for a #{label} pattern" do
+      outcome = lambda do |engine|
+        [
+          lambda { Addressable::Template.new(pattern, engine: engine).freeze },
+          lambda { Addressable::Template.new(pattern, engine: engine).expand({}) },
+          lambda { Addressable::Template.new(pattern, engine: engine).match("") }
+        ].map do |operation|
+          begin
+            operation.call
+            :no_error
+          rescue StandardError => e
+            [e.class, e.message]
+          end
+        end
+      end
+      expected = outcome.call(:regexp)
+      expect(expected.last).not_to eq(:no_error)
+      expect(outcome.call(:machine)).to eq(expected)
+    end
+  end
+
   it "lexes long patterns with non-ASCII literals in linear time" do
     # Compared with ASCII literals on the same runner, so that a slow or
     # busy runner doesn't fail the spec. Counting each position in
