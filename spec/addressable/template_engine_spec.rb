@@ -189,6 +189,14 @@ describe Addressable::Template, "engine" do
       expect(template.match("x/y").mapping).to eq("a" => "x", "b" => "y")
     end
 
+    it "matches with Template's MatchData" do
+      data = template.match("x/y")
+      expect(data).to be_an_instance_of(Addressable::Template::MatchData)
+      expect(data.template).to equal(template)
+      expect(data["a"]).to eq("x")
+      expect(data.to_s).to eq("x/y")
+    end
+
     it "extracts with its own match" do
       expect(template.extract("x/y")).to eq("a" => "x", "b" => "y")
     end

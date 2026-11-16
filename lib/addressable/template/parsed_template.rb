@@ -36,28 +36,9 @@ module Addressable
     #
     # @api private
     class ParsedTemplate
+      # Raised inside #match when the URI stops fitting the nodes; #match
+      # rescues it and returns nil.
       class NoMatch < StandardError
-      end
-
-      ##
-      # Raised if an invalid template value is supplied.
-      class InvalidTemplateValueError < StandardError
-      end
-
-      ##
-      # Raised if a template that doesn't match the RFC 6570 grammar is
-      # expanded.
-      class InvalidTemplateError < StandardError
-      end
-
-      ##
-      # Raised if an invalid template operator is used in a pattern.
-      class InvalidTemplateOperatorError < InvalidTemplateError
-      end
-
-      ##
-      # Raised if an invalid template operator is used in a pattern.
-      class TemplateOperatorAbortedError < StandardError
       end
 
       # Parses the template's pattern. Like Template.new, this never raises
@@ -127,49 +108,6 @@ module Addressable
 
       def named_captures
         unsupported("named_captures")
-      end
-
-      class MatchData
-        ##
-        # Creates a new MatchData object.
-        # MatchData objects should never be instantiated directly.
-        #
-        # @param [Addressable::URI] uri
-        #   The URI that the template was matched against.
-        def initialize(uri, template, mapping)
-          @uri = uri.dup.freeze
-          @template = template
-          @mapping = mapping.dup.freeze
-        end
-
-        ##
-        # @return [Addressable::URI]
-        #   The URI that the Template was matched against.
-        attr_reader :uri
-
-        ##
-        # @return [Addressable::Template]
-        #   The Template used for the match.
-        attr_reader :template
-
-        ##
-        # @return [Hash]
-        #   The mapping that resulted from the match.
-        #   Note that this mapping does not include keys or values for
-        #   variables that appear in the Template, but are not present
-        #   in the URI.
-        attr_reader :mapping
-
-        ##
-        # @return [Array]
-        #   The list of variables that were present in the Template.
-        #   Note that this list will include variables which do not appear
-        #   in the mapping because they were not present in URI.
-        def variables
-          self.template.variables
-        end
-        alias_method :keys, :variables
-        alias_method :names, :variables
       end
 
       private

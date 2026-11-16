@@ -223,6 +223,13 @@ increase the machine-mode failures.
 3. **Shared pieces.** The machine uses `Template`'s error classes,
    `MatchData`, `MappingLookup`, `normalize_value`, and `utf8_value`.
    Remove its copies.
+   - **Done: error classes and `MatchData`.** `ParsedTemplate`'s copies
+     are gone, and constant lookup finds `Template`'s. It keeps `NoMatch`,
+     which `#match` raises and rescues internally. A machine match is now
+     a full `Template::MatchData` (machine mode: 1,027 failures, from
+     1,037), though `values`, `to_a` and `captures` need `variables`
+     (piece 6).
+   - **Next: `normalize_value`, `utf8_value`, and `MappingLookup`.**
 4. **Done with piece 2:** specs on the switch.
 5. **Done with piece 2:** profile on the switch.
 6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,
