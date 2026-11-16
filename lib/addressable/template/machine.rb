@@ -1,7 +1,14 @@
 require "addressable/uri"
 
-module Addressable
-  module TemplateMachine
+# Written as Addressable::Template, not nested, so the body keeps its
+# indentation from before the move.
+class Addressable::Template
+  # The :machine engine's nodes: a Variable for each varspec, and an
+  # Expression subclass for each operator. Lexer builds them and
+  # ParsedTemplate walks them.
+  #
+  # @api private
+  module Machine
     # Constants used throughout the template code.
     anything =
       Addressable::URI::CharacterClasses::RESERVED +

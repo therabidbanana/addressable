@@ -1,17 +1,23 @@
 require "strscan"
-require "addressable/template_machine"
+require "addressable/template/machine"
 
-module Addressable
-  class TemplateLexer
+# Written as Addressable::Template, not nested, so the body keeps its
+# indentation from before the move.
+class Addressable::Template
+  # Turns a pattern into ParsedTemplate's nodes: literal strings, and a
+  # Machine expression for each {...}.
+  #
+  # @api private
+  class Lexer
     OPERATORS = {
-      "/" => Addressable::TemplateMachine::OpPath,
-      "?" => Addressable::TemplateMachine::OpForm,
-      "&" => Addressable::TemplateMachine::OpFormContinuation,
-      "#" => Addressable::TemplateMachine::OpFragment,
-      "." => Addressable::TemplateMachine::OpLabel,
-      ";" => Addressable::TemplateMachine::OpPathParams,
-      "+" => Addressable::TemplateMachine::OpReserved,
-      " " => Addressable::TemplateMachine::OpPlain,
+      "/" => Machine::OpPath,
+      "?" => Machine::OpForm,
+      "&" => Machine::OpFormContinuation,
+      "#" => Machine::OpFragment,
+      "." => Machine::OpLabel,
+      ";" => Machine::OpPathParams,
+      "+" => Machine::OpReserved,
+      " " => Machine::OpPlain,
     }.freeze
 
     def initialize
@@ -44,7 +50,8 @@ module Addressable
           end
           lex_state = :varspec
         elsif lex_state == :varspec
-          scanned = scanner.scan(Addressable::TemplateMachine::VARSPEC)
+          # Machine's VARSPEC, not Template's.
+          scanned = scanner.scan(Machine::VARSPEC)
           if scanned.nil?
             case scanner.getch
             when ","
@@ -59,15 +66,15 @@ module Addressable
             end
           else
             if scanner[3] && scanner[3] != ""
-              curr_node << Addressable::TemplateMachine::Variable.new(
+              curr_node << Machine::Variable.new(
                 op: op_class, name: scanner[1], prefix: scanner[3].to_i
               )
             elsif scanner[2] == "*"
-              curr_node << Addressable::TemplateMachine::Variable.new(
+              curr_node << Machine::Variable.new(
                 op: op_class, name: scanner[1], explode: true
               )
             elsif scanner[1]
-              curr_node << Addressable::TemplateMachine::Variable.new(
+              curr_node << Machine::Variable.new(
                 op: op_class, name: scanner[1]
               )
             end

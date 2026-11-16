@@ -17,14 +17,14 @@
 require "spec_helper"
 
 require "bigdecimal"
-require "addressable/template_machine"
+require "addressable/template"
 
-context "valid TemplateMachine::Variable(explode: false)" do
+context "valid Template::Machine::Variable(explode: false)" do
   let(:name) { "foo" }
 
-  let(:op) { Addressable::TemplateMachine::OpPlain }
+  let(:op) { Addressable::Template::Machine::OpPlain }
   subject {
-    Addressable::TemplateMachine::Variable.new(op: op, name: name)
+    Addressable::Template::Machine::Variable.new(op: op, name: name)
   }
 
   context '#expand_with(value)' do
@@ -47,11 +47,11 @@ context "valid TemplateMachine::Variable(explode: false)" do
 
 end
 
-context "valid TemplateMachine::Variable(explode: true)" do
-  let(:op) { Addressable::TemplateMachine::OpPlain }
+context "valid Template::Machine::Variable(explode: true)" do
+  let(:op) { Addressable::Template::Machine::OpPlain }
   let(:name) { "foo" }
   subject {
-    Addressable::TemplateMachine::Variable.new(op: op, name: name, explode: true)
+    Addressable::Template::Machine::Variable.new(op: op, name: name, explode: true)
   }
 
   it "normalizes simple types" do
@@ -71,15 +71,15 @@ context "valid TemplateMachine::Variable(explode: true)" do
   end
 end
 
-context "Addressable::TemplateMachine::OpPath" do
+context "Addressable::Template::Machine::OpPath" do
   let(:name) { "foo" }
   let(:var) {
-    Addressable::TemplateMachine::Variable.new(
-      op: Addressable::TemplateMachine::OpPath, name: name, explode: true
+    Addressable::Template::Machine::Variable.new(
+      op: Addressable::Template::Machine::OpPath, name: name, explode: true
     )
   }
 
-  subject { Addressable::TemplateMachine::OpPath.new([var]) }
+  subject { Addressable::Template::Machine::OpPath.new([var]) }
 
   context '#extract_values(scanner, matches)' do
     it "normalizes simple types" do

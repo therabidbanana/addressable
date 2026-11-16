@@ -94,8 +94,8 @@ increase the machine-mode failures.
   `@cached_template_parse`). `partial_expand` returns
   `Addressable::Template.new(result)`, so the new template has to get
   the original's engine.
-- `lib/addressable/template/parsed_template.rb`, `template_machine.rb`,
-  and `template_lexer.rb`: the machine (see "Where the branch stands").
+- `lib/addressable/template/parsed_template.rb`, `machine.rb`, and
+  `lexer.rb`: the machine (see "Where the branch stands").
 - `spec/spec_helper.rb`: `TestHelper.template_engine` and the
   `TEMPLATE_MODE` block that sets `Template.engine`.
 - `spec/addressable/template_engine_spec.rb`: the engine switch.
@@ -170,7 +170,8 @@ increase the machine-mode failures.
      `send` (three hops and three places to edit per operation, for no
      behaviour), and a `ParsedTemplate` that wrapped `UriTemplate`.
    - **`ParsedTemplate`** (`lib/addressable/template/parsed_template.rb`,
-     moved from `uri_template.rb` with `git mv`) is a private constant.
+     moved from `uri_template.rb` with `git mv`) is marked `@api private`
+     (it began as a `private_constant`; see nesting, below).
      `ParsedTemplate.new(template)` is made the first time a machine
      template needs it and lexes the pattern then. A parse error is kept
      and raised by the first operation, so `new` and `freeze` never raise
@@ -196,11 +197,16 @@ increase the machine-mode failures.
      `template_engine_spec.rb` starts each example from `:regexp`.
    - **Profile.** `profile:template_machine` compares `engine: :regexp`
      with `engine: :machine`. The adversarial parse case moves to piece 6.
-   - **Open:** `Addressable::TemplateMachine` (the nodes) and
-     `Addressable::TemplateLexer` are still public constants. Neither has
-     been released, so nesting them under `Template` as private constants
-     (and their files under `lib/addressable/template/`) costs nothing
-     before release N and would be breaking after it.
+   - **Done, as its own commit after piece 2: nesting.**
+     `Addressable::TemplateMachine` is now `Template::Machine` (the
+     nodes), and `Addressable::TemplateLexer` is `Template::Lexer`, in
+     `lib/addressable/template/machine.rb` and `lexer.rb`. Neither had been
+     released. Decided: they're public constants marked `@api private`,
+     so YARD documents them as internal; not `private_constant`. The same
+     commit does this for `ParsedTemplate`. Both
+     files open `class Addressable::Template` rather than nesting, so the
+     bodies kept their indentation through the move. Inside `Template`, a
+     bare `VARSPEC` is `Template`'s, so the lexer says `Machine::VARSPEC`.
    - **Decided: dumps hold the pattern and engine, not caches.** Today a
      `Marshal` or YAML dump includes every cache (`@variables`,
      `@cached_template_parse`, and now `@parsed_template` with its nodes),
@@ -227,9 +233,11 @@ increase the machine-mode failures.
 
 The machine's code, from 2020 (rebased cleanly):
 
-- `lib/addressable/template_lexer.rb`: a `StringScanner` lexer that turns a
-  pattern into literal strings and `Expression` nodes
-- `lib/addressable/template_machine.rb`: `Variable`, one `Expression`
+- `lib/addressable/template/lexer.rb` (was `template_lexer.rb`):
+  `Template::Lexer`, a `StringScanner` lexer that turns a pattern into
+  literal strings and `Expression` nodes
+- `lib/addressable/template/machine.rb` (was `template_machine.rb`):
+  `Template::Machine`, with `Variable`, one `Expression`
   subclass per operator (`OpPlain`, `OpReserved`, `OpFragment`, `OpPath`,
   `OpLabel`, `OpPathParams`, `OpForm`, `OpFormContinuation`), and tagged
   values that join expansions
@@ -407,7 +415,7 @@ the default engine at every step.
   working with `:regexp`. Each operation starts with a guard that hands
   off to the `:machine` engine.
 - Done: the `:machine` engine is `UriTemplate`'s code, moved behind
-  `Template` as the private `Template::ParsedTemplate`. The public
+  `Template` as `Template::ParsedTemplate` (`@api private`). The public
   `UriTemplate` class is gone.
 - Everything that isn't an operation lives once, in `Template`, and the
   machine uses it instead of copies: the error classes (they keep their

@@ -18,14 +18,14 @@
 #++
 
 require "addressable/uri"
-require "addressable/template_lexer"
+require "addressable/template/lexer"
 require "strscan"
 
 module Addressable
   class Template
     # The :machine engine. A Template whose engine is :machine hands its
     # operations to its own ParsedTemplate, which parses the pattern once
-    # into literal strings and expression nodes (see TemplateLexer), then
+    # into literal strings and expression nodes (see Lexer and Machine), then
     # expands and matches by walking those nodes instead of building a
     # regular expression.
     #
@@ -33,6 +33,8 @@ module Addressable
     # raises NotImplementedError rather than falling back to Template's
     # regexp code, so the specs run with TEMPLATE_MODE=machine list exactly
     # what's left to build.
+    #
+    # @api private
     class ParsedTemplate
       class NoMatch < StandardError
       end
@@ -66,7 +68,7 @@ module Addressable
         @nodes = nil
         @parse_error = nil
         begin
-          @nodes = Addressable::TemplateLexer.new.parse_nodes(template.pattern)
+          @nodes = Lexer.new.parse_nodes(template.pattern)
         rescue StandardError => e
           # The lexer raises RuntimeError for now; phase 1's parsing piece
           # makes it raise InvalidTemplateError, and narrows this rescue.
@@ -211,6 +213,5 @@ module Addressable
           "the :machine template engine doesn't support #{operation} yet"
       end
     end
-    private_constant :ParsedTemplate
   end
 end
