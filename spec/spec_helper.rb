@@ -35,12 +35,10 @@ class TestHelper
     is_mri? && !is_windows?
   end
 
-  # The regexp-based Addressable::Template, even when TEMPLATE_MODE=machine
-  # puts another class in its place. Specs that check its grammar constants
-  # or regexp features use this.
-  def self.regexp_template
-    require "addressable/template"
-    @regexp_template ||= Addressable::Template
+  # The default Addressable::Template engine: :machine with
+  # TEMPLATE_MODE=machine, otherwise :regexp.
+  def self.template_engine
+    ENV["TEMPLATE_MODE"] == "machine" ? :machine : :regexp
   end
 end
 
@@ -84,14 +82,11 @@ if defined?(Warning) && Warning.respond_to?(:warn)
   Warning.extend(StrictWarnings)
 end
 
-# TEMPLATE_MODE=machine runs every Addressable::Template spec against
-# Addressable::UriTemplate, the state machine implementation, by putting it
-# in Template's place before the specs load.
-if ENV["TEMPLATE_MODE"] == "machine"
-  TestHelper.regexp_template
-  require "addressable/uri_template"
-  Addressable.send(:remove_const, :Template)
-  Addressable.const_set(:Template, Addressable::UriTemplate)
+# TEMPLATE_MODE=machine runs the specs with the :machine engine as
+# Addressable::Template's default, like IDNA_MODE=pure for IDNA.
+if TestHelper.template_engine == :machine
+  require "addressable/template"
+  Addressable::Template.engine = :machine
 end
 
 RSpec.configure do |config|

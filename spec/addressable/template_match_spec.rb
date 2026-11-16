@@ -101,7 +101,7 @@ module TemplateMatchSpec
     %w[
       EXPRESSION VARSPEC LEADERS JOINERS RESERVED RESERVED_NO_COMMA UNRESERVED
     ].each do |name|
-      const_set(name, TestHelper.regexp_template.const_get(name))
+      const_set(name, Addressable::Template.const_get(name))
     end
 
     module_eval(REFERENCE_PARSE_NEW_TEMPLATE_PATTERN)
@@ -115,6 +115,13 @@ module TemplateMatchSpec
   def self.regexp(pattern)
     Addressable::Template.new(pattern).send(:parse_template_pattern, pattern)[1]
   end
+
+  # The examples that compare Template's regexp builder with Reference only
+  # test the :regexp engine, so with TEMPLATE_MODE=machine they're skipped
+  # rather than counted as the machine's passes. Phase 4 of
+  # TEMPLATE_MACHINE_PLAN.md makes them compare #match with Reference.
+  REGEXP_BUILDER_ONLY =
+    "tests the :regexp engine's regexp builder, not the :machine engine"
 
   # The expression without the \A and \z anchors around the whole template.
   def self.unanchored(regexp)
@@ -299,6 +306,9 @@ describe Addressable::Template, "#match" do
       # up to the end, so it's compared where it doesn't end the template.
       pattern += "a" if operator == "." && modifier == ""
       it "tries the reference's end positions in its order for #{pattern}" do
+        if TestHelper.template_engine == :machine
+          skip TemplateMatchSpec::REGEXP_BUILDER_ONLY
+        end
         reference = TemplateMatchSpec.unanchored(
           TemplateMatchSpec.reference_regexp(pattern)
         )
@@ -330,6 +340,9 @@ describe Addressable::Template, "#match" do
         "{#{operator}a,b}{c,d}"
       ].each do |pattern|
         it "captures the same values as the reference for #{pattern}" do
+          if TestHelper.template_engine == :machine
+            skip TemplateMatchSpec::REGEXP_BUILDER_ONLY
+          end
           reference = TemplateMatchSpec.reference_regexp(pattern)
           current = TemplateMatchSpec.regexp(pattern)
           alphabet = TemplateMatchSpec.alphabet(operator, "x")

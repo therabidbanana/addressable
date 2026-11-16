@@ -203,8 +203,8 @@ jobs:
           Run specs outcome: ${{ steps.specs.outcome }}
         run: echo NOOP
 
-  # Runs the Addressable::Template specs against the template machine
-  # (Addressable::UriTemplate) to track its progress; see
+  # Runs the Addressable::Template specs with the :machine engine as the
+  # default (TEMPLATE_MODE=machine) to track its progress; see
   # TEMPLATE_MACHINE_PLAN.md. Most of them fail until the machine is
   # finished, so this job never fails the workflow.
   template-machine:

@@ -33,7 +33,7 @@ namespace :profile do
     end
   end
 
-  desc "Compare Template and the template machine (UriTemplate): " \
+  desc "Compare Template's :regexp and :machine engines: " \
     "time, allocations and output of expand, partial_expand, match and " \
     "extract, and match time on adversarial input. " \
     "ITERATIONS=n sets the timed calls per row (default 20000)."

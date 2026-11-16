@@ -20,18 +20,21 @@ require "spec_helper"
 require "addressable/template"
 
 describe Addressable::Template, "engine" do
+  # Each example starts from :regexp, whatever TEMPLATE_MODE sets, and the
+  # default is put back afterwards.
   around do |example|
-    default = Addressable::Template.engine
+    @default_engine = Addressable::Template.engine
     begin
+      Addressable::Template.engine = :regexp
       example.run
     ensure
-      Addressable::Template.engine = default
+      Addressable::Template.engine = @default_engine
     end
   end
 
   describe ".engine" do
-    it "defaults to :regexp" do
-      expect(Addressable::Template.engine).to eq(:regexp)
+    it "defaults to :regexp, or :machine with TEMPLATE_MODE=machine" do
+      expect(@default_engine).to eq(TestHelper.template_engine)
     end
 
     it "can be set to :machine" do
@@ -139,14 +142,13 @@ describe Addressable::Template, "engine" do
   end
 
   describe "#partial_expand" do
-    [:regexp, :machine].each do |engine|
-      it "returns a template with the #{engine.inspect} engine" do
-        template = Addressable::Template.new("{a}{b}", engine: engine)
-        Addressable::Template.engine = engine == :regexp ? :machine : :regexp
-        partial = template.partial_expand("a" => "x")
-        expect(partial.pattern).to eq("x{b}")
-        expect(partial.engine).to eq(engine)
-      end
+    # The :machine engine doesn't have partial_expand yet; see below.
+    it "returns a template with the same engine" do
+      template = Addressable::Template.new("{a}{b}", engine: :regexp)
+      Addressable::Template.engine = :machine
+      partial = template.partial_expand("a" => "x")
+      expect(partial.pattern).to eq("x{b}")
+      expect(partial.engine).to eq(:regexp)
     end
   end
 
@@ -171,6 +173,96 @@ describe Addressable::Template, "engine" do
       loaded = Marshal.load(data)
       expect(loaded.engine).to eq(:machine)
       expect(loaded.expand("a" => "b").to_str).to eq("b")
+    end
+  end
+
+  context "with the :machine engine" do
+    let(:template) do
+      Addressable::Template.new("{a}/{b}", engine: :machine)
+    end
+
+    it "expands" do
+      expect(template.expand("a" => "x", "b" => "y").to_str).to eq("x/y")
+    end
+
+    it "matches" do
+      expect(template.match("x/y").mapping).to eq("a" => "x", "b" => "y")
+    end
+
+    it "extracts with its own match" do
+      expect(template.extract("x/y")).to eq("a" => "x", "b" => "y")
+    end
+
+    it "doesn't expand with a processor yet" do
+      expect { template.expand({"a" => "x"}, Object.new) }.to raise_error(
+        NotImplementedError, /\bprocessor/
+      )
+    end
+
+    it "doesn't expand with a block yet" do
+      expect { template.expand { |name| name } }.to raise_error(
+        NotImplementedError, /\bblock/
+      )
+    end
+
+    it "doesn't expand without normalizing values yet" do
+      expect { template.expand({"a" => "x"}, nil, false) }.to raise_error(
+        NotImplementedError, /\bnormalize_values/
+      )
+    end
+
+    it "doesn't match with a processor yet" do
+      expect { template.match("x/y", Object.new) }.to raise_error(
+        NotImplementedError, /\bprocessor/
+      )
+    end
+
+    # The method called, its arguments, and the operation the error names.
+    [
+      [:partial_expand, [{"a" => "x"}], "partial_expand"],
+      [:variables, [], "variables"],
+      [:keys, [], "variables"],
+      [:names, [], "variables"],
+      [:variable_defaults, [], "variable_defaults"],
+      [:named_captures, [], "named_captures"]
+    ].each do |method, args, operation|
+      it "doesn't have ##{method} yet" do
+        expect { template.public_send(method, *args) }.to raise_error(
+          NotImplementedError, /\b#{operation}\b/
+        )
+      end
+    end
+
+    it "builds the same regexp as the :regexp engine" do
+      regexp = Addressable::Template.new("{a}/{b}", engine: :regexp)
+      expect(template.to_regexp).to eq(regexp.to_regexp)
+      expect(template.source).to eq(regexp.source)
+    end
+
+    it "freezes, and still expands and matches" do
+      expect(template.freeze).to be_frozen
+      expect(template.expand("a" => "x", "b" => "y").to_str).to eq("x/y")
+      expect(template.match("x/y").mapping).to eq("a" => "x", "b" => "y")
+    end
+
+    # The lexer raises RuntimeError for "{!a}" until phase 1's parsing piece
+    # makes it raise InvalidTemplateError, as Template does.
+    it "raises a parse error from the first operation, not new or freeze" do
+      invalid = Addressable::Template.new("{!a}", engine: :machine)
+      expect(invalid.freeze).to be_frozen
+      expect { invalid.expand({}) }.to raise_error(
+        RuntimeError, "Incomplete varspec"
+      )
+      expect { invalid.match("") }.to raise_error(
+        RuntimeError, "Incomplete varspec"
+      )
+    end
+
+    it "survives a Marshal round trip after use" do
+      template.expand("a" => "x", "b" => "y")
+      loaded = Marshal.load(Marshal.dump(template))
+      expect(loaded.engine).to eq(:machine)
+      expect(loaded.expand("a" => "1", "b" => "2").to_str).to eq("1/2")
     end
   end
 

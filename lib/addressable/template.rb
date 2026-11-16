@@ -20,6 +20,7 @@
 require "strscan"
 require "addressable/version"
 require "addressable/uri"
+require "addressable/template/parsed_template"
 
 module Addressable
   ##
@@ -387,8 +388,10 @@ module Addressable
       if !pattern.respond_to?(:to_str)
         raise TypeError, "Can't convert #{pattern.class} into String."
       end
-      @engine = Template.send(:check_engine, engine) unless engine.nil?
       @pattern = pattern.to_str.dup.freeze
+      # Set in the same order for every template, so they share one shape.
+      @engine = engine.nil? ? nil : Template.send(:check_engine, engine)
+      @parsed_template = nil
     end
 
     ##
@@ -406,10 +409,15 @@ module Addressable
     #
     # @return [Addressable::URI] The frozen URI object.
     def freeze
-      self.engine
-      self.variables
-      self.variable_defaults
-      parse_template_pattern(pattern)
+      if engine == :machine
+        # It parses the pattern when it's made and keeps nothing else, so
+        # it can be frozen with the template.
+        parsed_template.freeze
+      else
+        self.variables
+        self.variable_defaults
+        parse_template_pattern(pattern)
+      end
       super
     end
 
@@ -639,6 +647,7 @@ module Addressable
     #   match.captures
     #   #=> ["a", ["b", "c"]]
     def match(uri, processor=nil)
+      return parsed_template.match(uri, processor) if engine == :machine
       check_expressions
       # Text that isn't valid UTF-8 isn't a valid URI or IRI, so it doesn't
       # match, as below.
@@ -850,6 +859,10 @@ module Addressable
     #   #=> "http://example.com/1/{two}/"
     def partial_expand(mapping=NO_MAPPING, processor=nil, normalize_values=true,
                        &block)
+      if engine == :machine
+        return parsed_template.partial_expand(mapping, processor,
+          normalize_values, &block)
+      end
       check_expressions
       result = self.pattern.dup
       mapping = resolve_mapping(mapping, block)
@@ -949,6 +962,10 @@ module Addressable
     #   #=> "https://github.com/sporkmonger/addressable"
     def expand(mapping=NO_MAPPING, processor=nil, normalize_values=true,
                &block)
+      if engine == :machine
+        return parsed_template.expand(mapping, processor, normalize_values,
+          &block)
+      end
       check_expressions
       mapping = resolve_mapping(mapping, block)
       result = map_literals(self.pattern) do |literal|
@@ -970,6 +987,7 @@ module Addressable
     #
     # @return [Array] The variables present in the template's pattern.
     def variables
+      return parsed_template.variables if engine == :machine
       (@variables ||= ordered_variable_defaults.map { |var, val| var }.uniq).dup
     end
     alias_method :keys, :variables
@@ -981,6 +999,7 @@ module Addressable
     #
     # @return [Hash] Mapping of template variables to their defaults
     def variable_defaults
+      return parsed_template.variable_defaults if engine == :machine
       (@variable_defaults ||=
         Hash[*ordered_variable_defaults.reject { |k, v| v.nil? }.flatten]).dup
     end
@@ -1034,6 +1053,7 @@ module Addressable
     #
     # @api private
     def named_captures
+      return parsed_template.named_captures if engine == :machine
       captures = self.to_regexp.named_captures
       captures.each_with_object({}) do |(group, indexes), names|
         names[variable_name(group)] = indexes
@@ -1041,6 +1061,11 @@ module Addressable
     end
 
   private
+    # This template's ParsedTemplate, made the first time it's needed.
+    def parsed_template
+      @parsed_template ||= ParsedTemplate.new(self)
+    end
+
     ##
     # Raises InvalidTemplateError for the first part of the pattern that
     # isn't a literal or an expression (RFC 6570 section 3).

@@ -62,7 +62,7 @@ TEMPLATE_MODE=machine bundle exec rspec \
   spec/addressable/template_match_forms_spec.rb \
   spec/addressable/template_conformance_spec.rb
 
-# Template vs machine: time, allocations, output agreement, adversarial
+# :regexp vs :machine: time, allocations, output agreement, adversarial
 ITERATIONS=5000 bundle exec rake profile:template_machine
 ```
 
@@ -72,10 +72,13 @@ What they give at the end of phase 0 (Ruby 3.3.1):
 |---|---|
 | Full suite, native and pure IDNA | 0 failures; 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
 | `template_machine_spec.rb` | 11 examples, 1 pending |
-| Machine mode, the four `Template` spec files | 1,909 examples, 1,388 failures (groups under "Baseline") |
+| Machine mode, the four `Template` spec files | 1,909 examples, 1,388 failures |
 
-Phase 1's structural pieces must leave the first two rows unchanged and
-shouldn't increase the third.
+After piece 2 (with 4 and 5), machine mode gives 1,909 examples, 1,037
+failures, and 240 pending (groups under "Baseline"). The other rows are
+unchanged, plus the 42 examples in `template_engine_spec.rb`. Phase 1's
+structural pieces must leave the first two rows unchanged and shouldn't
+increase the machine-mode failures.
 
 ### Where things are
 
@@ -91,14 +94,13 @@ shouldn't increase the third.
   `@cached_template_parse`). `partial_expand` returns
   `Addressable::Template.new(result)`, so the new template has to get
   the original's engine.
-- `lib/addressable/uri_template.rb`, `template_machine.rb`, and
-  `template_lexer.rb`: the machine (see "Where the branch stands").
-- `spec/spec_helper.rb`: the `TEMPLATE_MODE` block that swaps the
-  constant, and `TestHelper.regexp_template`. The helper is used by two
-  `GROUP_NAME_CAN_START_WITH_DOT` lookups in `template_spec.rb` and the
-  `Reference` module in `template_match_spec.rb`.
-- `tasks/template_machine_profile.rb`: `IMPLEMENTATIONS` names the two
-  classes being compared. It becomes the two engines.
+- `lib/addressable/template/parsed_template.rb`, `template_machine.rb`,
+  and `template_lexer.rb`: the machine (see "Where the branch stands").
+- `spec/spec_helper.rb`: `TestHelper.template_engine` and the
+  `TEMPLATE_MODE` block that sets `Template.engine`.
+- `spec/addressable/template_engine_spec.rb`: the engine switch.
+- `tasks/template_machine_profile.rb`: `ENGINES` names the two engines
+  being compared.
 - `.github/workflows/test.yml`: the `template-machine` job.
 
 ### Conventions
@@ -152,23 +154,74 @@ shouldn't increase the third.
    - Ask the user first whether to add a public `Template#engine` reader
      to test against: it's useful for debugging, but it's more public
      API. The alternative is testing through a private method.
-2. **Delegation.** The `:regexp` adapter calls today's private methods.
-   The `:machine` adapter wraps `UriTemplate`'s code, moved behind
-   `Template` as a private constant. Remove the public `UriTemplate`.
+2. **Done: delegation, with pieces 4 and 5 folded in.** Removing
+   `UriTemplate` broke the `TEMPLATE_MODE` swap and the profile task, so
+   the spec helper and the profile moved to the switch in the same piece.
+   - **Guards.** The `:regexp` engine is `Template`'s own code, left where
+     it is. `expand`, `partial_expand`, `match`, `variables`,
+     `variable_defaults`, `named_captures`, and `freeze` each start with
+     `if engine == :machine`, which hands off to the template's
+     `Template::ParsedTemplate`. The default path costs one symbol
+     comparison and runs the same code as before. At the next major, each
+     guard's branch becomes the method body; grep for `engine ==
+     :machine`. `extract` stays `match(...).mapping`, and `to_regexp` and
+     `source` stay shared (decided for phase 4). Considered and dropped: a
+     stateless `RegexpEngine` that called private `regexp_*` methods with
+     `send` (three hops and three places to edit per operation, for no
+     behaviour), and a `ParsedTemplate` that wrapped `UriTemplate`.
+   - **`ParsedTemplate`** (`lib/addressable/template/parsed_template.rb`,
+     moved from `uri_template.rb` with `git mv`) is a private constant.
+     `ParsedTemplate.new(template)` is made the first time a machine
+     template needs it and lexes the pattern then. A parse error is kept
+     and raised by the first operation, so `new` and `freeze` never raise
+     for an invalid pattern, and `freeze` freezes the `ParsedTemplate`
+     too. Its `rescue StandardError` narrows to `InvalidTemplateError` in
+     piece 6. It still has its own error classes and `MatchData` (piece
+     3). The public `UriTemplate` is
+     gone, and so is its `require` in `lib/addressable.rb`.
+   - **The machine never falls back to the regexp code.** An operation
+     it lacks (`partial_expand`, `variables` and its aliases,
+     `variable_defaults`, `named_captures`) or an argument it would ignore
+     (a processor, a block lookup, `normalize_values` false) raises
+     `NotImplementedError` naming it, so machine-mode failures list
+     exactly what's left. `freeze` works on a machine template and
+     computes nothing. `NotImplementedError` isn't a `StandardError`, so
+     the profile rescues it by name.
+   - **Specs.** `TEMPLATE_MODE=machine` sets `Template.engine = :machine`
+     (`TestHelper.template_engine` says which). The constant swap and
+     `TestHelper.regexp_template` are gone. The 240 reference-oracle
+     examples in `template_match_spec.rb` test `Template`'s regexp
+     builder, not the machine, so machine mode skips them until phase 4
+     (`REGEXP_BUILDER_ONLY`); they show as pending.
+     `template_engine_spec.rb` starts each example from `:regexp`.
+   - **Profile.** `profile:template_machine` compares `engine: :regexp`
+     with `engine: :machine`. The adversarial parse case moves to piece 6.
+   - **Open:** `Addressable::TemplateMachine` (the nodes) and
+     `Addressable::TemplateLexer` are still public constants. Neither has
+     been released, so nesting them under `Template` as private constants
+     (and their files under `lib/addressable/template/`) costs nothing
+     before release N and would be breaking after it.
+   - **Decided: dumps hold the pattern and engine, not caches.** Today a
+     `Marshal` or YAML dump includes every cache (`@variables`,
+     `@cached_template_parse`, and now `@parsed_template` with its nodes),
+     so a dump names private classes that will change. Before release N,
+     as its own piece: dump only `@pattern` and `@engine`, and rebuild the
+     caches on first use after loading. To check then:
+     - Dumps from earlier versions must still load. Ruby restores their
+       instance variables without calling any hook, so their old caches
+       come back too; decide whether to drop them on first use.
+     - Defining `marshal_dump` / `marshal_load` changes the dump format,
+       so an earlier version can't load a new dump. That matters for apps
+       sharing a cache across a rolling deploy.
+     - YAML (`encode_with` / `init_with`) needs the same treatment.
 3. **Shared pieces.** The machine uses `Template`'s error classes,
    `MatchData`, `MappingLookup`, `normalize_value`, and `utf8_value`.
    Remove its copies.
-4. **Specs on the switch.** `TEMPLATE_MODE=machine` sets
-   `Template.engine = :machine`. Remove the constant swap and
-   `TestHelper.regexp_template`, and point its three call sites back at
-   `Addressable::Template`. In `template_engine_spec.rb`, "defaults to
-   :regexp" and "uses the default engine without the engine keyword"
-   then fail in machine mode: have them expect the engine `TEMPLATE_MODE`
-   sets.
-5. **Profile on the switch.** `profile:template_machine` compares the two
-   engines, and its adversarial section gets a parse case.
+4. **Done with piece 2:** specs on the switch.
+5. **Done with piece 2:** profile on the switch.
 6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,
-   `variables` and `variable_defaults`, each as its own piece.
+   `variables` and `variable_defaults`, each as its own piece. Add a
+   parse case to the profile's adversarial section.
 
 ## Where the branch stands
 
@@ -180,23 +233,17 @@ The machine's code, from 2020 (rebased cleanly):
   subclass per operator (`OpPlain`, `OpReserved`, `OpFragment`, `OpPath`,
   `OpLabel`, `OpPathParams`, `OpForm`, `OpFormContinuation`), and tagged
   values that join expansions
-- `lib/addressable/uri_template.rb`: `Addressable::UriTemplate`, a
-  separate class with `#expand`, a rough `#match`, and its own copies of
-  `Template`'s error classes and `MatchData`. Phase 1 turns it into the
-  `:machine` engine behind `Template`.
+- `lib/addressable/template/parsed_template.rb` (was `uri_template.rb`):
+  `Template::ParsedTemplate`, the `:machine` engine, with `#expand`, a
+  rough `#match`, and its own copies of `Template`'s error classes and
+  `MatchData`.
 - `spec/addressable/template_machine_spec.rb`: unit specs for the nodes
 
 Added since the rebase (002aecc onwards):
 
-- `TEMPLATE_MODE=machine` in `spec/spec_helper.rb` runs the specs against
-  the machine by swapping the `Template` constant for `UriTemplate`, like
-  `IDNA_MODE=pure`. Phase 1 replaces the swap with
-  `Template.engine = :machine`.
-- `TestHelper.regexp_template` returns the regexp class whatever the mode.
-  The reference oracle in `template_match_spec.rb` and the
-  `GROUP_NAME_CAN_START_WITH_DOT` checks in `template_spec.rb` use it.
-  Once `Template` is one class with two engines, those specs can read
-  `Addressable::Template` again, so phase 1 removes the helper.
+- `TEMPLATE_MODE=machine` in `spec/spec_helper.rb` runs the specs with
+  `Template.engine = :machine`, like `IDNA_MODE=pure`. (Until phase 1 it
+  swapped the `Template` constant for `UriTemplate`.)
 - The machine normalizes values to NFC, with logic copied from
   `Template#normalize_value` (e2eb19a).
 - The `OpPath` unit specs run; one is pending until phase 3 (3c50c4c).
@@ -213,31 +260,38 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 
 | Mode | Examples | Failures |
 |---|---:|---:|
-| regexp (`Template`) | 1,909 | 0 |
-| `TEMPLATE_MODE=machine` | 1,909 | 1,388 |
+| `:regexp` (default) | 1,909 | 0 |
+| `TEMPLATE_MODE=machine`, end of phase 0 (constant swap) | 1,909 | 1,388 |
+| `TEMPLATE_MODE=machine`, after piece 2 (engine switch) | 1,909 | 1,037, plus 240 pending |
 
-Largest groups of machine failures:
+The 240 pending are the reference-oracle examples, skipped in machine mode
+because they test the regexp builder (see "Spec inventory"). The rest of
+the drop from 1,388 is `#extract`, which now goes through the machine's
+`#match` instead of not existing. `#to_regexp` and `#source` use the
+shared builder by design (phase 4).
+
+Largest groups of machine failures after piece 2:
 
 | Count | Cause |
 |---:|---|
-| 275 | Mapping assumed to be a `Hash` (`inject`); lambdas and other lookups fail |
-| 267 | No `#extract` |
-| 240 | No `#parse_template_pattern` (reference oracle, see below) |
-| 154 | Wrong expansion or match result |
-| 100 | Lexer raises `RuntimeError: Incomplete varspec` on valid varspecs |
-| 76 | No `#partial_expand` |
+| 291 | Wrong expansion or match result |
+| 274 | Mapping assumed to be a `Hash` (`inject`); lambdas and other lookups fail |
+| 79 | `InvalidTemplateError` / `InvalidTemplateOperatorError` / `InvalidTemplateValueError` not raised, or a different error |
+| 76 | `NotImplementedError`: `partial_expand` |
 | 74 | Expected no error, but expectations failed inside |
-| 33 | No `#variables` |
-| 24 | `InvalidTemplateError` / `InvalidTemplateValueError` not raised |
+| 66 | Lexer raises `RuntimeError: Incomplete varspec` on valid varspecs |
+| 32 | `NotImplementedError`: `variables` |
+| 25 | `NotImplementedError`: a processor, a block, or `named_captures` |
 | 22 | `#match` returned `nil` where a match was expected |
 
 Rerun these with `TEMPLATE_MODE=machine bundle exec rspec <the four
-files> -f json -o tmp/machine.json` and group the failures by exception.
+files> -f json -o tmp/machine.json` and group the failures by exception
+and the first non-empty line of the message.
 
 ### Performance today
 
 `rake profile:template_machine` (`tasks/template_machine_profile.rb`)
-compares the two implementations. For four templates (simple; path,
+compares the two engines. For four templates (simple; path,
 query and prefix; exploded; reserved and fragment), it runs `expand`,
 `partial_expand`, `match`, and `extract` on new and reused templates and
 reports µs and objects per call. It also checks each pair of outputs:
@@ -283,7 +337,7 @@ covered by `template_spec.rb`, `template_match_spec.rb`, and
 | 1,606 | Behaviour through `expand`, `match`, `extract`, `partial_expand`, `variables`, `==`, … | Yes, unmodified |
 | 53 | `#to_regexp`, `#source`, `#named_captures` (public) | Yes, unmodified |
 | 9 | Grammar constants `EXPRESSION`, `VARNAME`, `VARIABLE_LIST`, `VARSPEC` (public) | Yes, unmodified |
-| 240 | Regexp from the private `#parse_template_pattern` versus a reference regexp | Rework (phase 4) |
+| 240 | Regexp from the private `#parse_template_pattern` versus a reference regexp | Skipped in machine mode; rework (phase 4) |
 
 The 240 reference examples define which way `#match` splits a URI that
 can be split more than one way: the end positions it tries and the values
@@ -344,25 +398,27 @@ the default engine at every step.
   `Template.engine = :machine` app-wide, `Template.new(pattern, engine:
   :machine)` for one template, an `ArgumentError` for an unknown engine,
   and a template keeping its engine when `Template.engine` changes later.
-- Add `Template.engine` and the `engine:` keyword. A template picks its
-  engine the first time it needs one, not in `new`, so `new` stays as
+- Done: add `Template.engine` and the `engine:` keyword. A template picks
+  its engine the first time it needs one, not in `new`, so `new` stays as
   cheap as today and a template loaded with `Marshal` or YAML from an
   earlier version still works. `freeze` picks it first.
-- The `:regexp` engine is today's code. Leave it where it is, as
-  `Template`'s private methods, and give it a thin adapter, so subclasses
-  and monkey patches of those methods keep working with `:regexp`.
-- The `:machine` engine is `UriTemplate`'s code, moved behind `Template`
-  as a private constant. Remove the public `UriTemplate` class.
+- Done: the `:regexp` engine is today's code, left where it is, so
+  subclasses and monkey patches of `Template`'s private methods keep
+  working with `:regexp`. Each operation starts with a guard that hands
+  off to the `:machine` engine.
+- Done: the `:machine` engine is `UriTemplate`'s code, moved behind
+  `Template` as the private `Template::ParsedTemplate`. The public
+  `UriTemplate` class is gone.
 - Everything that isn't an operation lives once, in `Template`, and the
   machine uses it instead of copies: the error classes (they keep their
   public `Addressable::Template::` names), `MatchData`, `MappingLookup`,
   `normalize_value` and `utf8_value` (removing the copy made in
   e2eb19a), `pattern`, `==`, `eql?`, `hash`, `inspect`, and `freeze`.
-- Specs: `TEMPLATE_MODE=machine` sets `Template.engine = :machine` instead
-  of swapping the constant. Remove `TestHelper.regexp_template` and point
-  the three lookups that use it back at `Addressable::Template`.
-- `profile:template_machine` compares `engine: :regexp` with `engine:
-  :machine`, which also shows what delegating costs.
+- Done: specs: `TEMPLATE_MODE=machine` sets `Template.engine = :machine`
+  instead of swapping the constant. `TestHelper.regexp_template` is gone,
+  and the three lookups that used it read `Addressable::Template`.
+- Done: `profile:template_machine` compares `engine: :regexp` with
+  `engine: :machine`, which also shows what delegating costs.
 
 Then parsing:
 
@@ -417,7 +473,7 @@ Then parsing:
   processors' `match` and `restore`.
 - `extract`, and `match` returning `Addressable::Template::MatchData`, the
   same class `Template` returns, instead of the machine's own copy.
-- Match only when the whole URI is consumed. `UriTemplate#match` ignores
+- Match only when the whole URI is consumed. `ParsedTemplate#match` ignores
   whatever follows the last node, so it matches every adversarial payload
   in the profile (e.g. `{/foo*}` matches `/a/a/…/a/!`), where `Template`
   returns `nil`.
@@ -437,9 +493,9 @@ Then parsing:
 - Rework the 240 reference examples to compare `#match` results with the
   reference regexp's matches, so they test the behaviour and run in both
   modes. Today they compare the regexp builder with a reference regexp,
-  which says nothing about the machine's `match`. After phase 1 they run
-  in machine mode too, because the builder is still `Template`'s private
-  method, but they still only test the builder.
+  which says nothing about the machine's `match`, so machine mode skips
+  them (`REGEXP_BUILDER_ONLY` in `template_match_spec.rb`) until this
+  rework. Remove the skip then.
 
 ## Releases
 

@@ -5,19 +5,14 @@ require "fileutils"
 require "timeout"
 require "memory_profiler"
 require "addressable/template"
-require "addressable/uri_template"
 
-# Compares Addressable::Template with the template machine,
-# Addressable::UriTemplate, for rake profile:template_machine. See
-# TEMPLATE_MACHINE_PLAN.md.
+# Compares Addressable::Template's two engines, :regexp and :machine, for
+# rake profile:template_machine. See TEMPLATE_MACHINE_PLAN.md.
 #
-# Each row times one operation on both implementations and checks that they
-# give the same output, so a fast wrong answer isn't mistaken for a speedup.
+# Each row times one operation with both engines and checks that they give
+# the same output, so a fast wrong answer isn't mistaken for a speedup.
 module TemplateMachineProfile
-  IMPLEMENTATIONS = {
-    "Template" => Addressable::Template,
-    "UriTemplate" => Addressable::UriTemplate
-  }.freeze
+  ENGINES = [:regexp, :machine].freeze
 
   CASES = [
     {
@@ -58,7 +53,8 @@ module TemplateMachineProfile
       # partial_expand gets only the first variable.
       partial: { first => c[:values][first] },
       # match and extract get the URI that Template expands the values to.
-      uri: Addressable::Template.new(c[:pattern]).expand(c[:values]).to_s
+      uri: Addressable::Template.new(c[:pattern], engine: :regexp)
+        .expand(c[:values]).to_s
     ).freeze
   end.freeze
 
@@ -100,7 +96,7 @@ module TemplateMachineProfile
     puts format(
       "%-20s %-15s %-7s %-9s %12s %12s %7s %12s %12s",
       "case", "operation", "template", "output",
-      "Template", "UriTemplate", "ratio", "Template", "UriTemplate"
+      "regexp", "machine", "ratio", "regexp", "machine"
     )
     puts format("%-55s %25s %7s %25s", "", "µs per call", "", "objects per call")
     CASES.each do |c|
@@ -111,28 +107,30 @@ module TemplateMachineProfile
       end
     end
     puts
-    puts "output: same = both give the same result; differs = UriTemplate's " \
-      "result is wrong, so its numbers don't count; missing = UriTemplate " \
-      "raises (e.g. no such method), so it isn't timed."
+    puts "output: same = both give the same result; differs = :machine's " \
+      "result is wrong, so its numbers don't count; missing = :machine " \
+      "raises (e.g. NotImplementedError), so it isn't timed."
   end
 
   def compare_operation(c, op_name, op, mode, iterations)
-    calls = IMPLEMENTATIONS.map do |impl_name, klass|
-      reused = klass.new(c[:pattern]) rescue nil
+    calls = ENGINES.map do |engine|
+      reused = Addressable::Template.new(c[:pattern], engine: engine)
       call =
         if mode == "new"
-          lambda { op.call(klass.new(c[:pattern]), c) }
+          lambda do
+            op.call(Addressable::Template.new(c[:pattern], engine: engine), c)
+          end
         else
           lambda { op.call(reused, c) }
         end
-      [impl_name, call]
+      [engine, call]
     end
     outputs = calls.map { |_, call| attempt(&call) }
     status = status(*outputs)
 
     times = []
     objects = []
-    calls.each_with_index do |(impl_name, call), i|
+    calls.each_with_index do |(engine, call), i|
       if outputs[i][1]
         times << nil
         objects << nil
@@ -141,7 +139,7 @@ module TemplateMachineProfile
       times << time_per_call(call, iterations)
       objects << objects_per_call(
         call, [iterations / 20, 100].max,
-        "#{c[:name]}-#{op_name}-#{mode}-#{impl_name}"
+        "#{c[:name]}-#{op_name}-#{mode}-#{engine}"
       )
     end
 
@@ -153,11 +151,11 @@ module TemplateMachineProfile
     )
   end
 
-  # The result of a call, made comparable across the implementations, and
-  # the exception it raised, if any.
+  # The result of a call, made comparable across the engines, and the
+  # exception it raised, if any. NotImplementedError isn't a StandardError.
   def attempt
     [comparable(yield), nil]
-  rescue StandardError => e
+  rescue StandardError, NotImplementedError => e
     [nil, e]
   end
 
@@ -182,8 +180,8 @@ module TemplateMachineProfile
     if machine_error && !template_error
       "missing"
     elsif machine_error || template_error
-      # Both should raise the same error; the classes are in different
-      # namespaces until the machine replaces Template.
+      # Both should raise the same error; the :machine engine has its own
+      # copies of the error classes until phase 1 shares them.
       error_name(machine_error) == error_name(template_error) ? "same" : "differs"
     else
       machine_result == template_result ? "same" : "differs"
@@ -219,8 +217,10 @@ module TemplateMachineProfile
       "pattern", "", *sizes.map { |n| "n=#{n}" }, "growth"
     )
     ADVERSARIAL.each do |pattern, payload|
-      IMPLEMENTATIONS.each do |impl_name, klass|
-        times = sizes.map { |n| adversarial_time(klass, pattern, payload.call(n)) }
+      ENGINES.each do |engine|
+        times = sizes.map do |n|
+          adversarial_time(engine, pattern, payload.call(n))
+        end
         growth =
           if times.all? { |t| t.is_a?(Float) }
             ratio(times.last, times.first)
@@ -229,7 +229,7 @@ module TemplateMachineProfile
           end
         puts format(
           "%-36s %-12s %10s %10s %7s",
-          pattern, impl_name, *times.map { |t| t.is_a?(Float) ? number(t) : t },
+          pattern, engine, *times.map { |t| t.is_a?(Float) ? number(t) : t },
           growth
         )
       end
@@ -237,8 +237,8 @@ module TemplateMachineProfile
   end
 
   # The fastest of three calls, in ms, or why there's no time.
-  def adversarial_time(klass, pattern, payload)
-    template = klass.new(pattern)
+  def adversarial_time(engine, pattern, payload)
+    template = Addressable::Template.new(pattern, engine: engine)
     best = nil
     3.times do
       result = nil
