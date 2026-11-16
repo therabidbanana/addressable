@@ -247,11 +247,8 @@ machine-mode failures. Each phase lowers them; record the count in
      and their copies are gone. `normalize_keys` gives the machine
      `MappingLookup`, so lambdas and other non-`Hash` mappings expand
      (machine mode: 799 failures, from 1,027). The regexp `expand` showed
-     no measurable cost from the extra call. Not shared yet:
-     `resolve_mapping`, which picks the block or the mapping. The machine
-     still raises `NotImplementedError` for a block, and `expand()` with
-     neither raises `TypeError` instead of `Template`'s `ArgumentError`.
-     Share it when the machine takes blocks (phase 2).
+     no measurable cost from the extra call. `resolve_mapping`, which
+     picks the block or the mapping, was shared in phase 2 (blocks).
 4. **Done with piece 2:** specs on the switch.
 5. **Done with piece 2:** profile on the switch.
 6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,
@@ -597,6 +594,14 @@ Then parsing:
     `Values.defined_value`, as piece 3 did for `normalize_value`.
   - Machine mode: 613 failures, from 674. Expand is 0.51–0.80×
     `Template`'s time.
+- **Done: blocks.** `resolve_mapping`'s argument checks moved to
+  `Values.mapping_or_block`, which returns the mapping or the block and
+  raises `Template`'s `ArgumentError`s for both or neither.
+  `Template#resolve_mapping` is now `normalize_keys` of it, which behaves
+  the same and can still be overridden. The machine's `expand` takes a block, and
+  `expand()` with neither raises `ArgumentError` instead of `TypeError`.
+  Machine mode: 611 failures. Most of `Template`'s block and lambda specs
+  also call `partial_expand`, so they wait for that piece.
 - Processors (`validate`, `transform`), called with the same values as
   now: `validate` gets the normalized value, and a `transform` result is
   normalized again.

@@ -233,12 +233,6 @@ describe Addressable::Template, "engine" do
       )
     end
 
-    it "doesn't expand with a block yet" do
-      expect { template.expand { |name| name } }.to raise_error(
-        NotImplementedError, /\bblock/
-      )
-    end
-
     it "doesn't match with a processor yet" do
       expect { template.match("x/y", Object.new) }.to raise_error(
         NotImplementedError, /\bprocessor/

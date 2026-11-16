@@ -72,6 +72,29 @@ module Addressable
       end
 
       ##
+      # Picks the mapping to expand with: the one passed, or the block.
+      #
+      # @param [Object] mapping The mapping argument
+      # @param [Proc, nil] block The block
+      #
+      # @raise [ArgumentError] If both a mapping and a block are given, or
+      #   neither.
+      #
+      # @return [Object] The mapping or the block
+      def self.mapping_or_block(mapping, block)
+        if block
+          unless mapping.equal?(NO_MAPPING) || mapping.nil?
+            raise ArgumentError, "Pass a mapping or a block, not both."
+          end
+          return block
+        end
+        if mapping.equal?(NO_MAPPING)
+          raise ArgumentError, "A mapping or a block is required."
+        end
+        mapping
+      end
+
+      ##
       # Drops the undefined (nil) members of a list or associative array
       # value. RFC 6570 treats a list or associative array with no defined
       # members as undefined, as it does nil.

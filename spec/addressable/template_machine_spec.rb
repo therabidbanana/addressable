@@ -139,6 +139,33 @@ describe Addressable::Template, "with the :machine engine, #expand" do
     expect(calls).to eq(1)
   end
 
+  it "looks up variables with a block" do
+    template = Addressable::Template.new("{a}{+a}{b}", engine: :machine)
+    names = []
+    result = template.expand { |name| names << name; name.upcase }
+    expect(result.to_str).to eq("AAB")
+    expect(names).to eq(["a", "b"])
+  end
+
+  it "takes a block with a nil mapping" do
+    template = Addressable::Template.new("{a}", engine: :machine)
+    expect(template.expand(nil) { |name| "x" }.to_str).to eq("x")
+  end
+
+  it "raises ArgumentError for both a mapping and a block" do
+    template = Addressable::Template.new("{a}", engine: :machine)
+    expect { template.expand({}) { |name| "x" } }.to raise_error(
+      ArgumentError, "Pass a mapping or a block, not both."
+    )
+  end
+
+  it "raises ArgumentError for neither a mapping nor a block" do
+    template = Addressable::Template.new("{a}", engine: :machine)
+    expect { template.expand }.to raise_error(
+      ArgumentError, "A mapping or a block is required."
+    )
+  end
+
   it "drops nil members of lists and hashes" do
     expect(expand("{a}", "a" => [nil, "x", nil])).to eq("x")
     expect(expand("{?a*}", "a" => {"b" => nil, "c" => "d"})).to eq("?c=d")

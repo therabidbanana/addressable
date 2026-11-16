@@ -1559,16 +1559,7 @@ module Addressable
     #
     # @return [Hash, MappingLookup] The normalized mapping
     def resolve_mapping(mapping, block)
-      if block
-        unless mapping.equal?(NO_MAPPING) || mapping.nil?
-          raise ArgumentError, "Pass a mapping or a block, not both."
-        end
-        return normalize_keys(block)
-      end
-      if mapping.equal?(NO_MAPPING)
-        raise ArgumentError, "A mapping or a block is required."
-      end
-      normalize_keys(mapping)
+      normalize_keys(Values.mapping_or_block(mapping, block))
     end
 
     # @see Values.normalize_keys
