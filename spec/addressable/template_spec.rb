@@ -2744,7 +2744,7 @@ describe Addressable::Template, "with a name that starts with a digit" do
   # RFC 6570 section 2.3 allows a digit as the first character of a name,
   # which a Ruby regular expression group name can't start with. Ruby 2.3
   # and earlier only allow a letter or "_" as its first character.
-  dot_allowed = Addressable::Template.const_get(:GROUP_NAME_CAN_START_WITH_DOT)
+  dot_allowed = TestHelper.regexp_template.const_get(:GROUP_NAME_CAN_START_WITH_DOT)
   group = lambda { |name| dot_allowed ? ".#{name}" : "__#{name}__" }
 
   {
@@ -2800,7 +2800,7 @@ describe Addressable::Template, "with a name that has a dot or a triplet" do
   # and pct-encoded triplets in it. Ruby 2.3 and earlier only allow a letter
   # or "_" as the first character of a group name, so there a name that
   # starts with a triplet has its group wrapped in "__".
-  dot_allowed = Addressable::Template.const_get(:GROUP_NAME_CAN_START_WITH_DOT)
+  dot_allowed = TestHelper.regexp_template.const_get(:GROUP_NAME_CAN_START_WITH_DOT)
   group = lambda do |name|
     dot_allowed || name =~ /\A[A-Za-z_]/ ? name : "__#{name}__"
   end

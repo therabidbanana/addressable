@@ -34,6 +34,14 @@ class TestHelper
   def self.native_supported?
     is_mri? && !is_windows?
   end
+
+  # The regexp-based Addressable::Template, even when TEMPLATE_MODE=machine
+  # puts another class in its place. Specs that check its grammar constants
+  # or regexp features use this.
+  def self.regexp_template
+    require "addressable/template"
+    @regexp_template ||= Addressable::Template
+  end
 end
 
 # Warnings raised by Addressable's own code, or by its specs, fail the run.
@@ -74,6 +82,16 @@ if defined?(Warning) && Warning.respond_to?(:warn)
     end
   end
   Warning.extend(StrictWarnings)
+end
+
+# TEMPLATE_MODE=machine runs every Addressable::Template spec against
+# Addressable::UriTemplate, the state machine implementation, by putting it
+# in Template's place before the specs load.
+if ENV["TEMPLATE_MODE"] == "machine"
+  TestHelper.regexp_template
+  require "addressable/uri_template"
+  Addressable.send(:remove_const, :Template)
+  Addressable.const_set(:Template, Addressable::UriTemplate)
 end
 
 RSpec.configure do |config|

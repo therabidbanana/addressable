@@ -26,6 +26,27 @@ module Addressable
     class NoMatch < StandardError
     end
 
+    ##
+    # Raised if an invalid template value is supplied.
+    class InvalidTemplateValueError < StandardError
+    end
+
+    ##
+    # Raised if a template that doesn't match the RFC 6570 grammar is
+    # expanded.
+    class InvalidTemplateError < StandardError
+    end
+
+    ##
+    # Raised if an invalid template operator is used in a pattern.
+    class InvalidTemplateOperatorError < InvalidTemplateError
+    end
+
+    ##
+    # Raised if an invalid template operator is used in a pattern.
+    class TemplateOperatorAbortedError < StandardError
+    end
+
     def initialize(uri_template)
       @nodes = Addressable::TemplateLexer.new.parse_nodes(uri_template)
     end

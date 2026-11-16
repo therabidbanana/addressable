@@ -101,7 +101,7 @@ module TemplateMatchSpec
     %w[
       EXPRESSION VARSPEC LEADERS JOINERS RESERVED RESERVED_NO_COMMA UNRESERVED
     ].each do |name|
-      const_set(name, Addressable::Template.const_get(name))
+      const_set(name, TestHelper.regexp_template.const_get(name))
     end
 
     module_eval(REFERENCE_PARSE_NEW_TEMPLATE_PATTERN)
