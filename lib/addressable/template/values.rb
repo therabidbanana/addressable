@@ -18,13 +18,78 @@
 
 module Addressable
   class Template
-    # Normalizes mappings and values for both engines. Template's private
-    # methods of the same names call these, and so does the :machine
-    # engine.
+    # The values of a template's variables for one expansion by the :machine
+    # engine, looked up in a mapping once each. The value for a name comes
+    # out ready to expand: nil if it's missing or undefined, otherwise a
+    # String, Array or Hash, type-checked, and normalized to NFC unless
+    # normalize_values is false. A variable used more than once, as in
+    # {a}{+a}, is looked up and prepared once.
+    #
+    # Its class methods normalize mappings and values for both engines.
+    # Template's private methods of the same names call them.
     #
     # @api private
-    module Values
-      module_function
+    class Values
+      # @param [Hash, #each_pair, #inject, #[]] mapping
+      #   The mapping, as Template#expand takes it.
+      # @param [Boolean] normalize_values Whether to normalize values.
+      #
+      # @raise [TypeError] If the mapping isn't one Values.normalize_keys
+      #   takes.
+      def initialize(mapping, normalize_values)
+        @mapping = Values.normalize_keys(mapping)
+        @normalize_values = normalize_values
+        @values = {}
+      end
+
+      # @param [String] name The variable's name.
+      #
+      # @raise [TypeError] If the value isn't a String, list or Hash, or a
+      #   number, Symbol or boolean.
+      #
+      # @return [String, Array, Hash, nil] The variable's value.
+      def [](name)
+        @values.fetch(name) { @values[name] = prepare(@mapping[name]) }
+      end
+
+      private
+
+      def prepare(value)
+        value = Values.defined_value(value)
+        return if value.nil?
+        # Common primitives where the .to_s output is well-defined
+        if Numeric === value || Symbol === value ||
+            value == true || value == false
+          value = value.to_s
+        end
+        unless (Hash === value) ||
+            value.respond_to?(:to_ary) || value.respond_to?(:to_str)
+          raise TypeError,
+            "Can't convert #{value.class} into String or Array."
+        end
+        value = Values.normalize_value(value) if @normalize_values
+        value
+      end
+
+      ##
+      # Drops the undefined (nil) members of a list or associative array
+      # value. RFC 6570 treats a list or associative array with no defined
+      # members as undefined, as it does nil.
+      #
+      # @param [Object] value The mapped value
+      #
+      # @return [Object, nil] The value without its undefined members, or nil
+      #   if the value is undefined
+      def self.defined_value(value)
+        value = if value.kind_of?(Hash)
+          value.reject { |_, member| member.nil? }
+        elsif value.respond_to?(:to_ary)
+          value.to_ary.reject { |member| member.nil? }
+        else
+          value
+        end
+        value unless value == {} || value == []
+      end
 
       ##
       # Takes a set of values, and joins them together based on the
@@ -34,7 +99,7 @@ module Addressable
       #   Normalizes unicode keys and values with String#unicode_normalize (NFC)
       #
       # @return [Hash, Array, String] The normalized values
-      def normalize_value(value)
+      def self.normalize_value(value)
         # Handle unicode normalization
         if value.respond_to?(:to_ary)
           value = value.to_ary.map { |val| normalize_value(val) }
@@ -61,7 +126,7 @@ module Addressable
       # @param [String] value The value.
       #
       # @return [String] The value in UTF-8, which may not be valid UTF-8.
-      def utf8_value(value)
+      def self.utf8_value(value)
         encoding = value.encoding
         return value if encoding == Encoding::UTF_8
         if encoding != Encoding::BINARY && encoding != Encoding::US_ASCII &&
@@ -83,7 +148,7 @@ module Addressable
       #
       # @return [Hash, MappingLookup]
       #   A hash with stringified keys, or a lookup
-      def normalize_keys(mapping)
+      def self.normalize_keys(mapping)
         if mapping.respond_to?(:each_pair)
           pairs = mapping.to_enum(:each_pair)
         elsif mapping.respond_to?(:inject)

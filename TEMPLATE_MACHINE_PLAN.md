@@ -240,7 +240,8 @@ machine-mode failures. Each phase lowers them; record the count in
      (piece 6).
    - **Done: `normalize_value`, `utf8_value`, and `normalize_keys`.** Their
      bodies moved to `Template::Values` (`lib/addressable/template/values.rb`,
-     `@api private`, module functions). `Template`'s private methods of the
+     `@api private`, module functions; a class with class methods since
+     phase 2). `Template`'s private methods of the
      same names stay as one-line delegators, so subclasses that call them
      keep working. `Machine::Variable` and `ParsedTemplate` call `Values`,
      and their copies are gone. `normalize_keys` gives the machine
@@ -569,15 +570,33 @@ Then parsing:
 
 ### 2. Expansion
 
-- One value lookup for both engines: wrap `MappingLookup` so that the
-  value for a name comes out converted (numbers, symbols, and booleans
-  to strings), type-checked (`TypeError` as now), and normalized (unless
-  `normalize_values` is false), and remember it per name. A variable used
-  more than once (`{a}{+a}`) is then converted and normalized once, and
-  lambdas and non-`Hash` mappings work in the machine. Values are still
-  looked up when an expression needs them, in template order, so errors
-  come in the same order as now. What depends on the expression stays
-  per expression: the prefix-on-a-list check and processors.
+- **Done: one value lookup, for the machine only.** `Values` is now a
+  class (`lib/addressable/template/values.rb`): `Values.new(mapping,
+  normalize_values)` holds one expansion's values, and the shared
+  helpers (`normalize_value`, `utf8_value`, `normalize_keys`,
+  `defined_value`) are its class methods. It takes the mapping as
+  `expand` does and runs it through `normalize_keys` (a `Hash` or a
+  `MappingLookup`), so the block piece can pass a block straight in. `#[]`
+  gives a name's value. The value for a name
+  comes out defined (`Values.defined_value`: nil members dropped, `[]`
+  and `{}` undefined), converted (numbers, symbols, and booleans to
+  strings), type-checked (`TypeError` as now), and normalized (unless
+  `normalize_values` is false), and it's remembered per name. A variable
+  used more than once (`{a}{+a}`) is converted and normalized once.
+  Values are still looked up when an expression needs them, in template
+  order, so errors come in the same order as now. What depends on the
+  expression stays per expression: the prefix-on-a-list check and
+  processors. `Variable#expand_with` now only encodes the prepared value.
+  The machine accepts `normalize_values` false.
+  - Decided: the `:regexp` engine doesn't use the lookup. It stays
+    today's code, so overrides of `normalize_value` and `defined_value`
+    still apply to it, `partial_expand` raises `TypeError` where it does
+    now, and `{a}{+a}` doesn't share one value object between the two
+    expressions, which a processor that changes its argument would
+    notice. `Template#defined_value` became a delegator to
+    `Values.defined_value`, as piece 3 did for `normalize_value`.
+  - Machine mode: 613 failures, from 674. Expand is 0.51–0.80×
+    `Template`'s time.
 - Processors (`validate`, `transform`), called with the same values as
   now: `validate` gets the normalized value, and a `transform` result is
   normalized again.

@@ -146,84 +146,63 @@ class Addressable::Template
 
 
       ##
-      # Takes Array, Hash, or String, normalizes and prepares a tagged value for
-      # template expansion
+      # Pct-encodes a value and tags it for joining into its expression.
       #
-      # @param [Hash, Array, String] value
-      #   Value to expand for this variable
-      # @param [#validate, #transform] processor
-      #   An optional processor object may be supplied.
-      # @param [Boolean] normalize_values
-      #   Optional flag to enable/disable unicode normalization. Default: true
+      # @param [String, Array, Hash, nil] value
+      #   The variable's value from Values: already converted,
+      #   type-checked and normalized, or nil if it's undefined.
       #
-      # @return [Hash, Array, String] The normalized values
-      def expand_with(value, processor: nil, normalize_values: true)
-        unless value == nil || value == {}
-          # Common primitives where the .to_s output is well-defined
-          if Numeric === value || Symbol === value ||
-             value == true || value == false
-            value = value.to_s
-          end
-
-          unless (Hash === value) ||
-                 value.respond_to?(:to_ary) || value.respond_to?(:to_str)
-            raise TypeError,
-                  "Can't convert #{value.class} into String or Array."
-          end
-
-          value = Values.normalize_value(value) if normalize_values
-
-          if processor == nil || !processor.respond_to?(:transform)
-            # Handle percent escaping
-            if @op.allows_reserved?
-              encode_map = WITH_RESERVED
-            else
-              encode_map = WITHOUT_RESERVED
-            end
-            if value.kind_of?(Array)
-              transformed_value = value.map do |val|
-                if @prefix
-                  Addressable::URI.encode_component(val[0...@prefix], encode_map)
-                else
-                  Addressable::URI.encode_component(val, encode_map)
-                end
-              end
-              unless self.explode
-                transformed_value = transformed_value.join(',')
-              end
-            elsif value.kind_of?(Hash)
-              transformed_value = value.map do |key, val|
-                if self.explode
-                  "#{
-                    Addressable::URI.encode_component( key, encode_map)
-                  }=#{
-                    Addressable::URI.encode_component( val, encode_map)
-                  }"
-                else
-                  "#{
-                    Addressable::URI.encode_component( key, encode_map)
-                  },#{
-                    Addressable::URI.encode_component( val, encode_map)
-                  }"
-                end
-              end
-              if self.explode
-                keypairs = true
-              else
-                transformed_value = transformed_value.join(',')
-              end
-            else
-              if @prefix
-                transformed_value = Addressable::URI.encode_component(
-                  value[0...@prefix], encode_map)
-              else
-                transformed_value = Addressable::URI.encode_component(
-                  value, encode_map)
-              end
-            end
-          end
-          op.tagged_value.new(name, transformed_value, keypairs)
+      # @return [TaggedValue, nil] The tagged value, or nil if it's undefined.
+      def expand_with(value)
+        return if value.nil?
+        # Handle percent escaping
+        if @op.allows_reserved?
+          encode_map = WITH_RESERVED
+        else
+          encode_map = WITHOUT_RESERVED
         end
+        if value.kind_of?(Array)
+          transformed_value = value.map do |val|
+            if @prefix
+              Addressable::URI.encode_component(val[0...@prefix], encode_map)
+            else
+              Addressable::URI.encode_component(val, encode_map)
+            end
+          end
+          unless self.explode
+            transformed_value = transformed_value.join(',')
+          end
+        elsif value.kind_of?(Hash)
+          transformed_value = value.map do |key, val|
+            if self.explode
+              "#{
+                Addressable::URI.encode_component( key, encode_map)
+              }=#{
+                Addressable::URI.encode_component( val, encode_map)
+              }"
+            else
+              "#{
+                Addressable::URI.encode_component( key, encode_map)
+              },#{
+                Addressable::URI.encode_component( val, encode_map)
+              }"
+            end
+          end
+          if self.explode
+            keypairs = true
+          else
+            transformed_value = transformed_value.join(',')
+          end
+        else
+          if @prefix
+            transformed_value = Addressable::URI.encode_component(
+              value[0...@prefix], encode_map)
+          else
+            transformed_value = Addressable::URI.encode_component(
+              value, encode_map)
+          end
+        end
+        op.tagged_value.new(name, transformed_value, keypairs)
       end
     end
 
@@ -245,9 +224,10 @@ class Addressable::Template
         self.class.tagged_value
       end
 
-      def join_expansions(mapping)
+      # @param [Values] values The template's values.
+      def join_expansions(values)
         list = variables.map do |variable|
-          variable.expand_with(mapping[variable.name])
+          variable.expand_with(values[variable.name])
         end
         list.compact!
         unless list.empty?

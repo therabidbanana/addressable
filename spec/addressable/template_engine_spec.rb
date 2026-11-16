@@ -239,12 +239,6 @@ describe Addressable::Template, "engine" do
       )
     end
 
-    it "doesn't expand without normalizing values yet" do
-      expect { template.expand({"a" => "x"}, nil, false) }.to raise_error(
-        NotImplementedError, /\bnormalize_values/
-      )
-    end
-
     it "doesn't match with a processor yet" do
       expect { template.match("x/y", Object.new) }.to raise_error(
         NotImplementedError, /\bprocessor/

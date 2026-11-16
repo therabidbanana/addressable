@@ -53,15 +53,13 @@ module Addressable
       def expand(mapping, processor, normalize_values, &block)
         unsupported("expand with a processor") unless processor.nil?
         unsupported("expand with a block") if block
-        unsupported("expand with normalize_values false") unless
-          normalize_values
         result = String.new
-        mapping = Values.normalize_keys(mapping)
+        values = Values.new(mapping, normalize_values)
         nodes.each do |node|
           if node.is_a?(String)
             result << node
           else
-            expand_varspec(mapping, node) do |expansion|
+            expand_varspec(values, node) do |expansion|
               result << expansion
             end
           end
@@ -124,8 +122,8 @@ module Addressable
         @nodes
       end
 
-      def expand_varspec(mapping, varspec)
-        val = varspec.join_expansions(mapping)
+      def expand_varspec(values, varspec)
+        val = varspec.join_expansions(values)
         yield val if val
       end
 

@@ -1345,24 +1345,9 @@ module Addressable
       tokens.join
     end
 
-    ##
-    # Drops the undefined (nil) members of a list or associative array value.
-    # RFC 6570 treats a list or associative array with no defined members as
-    # undefined, as it does nil.
-    #
-    # @param [Object] value The mapped value
-    #
-    # @return [Object, nil] The value without its undefined members, or nil
-    #   if the value is undefined
+    # @see Values.defined_value
     def defined_value(value)
-      value = if value.kind_of?(Hash)
-        value.reject { |_, member| member.nil? }
-      elsif value.respond_to?(:to_ary)
-        value.to_ary.reject { |member| member.nil? }
-      else
-        value
-      end
-      value unless value == {} || value == []
+      Values.defined_value(value)
     end
 
     ##
