@@ -63,7 +63,7 @@ module Addressable
         unsupported("expand with normalize_values false") unless
           normalize_values
         result = String.new
-        mapping = normalize_keys(mapping)
+        mapping = Values.normalize_keys(mapping)
         nodes.each do |node|
           if node.is_a?(String)
             result << node
@@ -117,28 +117,6 @@ module Addressable
       def nodes
         raise @parse_error if @parse_error
         @nodes
-      end
-
-      # Generates a hash with string keys
-      #
-      # @param [Hash] mapping A mapping hash to normalize
-      #
-      # @return [Hash]
-      #   A hash with stringified keys
-      def normalize_keys(mapping)
-        return mapping.inject({}) do |accu, pair|
-          name, value = pair
-          if Symbol === name
-            name = name.to_s
-          elsif name.respond_to?(:to_str)
-            name = name.to_str
-          else
-            raise TypeError,
-                  "Can't convert #{name.class} into String."
-          end
-          accu[name] = value
-          accu
-        end
       end
 
       def expand_varspec(mapping, varspec)

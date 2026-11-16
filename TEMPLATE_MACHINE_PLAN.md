@@ -229,7 +229,19 @@ increase the machine-mode failures.
      a full `Template::MatchData` (machine mode: 1,027 failures, from
      1,037), though `values`, `to_a` and `captures` need `variables`
      (piece 6).
-   - **Next: `normalize_value`, `utf8_value`, and `MappingLookup`.**
+   - **Done: `normalize_value`, `utf8_value`, and `normalize_keys`.** Their
+     bodies moved to `Template::Values` (`lib/addressable/template/values.rb`,
+     `@api private`, module functions). `Template`'s private methods of the
+     same names stay as one-line delegators, so subclasses that call them
+     keep working. `Machine::Variable` and `ParsedTemplate` call `Values`,
+     and their copies are gone. `normalize_keys` gives the machine
+     `MappingLookup`, so lambdas and other non-`Hash` mappings expand
+     (machine mode: 799 failures, from 1,027). The regexp `expand` showed
+     no measurable cost from the extra call. Not shared yet:
+     `resolve_mapping`, which picks the block or the mapping. The machine
+     still raises `NotImplementedError` for a block, and `expand()` with
+     neither raises `TypeError` instead of `Template`'s `ArgumentError`.
+     Share it when the machine takes blocks (phase 2).
 4. **Done with piece 2:** specs on the switch.
 5. **Done with piece 2:** profile on the switch.
 6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,

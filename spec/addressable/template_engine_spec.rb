@@ -185,6 +185,18 @@ describe Addressable::Template, "engine" do
       expect(template.expand("a" => "x", "b" => "y").to_str).to eq("x/y")
     end
 
+    it "expands from a mapping that isn't a Hash" do
+      expect(template.expand(lambda { |name| name.upcase }).to_str).to eq(
+        "A/B"
+      )
+    end
+
+    it "raises TypeError for a value that isn't a mapping" do
+      expect { template.expand(42) }.to raise_error(
+        TypeError, /into a mapping/
+      )
+    end
+
     it "matches" do
       expect(template.match("x/y").mapping).to eq("a" => "x", "b" => "y")
     end

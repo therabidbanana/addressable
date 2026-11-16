@@ -1,4 +1,5 @@
 require "addressable/uri"
+require "addressable/template/values"
 
 # Written as Addressable::Template, not nested, so the body keeps its
 # indentation from before the move.
@@ -139,54 +140,6 @@ class Addressable::Template
 
 
       ##
-      # Takes Array, Hash, or String and normalizes it to Unicode NFC, as
-      # Addressable::Template#normalize_value does. It returns new objects
-      # and leaves the value it's given unchanged.
-      #
-      # @param [Hash, Array, String] value
-      #   Normalizes keys and values with String#unicode_normalize (NFC)
-      #
-      # @return [Hash, Array, String] The normalized values
-      def normalize_value(value)
-        if value.respond_to?(:to_ary)
-          value.to_ary.map { |val| normalize_value(val) }
-        elsif value.kind_of?(Hash)
-          value.inject({}) { |acc, (k, v)|
-            acc[normalize_value(k)] = normalize_value(v)
-            acc
-          }
-        else
-          value = value.to_s if !value.kind_of?(String)
-          value = utf8_value(value)
-          # Text that isn't valid UTF-8 can't be normalized; its bytes are
-          # pct-encoded as they are.
-          value.valid_encoding? ? value.unicode_normalize(:nfc) : value
-        end
-      end
-
-      ##
-      # A value as UTF-8. RFC 6570 section 3.2.1 transcodes a value in
-      # another character encoding to UTF-8. A binary or US-ASCII value, or
-      # one that isn't valid in its own encoding, is read as UTF-8 as it is.
-      #
-      # @param [String] value The value.
-      #
-      # @return [String] The value in UTF-8, which may not be valid UTF-8.
-      def utf8_value(value)
-        encoding = value.encoding
-        return value if encoding == Encoding::UTF_8
-        if encoding != Encoding::BINARY && encoding != Encoding::US_ASCII &&
-            value.valid_encoding?
-          begin
-            return value.encode(Encoding::UTF_8)
-          rescue EncodingError
-            # A character with no Unicode equivalent keeps its bytes.
-          end
-        end
-        value.dup.force_encoding(Encoding::UTF_8)
-      end
-
-      ##
       # Takes Array, Hash, or String, normalizes and prepares a tagged value for
       # template expansion
       #
@@ -212,7 +165,7 @@ class Addressable::Template
                   "Can't convert #{value.class} into String or Array."
           end
 
-          value = normalize_value(value) if normalize_values
+          value = Values.normalize_value(value) if normalize_values
 
           if processor == nil || !processor.respond_to?(:transform)
             # Handle percent escaping
