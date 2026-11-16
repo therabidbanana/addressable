@@ -605,8 +605,13 @@ Then parsing:
 - Processors (`validate`, `transform`), called with the same values as
   now: `validate` gets the normalized value, and a `transform` result is
   normalized again.
-- `InvalidTemplateValueError` cases, such as a prefix on a list or hash
-  (`{x:3}` with `["a", "b"]`; the machine truncates instead of raising).
+- **Done: a prefix on a list or hash** (`{x:3}` with `["a", "b"]`) raises
+  `InvalidTemplateValueError` with `Template`'s message, from
+  `Variable#expand_with`, after `Values` type-checks the value and before
+  the next varspec is looked up, as in `Template`. The machine had
+  truncated each member instead, and that code is gone. Machine mode: 609
+  failures. The `template_spec.rb` examples for it also call
+  `partial_expand`, so they pass only once that's done.
 - Keep pct-encoded triplets in `+` and `#` expansions: `{+x}` with `%41`
   gives `%41`, but the machine gives `%2541`.
 - Encode non-ASCII literals as `Template` does (RFC 6570 section 3.1; see

@@ -198,6 +198,34 @@ context "valid Template::Machine::Variable(explode: false)" do
 
 end
 
+context "Template::Machine::Variable with a prefix" do
+  subject {
+    Addressable::Template::Machine::Variable.new(
+      op: Addressable::Template::Machine::OpPlain, name: "x", prefix: 3
+    )
+  }
+
+  it "truncates a string" do
+    expect(subject.expand_with("abcdef").value).to eq("abc")
+  end
+
+  it "raises InvalidTemplateValueError for a list" do
+    expect { subject.expand_with(["a", "b"]) }.to raise_error(
+      Addressable::Template::InvalidTemplateValueError,
+      "The prefix modifier :3 can't be applied to the list or associative " \
+      "array \"x\"."
+    )
+  end
+
+  it "raises InvalidTemplateValueError for an associative array" do
+    expect { subject.expand_with("a" => "b") }.to raise_error(
+      Addressable::Template::InvalidTemplateValueError,
+      "The prefix modifier :3 can't be applied to the list or associative " \
+      "array \"x\"."
+    )
+  end
+end
+
 context "valid Template::Machine::Variable(explode: true)" do
   let(:op) { Addressable::Template::Machine::OpPlain }
   let(:name) { "foo" }

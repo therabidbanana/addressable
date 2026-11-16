@@ -155,6 +155,12 @@ class Addressable::Template
       # @return [TaggedValue, nil] The tagged value, or nil if it's undefined.
       def expand_with(value)
         return if value.nil?
+        # RFC 6570 section 2.4.1
+        if @prefix && (Hash === value || Array === value)
+          raise InvalidTemplateValueError,
+            "The prefix modifier :#{@prefix} can't be applied to the " \
+            "list or associative array #{name.inspect}."
+        end
         # Handle percent escaping
         if @op.allows_reserved?
           encode_map = WITH_RESERVED
@@ -163,11 +169,7 @@ class Addressable::Template
         end
         if value.kind_of?(Array)
           transformed_value = value.map do |val|
-            if @prefix
-              Addressable::URI.encode_component(val[0...@prefix], encode_map)
-            else
-              Addressable::URI.encode_component(val, encode_map)
-            end
+            Addressable::URI.encode_component(val, encode_map)
           end
           unless self.explode
             transformed_value = transformed_value.join(',')
