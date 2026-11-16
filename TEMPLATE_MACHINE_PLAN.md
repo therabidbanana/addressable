@@ -34,16 +34,18 @@ The engine is chosen app-wide with `Addressable::Template.engine =
   deprecated.
 - **Next major:** the `:regexp` engine is removed.
 
-## Starting phase 1
+## Starting the next phase
 
-This section is for an agent picking up phase 1 with no other context.
-Read `CLAUDE.md`, then this plan's Goals, the "Decided" list under
-"Open decisions", and phase 1 under "Build phases".
+This section is for an agent picking up the next phase (phase 2,
+expansion) with no other context. Read `CLAUDE.md`, then this plan's
+Goals, the "Decided" list under "Open decisions", "Phase 1, piece by
+piece" (what was built and why), "`Template` bugs found along the way",
+and phase 2 under "Build phases".
 
 ### The branch
 
-`template-machine`, 15 commits ahead of `master` at the end of phase 0.
-It's local only. `origin/template-machine` is still the 2020 branch from
+`template-machine`, 24 commits ahead of `master` at the end of phase 1
+(c5e7fec). It's local only. `origin/template-machine` is still the 2020 branch from
 before the rebase, so pushing needs a force push. Don't push without
 asking.
 
@@ -53,7 +55,9 @@ asking.
 bundle install
 bundle exec rake spec                    # full suite, native IDNA
 IDNA_MODE=pure bundle exec rake spec     # full suite, pure-Ruby IDNA
-bundle exec rspec spec/addressable/template_machine_spec.rb
+bundle exec rspec spec/addressable/template_machine_spec.rb \
+  spec/addressable/template_engine_spec.rb \
+  spec/addressable/template_lexer_spec.rb
 
 # The Template specs against the machine
 TEMPLATE_MODE=machine bundle exec rspec \
@@ -66,36 +70,42 @@ TEMPLATE_MODE=machine bundle exec rspec \
 ITERATIONS=5000 bundle exec rake profile:template_machine
 ```
 
-What they give at the end of phase 0 (Ruby 3.3.1):
+What they give at the end of phase 1 (Ruby 3.3.1):
 
 | Run | Result |
 |---|---|
-| Full suite, native and pure IDNA | 0 failures; 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
-| `template_machine_spec.rb` | 11 examples, 1 pending |
-| Machine mode, the four `Template` spec files | 1,909 examples, 1,388 failures |
+| Full suite, native IDNA | 3,769 examples, 0 failures, 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
+| Full suite, pure IDNA | 3,655 examples, 0 failures, 6 pending |
+| Machine, engine and lexer specs | 208 examples, 1 pending |
+| Machine mode, the four `Template` spec files | 1,909 examples, 674 failures, 240 pending (see "Baseline") |
 
-After piece 2 (with 4 and 5), machine mode gives 1,909 examples, 1,037
-failures, and 240 pending (groups under "Baseline"). The other rows are
-unchanged, plus the 42 examples in `template_engine_spec.rb`. Phase 1's
-structural pieces must leave the first two rows unchanged and shouldn't
-increase the machine-mode failures.
+The full suite must stay at 0 failures, and no piece should increase the
+machine-mode failures. Each phase lowers them; record the count in
+"Baseline" when a phase ends.
 
 ### Where things are
 
-- `lib/addressable/template.rb` (about 1,960 lines). Search for these:
-  `MappingLookup` (a private constant), `class MatchData`, `def
-  initialize(pattern)` (it never raises for an invalid pattern), `def
-  freeze` (computes `variables`, `variable_defaults`, and the parse
-  before freezing), `def ==` and `def hash` (pattern only), the operations
-  (`def extract`, `def match`, `def partial_expand`, `def expand`, `def
-  variables`, `def variable_defaults`, `def to_regexp`, `def source`, `def
-  named_captures`), `def normalize_value`, and `def
-  parse_template_pattern` (the regexp builder, cached in
-  `@cached_template_parse`). `partial_expand` returns
-  `Addressable::Template.new(result)`, so the new template has to get
-  the original's engine.
+- `lib/addressable/template.rb` (about 1,980 lines). Search for these:
+  `class << self` (`Template.engine`), `MappingLookup` (a private
+  constant), `class MatchData`, `def initialize(pattern, engine: nil)`
+  (it never raises for an invalid pattern), `def freeze`, `def ==` and
+  `def hash` (pattern only), the operations (`def extract`, `def match`,
+  `def partial_expand`, `def expand`, `def variables`, `def
+  variable_defaults`, `def to_regexp`, `def source`, `def
+  named_captures`), each starting with an `if engine == :machine` guard,
+  `def resolve_mapping`, `def transform_capture` (expansion of one
+  expression), `def map_literals` and `def encode_later_number_signs`,
+  and `def parse_template_pattern` (the regexp builder, cached in
+  `@cached_template_parse`).
+- `lib/addressable/template/values.rb`: `Template::Values`, the
+  normalization both engines share (`normalize_value`, `utf8_value`,
+  `normalize_keys`).
 - `lib/addressable/template/parsed_template.rb`, `machine.rb`, and
   `lexer.rb`: the machine (see "Where the branch stands").
+  `ParsedTemplate#expand` is where phase 2 starts; its `unsupported`
+  calls list what's missing.
+- `spec/addressable/template_lexer_spec.rb`: compares the machine's
+  errors and `variables` with the `:regexp` engine's.
 - `spec/spec_helper.rb`: `TestHelper.template_engine` and the
   `TEMPLATE_MODE` block that sets `Template.engine`.
 - `spec/addressable/template_engine_spec.rb`: the engine switch.
