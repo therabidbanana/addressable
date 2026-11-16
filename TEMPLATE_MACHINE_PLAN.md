@@ -34,6 +34,134 @@ The engine is chosen app-wide with `Addressable::Template.engine =
   deprecated.
 - **Next major:** the `:regexp` engine is removed.
 
+## Starting phase 1
+
+This section is for an agent picking up phase 1 with no other context.
+Read `CLAUDE.md`, then this plan's Goals, the "Decided" list under
+"Open decisions", and phase 1 under "Build phases".
+
+### The branch
+
+`template-machine`, 15 commits ahead of `master` at the end of phase 0.
+It's local only. `origin/template-machine` is still the 2020 branch from
+before the rebase, so pushing needs a force push. Don't push without
+asking.
+
+### Commands
+
+```sh
+bundle install
+bundle exec rake spec                    # full suite, native IDNA
+IDNA_MODE=pure bundle exec rake spec     # full suite, pure-Ruby IDNA
+bundle exec rspec spec/addressable/template_machine_spec.rb
+
+# The Template specs against the machine
+TEMPLATE_MODE=machine bundle exec rspec \
+  spec/addressable/template_spec.rb \
+  spec/addressable/template_match_spec.rb \
+  spec/addressable/template_match_forms_spec.rb \
+  spec/addressable/template_conformance_spec.rb
+
+# Template vs machine: time, allocations, output agreement, adversarial
+ITERATIONS=5000 bundle exec rake profile:template_machine
+```
+
+What they give at the end of phase 0 (Ruby 3.3.1):
+
+| Run | Result |
+|---|---|
+| Full suite, native and pure IDNA | 0 failures; 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
+| `template_machine_spec.rb` | 11 examples, 1 pending |
+| Machine mode, the four `Template` spec files | 1,909 examples, 1,388 failures (groups under "Baseline") |
+
+Phase 1's structural pieces must leave the first two rows unchanged and
+shouldn't increase the third.
+
+### Where things are
+
+- `lib/addressable/template.rb` (about 1,960 lines). Search for these:
+  `MappingLookup` (a private constant), `class MatchData`, `def
+  initialize(pattern)` (it never raises for an invalid pattern), `def
+  freeze` (computes `variables`, `variable_defaults`, and the parse
+  before freezing), `def ==` and `def hash` (pattern only), the operations
+  (`def extract`, `def match`, `def partial_expand`, `def expand`, `def
+  variables`, `def variable_defaults`, `def to_regexp`, `def source`, `def
+  named_captures`), `def normalize_value`, and `def
+  parse_template_pattern` (the regexp builder, cached in
+  `@cached_template_parse`). `partial_expand` returns
+  `Addressable::Template.new(result)`, so the new template has to get
+  the original's engine.
+- `lib/addressable/uri_template.rb`, `template_machine.rb`, and
+  `template_lexer.rb`: the machine (see "Where the branch stands").
+- `spec/spec_helper.rb`: the `TEMPLATE_MODE` block that swaps the
+  constant, and `TestHelper.regexp_template`. The helper is used by two
+  `GROUP_NAME_CAN_START_WITH_DOT` lookups in `template_spec.rb` and the
+  `Reference` module in `template_match_spec.rb`.
+- `tasks/template_machine_profile.rb`: `IMPLEMENTATIONS` names the two
+  classes being compared. It becomes the two engines.
+- `.github/workflows/test.yml`: the `template-machine` job.
+
+### Conventions
+
+- **`CLAUDE.md`:**
+  - Write specs first for `lib/` code, covering every changed line and
+    branch.
+  - Add adversarial specs for parsing.
+  - Check regexps for backtracking on every runtime.
+  - Code must run on Ruby 2.2: no `&.`, no `<<~`, no
+    `Hash#transform_values`, or guard them.
+  - Run both IDNA modes.
+- **Warnings fail the suite.** `spec_helper.rb` turns any warning from
+  `lib/` or `spec/` into a failure.
+- **The changelog waits for release N.** Nothing on this branch ships
+  before release N (phase 5), so don't add `CHANGELOG.md` entries piece by
+  piece. If the branch is going to be merged to `master` earlier, ask.
+- **One piece at a time.** Make one change, show the diff and the test
+  results in both modes, and wait for review before committing. Each
+  commit message says what changed and why. Follow `git log` for the
+  style, and end it with the Co-Authored-By trailer.
+- **Keep this plan current.** Mark items done as they land, record the
+  counts at the end of each phase, and add anything learned to the
+  phase it affects.
+
+### Phase 1, piece by piece
+
+1. **The switch, no delegation yet.**
+   - Specs first, in a new `spec/addressable/template_engine_spec.rb`:
+     - `Template.engine` defaults to `:regexp`, and `Template.engine =`
+       accepts `:regexp` and `:machine`.
+     - `Template.new(pattern, engine: :machine)` overrides the default
+       for one template.
+     - An unknown engine raises `ArgumentError`, from the setter and from
+       the keyword.
+     - A template that has picked its engine keeps it when
+       `Template.engine` changes.
+     - `partial_expand` returns a template with the same engine.
+     - A template survives a `Marshal` round trip.
+     - `freeze` picks the engine.
+     - The engine doesn't affect `==` or `hash`.
+   - Restore `Template.engine` after each example so specs don't leak
+     into each other.
+   - Then the code, with every operation still running today's code
+     whichever engine is chosen.
+   - Ask the user first whether to add a public `Template#engine` reader
+     to test against: it's useful for debugging, but it's more public
+     API. The alternative is testing through a private method.
+2. **Delegation.** The `:regexp` adapter calls today's private methods.
+   The `:machine` adapter wraps `UriTemplate`'s code, moved behind
+   `Template` as a private constant. Remove the public `UriTemplate`.
+3. **Shared pieces.** The machine uses `Template`'s error classes,
+   `MatchData`, `MappingLookup`, `normalize_value`, and `utf8_value`.
+   Remove its copies.
+4. **Specs on the switch.** `TEMPLATE_MODE=machine` sets
+   `Template.engine = :machine`. Remove the constant swap and
+   `TestHelper.regexp_template`, and point its three call sites back at
+   `Addressable::Template`.
+5. **Profile on the switch.** `profile:template_machine` compares the two
+   engines, and its adversarial section gets a parse case.
+6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,
+   `variables` and `variable_defaults`, each as its own piece.
+
 ## Where the branch stands
 
 The machine's code, from 2020 (rebased cleanly):
@@ -193,11 +321,10 @@ Each phase ends with both modes run and the failure count recorded here.
 - Done: run `TEMPLATE_MODE=machine` in CI as a non-blocking job, so the
   count is tracked on every runtime (`template-machine` in
   `.github/workflows/test.yml`; the count is in each job's summary).
-- Last: add a "Starting phase 1" section to this plan with enough for a
-  fresh agent to pick up phase 1 with no other context: the commands to
-  run, the current failure counts and their causes, the files involved,
-  the conventions to follow (CLAUDE.md, the review-each-piece workflow),
-  and phase 1's first concrete step.
+- Done: add a "Starting phase 1" section to this plan with enough for a
+  fresh agent to pick up phase 1 with no other context.
+
+Phase 0 is complete.
 
 ### 1. Structure and parsing
 
