@@ -126,7 +126,12 @@ shouldn't increase the third.
 
 ### Phase 1, piece by piece
 
-1. **The switch, no delegation yet.**
+1. **Done: the switch, no delegation yet.** Decided: a public
+   `Template#engine` reader. `Template.engine` is shared with subclasses
+   (setting it on a subclass sets it for `Template`), only the symbols
+   `:regexp` and `:machine` are accepted, and `engine: nil` means the
+   default. Until piece 2, a template picks its engine only through
+   `#engine`, `freeze`, or `partial_expand`.
    - Specs first, in a new `spec/addressable/template_engine_spec.rb`:
      - `Template.engine` defaults to `:regexp`, and `Template.engine =`
        accepts `:regexp` and `:machine`.
@@ -156,7 +161,10 @@ shouldn't increase the third.
 4. **Specs on the switch.** `TEMPLATE_MODE=machine` sets
    `Template.engine = :machine`. Remove the constant swap and
    `TestHelper.regexp_template`, and point its three call sites back at
-   `Addressable::Template`.
+   `Addressable::Template`. In `template_engine_spec.rb`, "defaults to
+   :regexp" and "uses the default engine without the engine keyword"
+   then fail in machine mode: have them expect the engine `TEMPLATE_MODE`
+   sets.
 5. **Profile on the switch.** `profile:template_machine` compares the two
    engines, and its adversarial section gets a parse case.
 6. **Parsing.** The rest of phase 1: the lexer, invalid UTF-8,
@@ -285,8 +293,9 @@ same splits. It just can't be tested through a private regexp.
 ## Public API to keep
 
 - Class: `Template.new(pattern)`. The plan adds `Template.engine`,
-  `Template.engine=`, and an optional `engine:` keyword on `new`; all
-  three are additions, so existing calls are unaffected.
+  `Template.engine=`, an optional `engine:` keyword on `new`, and
+  `Template#engine`; all four are additions, so existing calls are
+  unaffected.
 - Instance methods: `==`, `eql?`, `hash`, `freeze`, `inspect`, `pattern`,
   `variables`, `keys`, `names`, `variable_defaults`, `expand`,
   `partial_expand`, `match`, `extract`, `to_regexp`, `source`,

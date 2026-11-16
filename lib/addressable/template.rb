@@ -103,6 +103,49 @@ module Addressable
     NO_MAPPING = Object.new.freeze
     private_constant :NO_MAPPING
 
+    ENGINES = [:regexp, :machine].freeze
+    private_constant :ENGINES
+
+    @engine = :regexp
+
+    class << self
+      ##
+      # The engine that templates use unless they were given one with
+      # <tt>engine:</tt>: <tt>:regexp</tt> (the default) or
+      # <tt>:machine</tt>. The setting is process-wide, shared with
+      # subclasses, and meant to be set once at boot. A template picks its
+      # engine the first time it needs one, so changing the setting affects
+      # templates that haven't picked one yet, not ones that have.
+      #
+      # @return [Symbol] The default engine.
+      def engine
+        equal?(Template) ? @engine : Template.engine
+      end
+
+      ##
+      # Sets the default engine.
+      #
+      # @param [Symbol] engine <tt>:regexp</tt> or <tt>:machine</tt>.
+      #
+      # @raise [ArgumentError] If the engine isn't one of those.
+      def engine=(engine)
+        if equal?(Template)
+          @engine = check_engine(engine)
+        else
+          Template.engine = engine
+        end
+      end
+
+      private
+
+      def check_engine(engine)
+        unless ENGINES.include?(engine)
+          raise ArgumentError, "unknown template engine: #{engine.inspect}"
+        end
+        engine
+      end
+    end
+
     # Looks up variables in a mapping that isn't enumerable, such as a lambda,
     # once each. As with Hash#fetch, a KeyError means the variable is missing,
     # and nil means it's defined as nil.
@@ -333,13 +376,29 @@ module Addressable
     # Creates a new <tt>Addressable::Template</tt> object.
     #
     # @param [#to_str] pattern The URI Template pattern.
+    # @param [Symbol, nil] engine
+    #   The engine for this template, <tt>:regexp</tt> or <tt>:machine</tt>.
+    #   Leave it out, or pass <tt>nil</tt>, to use {Template.engine}.
     #
     # @return [Addressable::Template] The initialized Template object.
-    def initialize(pattern)
+    #
+    # @raise [ArgumentError] If the engine is unknown.
+    def initialize(pattern, engine: nil)
       if !pattern.respond_to?(:to_str)
         raise TypeError, "Can't convert #{pattern.class} into String."
       end
+      @engine = Template.send(:check_engine, engine) unless engine.nil?
       @pattern = pattern.to_str.dup.freeze
+    end
+
+    ##
+    # The template's engine, <tt>:regexp</tt> or <tt>:machine</tt>. A
+    # template that wasn't given one picks {Template.engine} the first time
+    # it needs an engine, and keeps it.
+    #
+    # @return [Symbol] The template's engine.
+    def engine
+      @engine ||= Template.engine
     end
 
     ##
@@ -347,6 +406,7 @@ module Addressable
     #
     # @return [Addressable::URI] The frozen URI object.
     def freeze
+      self.engine
       self.variables
       self.variable_defaults
       parse_template_pattern(pattern)
@@ -796,7 +856,7 @@ module Addressable
       result.gsub!( EXPRESSION ) do |capture|
         transform_partial_capture(mapping, capture, processor, normalize_values)
       end
-      return Addressable::Template.new(result)
+      return Addressable::Template.new(result, engine: engine)
     end
 
     ##
