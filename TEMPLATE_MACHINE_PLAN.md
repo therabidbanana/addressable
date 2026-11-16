@@ -99,8 +99,18 @@ optimized since then, and the machine calls the deprecated
 `Addressable::IDNA.unicode_normalize_kc` once per value. Each call goes
 through RubyGems' deprecation helper and prints a warning, which
 accounts for about 19 KB of the machine's ~29 KB per reused expand.
-Replacing it with `String#unicode_normalize(:nfkc)` is the first fix to
-measure. The machine's `match` returns
+After copying `Template`'s normalization (NFC, values transcoded to UTF-8,
+invalid UTF-8 left as it is) into the machine, its reused-template expand
+went from 1.92 s to 0.26 s, and its allocations for new templates from
+498 MB to 84 MB. That removed the cost of the deprecated call; it doesn't
+measure the state machine design.
+
+The machine's numbers are now below `Template`'s (0.52 s, 154 MB), but
+that comparison isn't meaningful yet: the machine's `expand` skips work
+`Template`'s does on every call (`MappingLookup`, processors, value
+validation, keeping pct-encoded triplets). Compare the two only after
+phase 2, on inputs where both give identical output, across a wider set
+of patterns, and alongside `match` and `extract`. The machine's `match` returns
 `{"path"=>"a", "foo"=>{"foo"=>"longstring", "bar"=>"longeststrin"}}`
 where `Template` gives
 `{"path"=>"a", "foo"=>"longstring", "bar"=>"longeststrin"}`.
@@ -176,7 +186,10 @@ Each phase ends with both modes run and the failure count recorded here.
   lambdas and non-`Hash` mappings work.
 - Value conversion, normalization with `String#unicode_normalize(:nfkc)`,
   and processors (`validate`, `transform`).
-- `InvalidTemplateValueError` cases, such as a prefix on a list or hash.
+- `InvalidTemplateValueError` cases, such as a prefix on a list or hash
+  (`{x:3}` with `["a", "b"]`; the machine truncates instead of raising).
+- Keep pct-encoded triplets in `+` and `#` expansions: `{+x}` with `%41`
+  gives `%41`, but the machine gives `%2541`.
 - `partial_expand`, including fragments and undefined variables.
 - Target: all expansion specs and the conformance suite pass. Expand is at
   least as fast as `Template`.

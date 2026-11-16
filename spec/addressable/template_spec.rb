@@ -1959,6 +1959,11 @@ describe Addressable::Template do
         expect(uri).to eq("http://example.com/search/Caf%C3%A9/")
       end
 
+      it "normalizes to NFC, keeping compatibility characters" do
+        uri = subject.expand("query" => "\ufb01le").to_str
+        expect(uri).to eq("http://example.com/search/%EF%AC%81le/")
+      end
+
       it "encodes the bytes of input that isn't valid UTF-8" do
         uri = subject.expand("query" => "M\xE9thode".b).to_str
         expect(uri).to eq("http://example.com/search/M%E9thode/")
