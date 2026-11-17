@@ -10,12 +10,6 @@ class Addressable::Template
   #
   # @api private
   module Machine
-    # Constants used throughout the template code.
-    anything =
-      Addressable::URI::CharacterClasses::RESERVED +
-      Addressable::URI::CharacterClasses::UNRESERVED
-
-
     variable_char_class =
       Addressable::URI::CharacterClasses::ALPHA +
       Addressable::URI::CharacterClasses::DIGIT + '_'
@@ -23,18 +17,6 @@ class Addressable::Template
     # Atomic, as in Template, so a long name can't backtrack.
     var_char =
       "(?>(?:[#{variable_char_class}]|%[a-fA-F0-9][a-fA-F0-9])+)"
-    RESERVED =
-      "(?:[#{anything}]|%[a-fA-F0-9][a-fA-F0-9])"
-
-    UNRESERVED_SCAN =
-      "((?:[#{
-        Addressable::URI::CharacterClasses::UNRESERVED
-      }]|%[a-fA-F0-9][a-fA-F0-9]|,)*)"
-
-    UNRESERVED_SET =
-      "(?:[#{
-        Addressable::URI::CharacterClasses::UNRESERVED
-      }]|%[a-fA-F0-9][a-fA-F0-9])"
 
     variable =
       "(?:#{var_char}(?:\\.?#{var_char})*)"
@@ -77,6 +59,46 @@ class Addressable::Template
 
       def variables
         []
+      end
+
+      ##
+      # Adds the steps that match the literal to the matcher, as Template's
+      # literal_regexp matches it: a non-ASCII character as it is or
+      # pct-encoded in either case, a run of pct-encoded non-ASCII octets as
+      # the characters they encode, and a "#" also as "%23" once a fragment
+      # may have started, since expansion encodes a later one. Everything
+      # else matches only as written.
+      #
+      # @param [Matcher] matcher The matcher.
+      # @param [TrueClass, FalseClass] fragment
+      #   Whether a fragment may have started before the literal.
+      def match_steps(matcher, fragment)
+        units = []
+        @text.scan(LITERAL_TOKEN) do |token|
+          if token == "#"
+            units << (fragment ? ["#", "%23"] : ["#", nil])
+            fragment = true
+          elsif token =~ LITERAL_ENCODE
+            token.each_char { |character| units << either_form(character) }
+          elsif token.length > 3 || token =~ /\A%[89A-Fa-f]/
+            decoded = Addressable::URI.unencode_component(token).dup
+            decoded.force_encoding(Encoding::UTF_8)
+            if decoded.valid_encoding?
+              decoded.each_char { |character| units << either_form(character) }
+            else
+              units << [nil, token]
+            end
+          else
+            units << [token, nil]
+          end
+        end
+        matcher.literal(units)
+      end
+
+      private
+
+      def either_form(character)
+        [character, Addressable::URI.encode_component(character, LITERAL_ENCODE)]
       end
     end
     LEADERS = {
@@ -157,21 +179,6 @@ class Addressable::Template
         @explode = explode
         @prefix = prefix
       end
-
-      def unencode(value)
-        if value.is_a?(Hash)
-          value = value.inject({}){|acc, (k, v)|
-            acc[Addressable::URI.unencode_component(k)] =
-              Addressable::URI.unencode_component(v)
-            acc
-          }
-        elsif value.is_a?(Array)
-          value = value.map{|v| Addressable::URI.unencode_component(v) }
-        else
-          value = Addressable::URI.unencode_component(value)
-        end
-      end
-
 
       # The varspec as the pattern wrote it. VARSPEC allows no leading zero
       # in a prefix, so the number reads back the same.
@@ -352,94 +359,112 @@ class Addressable::Template
 
       public
 
-      def extract_values(scanner, matches)
-        scanner = StringScanner.new(scanner) unless scanner.is_a?(StringScanner)
-        scanned = scanner.scan(/#{Regexp.escape(self.class.leader)}/)
-        if scanned
-          variables.each do |var|
-            scanned = nil
-            # TODO: Fixme
-            # Explode seems to work better than other conditions.
-            # Need to break up some of this nasty logic.
-            if var.explode or true
-              scanning_set = /((?:#{UNRESERVED_SET}|#{self.class.joiner}|,|=)*)/
-              scanned = scanner.scan(scanning_set)
-              if scanned
-                if scanner[1] =~ /#{self.class.joiner}/
-                  results = scanner[1].split(self.class.joiner)
-                else
-                  results = scanner[1].split(',')
-                end
-                results.map do |result|
-                  vals = result.split('=')
-                  if vals.size == 1
-                    case matches[var.name]
-                    when Array
-                      matches[var.name] << var.unencode(vals.first)
-                    when String
-                      matches[var.name] = [matches[var.name], var.unencode(vals.first)]
-                    when Hash
-                      matches[var.name][var.unencode(vals.first)] = ""
-                    else
-                      matches[var.name] = var.unencode(vals.first)
-                    end
-                  else
-                    matches[var.name] ||= {}
-                    matches[var.name][var.unencode(vals.first)] = var.unencode(vals.last)
-                  end
-                end
-              else
-                matches[var.name] = nil
-              end
-            elsif var.prefix
-              scanned = scanner.scan(/((?:#{UNRESERVED_SET}|,){0,#{var.prefix}})/)
-              if scanned
-                if scanner[1] =~ /,/
-                  matches[var.name] = var.unencode(scanner[1].split(','))
-                else
-                  matches[var.name] = var.unencode(scanner[1])
-                end
-              else
-                matches[var.name] = nil
-              end
-            else
-              scanned = scanner.scan(/#{UNRESERVED_SCAN}/)
-              if scanned
-                if scanner[1] =~ /,/
-                  matches[var.name] = var.unencode(scanner[1].split(','))
-                else
-                  matches[var.name] = var.unencode(scanner[1])
-                end
-              else
-                matches[var.name] = nil
-              end
+      # The expression as the pattern writes it.
+      def text
+        source(self.class.operator, variables)
+      end
+
+      ##
+      # Adds the steps that match the expression to the matcher, in the
+      # order of Template's reference regexp (template_match_spec.rb):
+      # nothing first, then the leader and each variable's value, which may
+      # be left out, with an optional joiner between them. Each value is
+      # captured, for Matching.match_data.
+      #
+      # @param [Matcher] matcher The matcher.
+      # @param [TrueClass, FalseClass] fragment
+      #   Whether a fragment may have started before the expression, so
+      #   that expansion encoded its "#" leader as "%23".
+      # @param [TrueClass, FalseClass] label_dots
+      #   Whether a label's value can contain "."
+      #   (Matching.label_takes_dots?).
+      def match_steps(matcher, fragment, label_dots)
+        leader = self.class.leader
+        matcher.nothing_or do
+          if leader == "#" && fragment
+            matcher.literal([["#", "%23"]])
+          elsif !leader.empty?
+            matcher.exact(leader)
+          end
+          variables.each_with_index do |variable, position|
+            if position > 0
+              matcher.optional { matcher.exact(self.class.joiner) }
+            end
+            matcher.optional do
+              matcher.capture { variable_steps(matcher, variable, label_dots) }
             end
           end
-          matches
-        else
-          # If leader was not found, 
-          variables.each do |var|
-            matches[var.name] = nil
-          end
-          matches
         end
+      end
+
+      private
+
+      # A variable's value: exploded, up to the next comma, or as its
+      # operator takes a value.
+      def variable_steps(matcher, variable, label_dots)
+        if variable.explode
+          matcher.repeat(self.class.joiner, self.class.joiner_required?) do
+            self.class.member_steps(matcher)
+          end
+        elsif variables.size > 1 && self.class.allows_reserved? &&
+            variable.varspec != variables.last.varspec
+          # A + or # variable before the last takes its value up to the
+          # next comma. As in Template, a variable is the last one if its
+          # varspec is the same as the last varspec.
+          matcher.possessive_run(:reserved_no_comma)
+        else
+          self.class.value_steps(matcher, label_dots)
+        end
+      end
+
+      # A value: unreserved characters, as few as can be first.
+      def self.value_steps(matcher, _label_dots)
+        matcher.lazy_run(:unreserved)
+      end
+
+      # An exploded value's member.
+      def self.member_steps(matcher)
+        value_steps(matcher, false)
+      end
+
+      # Whether an exploded value's members need the joiner between them.
+      def self.joiner_required?
+        false
       end
     end
 
     class OpPlain < Expression
       def self.leader; ""; end
       def self.joiner; ","; end
+      def self.joiner_required?; true; end
     end
 
     class OpReserved < Expression
       def self.operator; "+"; end
       def self.allows_reserved?; true; end
+
+      def self.value_steps(matcher, _label_dots)
+        matcher.lazy_run(:reserved)
+      end
+
+      # A member takes everything up to the next comma.
+      def self.member_steps(matcher)
+        matcher.possessive_run(:reserved_no_comma)
+      end
     end
     class OpFragment < Expression
       def self.operator; "#"; end
       def self.allows_reserved?; true; end
       def self.leader; "#"; end
       def self.joiner; ","; end
+
+      def self.value_steps(matcher, label_dots)
+        OpReserved.value_steps(matcher, label_dots)
+      end
+
+      def self.member_steps(matcher)
+        OpReserved.member_steps(matcher)
+      end
     end
 
     class OpPath < Expression
@@ -452,6 +477,16 @@ class Addressable::Template
       def self.operator; "."; end
       def self.leader; "."; end
       def self.joiner; "."; end
+
+      # A label's value can't contain a ".", unless nothing after it could
+      # continue it, when it takes every character up to the delimiter.
+      def self.value_steps(matcher, label_dots)
+        if label_dots
+          matcher.possessive_run(:unreserved)
+        else
+          matcher.lazy_run(:unreserved_no_dot)
+        end
+      end
     end
 
     class OpPathParams < Expression
@@ -459,6 +494,13 @@ class Addressable::Template
       def self.leader; ";"; end
       def self.joiner; ";"; end
       def self.tagged_value; PathParamTaggedValue; end
+
+      # A name, then an optional "=" and a value.
+      def self.value_steps(matcher, _label_dots)
+        matcher.greedy_run(:unreserved)
+        matcher.optional { matcher.exact("=") }
+        matcher.lazy_run(:unreserved)
+      end
     end
 
     class OpFormContinuation < Expression
@@ -466,6 +508,13 @@ class Addressable::Template
       def self.leader; "&"; end
       def self.joiner; "&"; end
       def self.tagged_value; NamedTaggedValue; end
+
+      # A name, "=", and a value.
+      def self.value_steps(matcher, _label_dots)
+        matcher.greedy_run(:unreserved)
+        matcher.exact("=")
+        matcher.lazy_run(:unreserved)
+      end
     end
 
     class OpForm < Expression
@@ -473,27 +522,10 @@ class Addressable::Template
       def self.leader; "?"; end
       def self.joiner; "&"; end
       def self.tagged_value; NamedTaggedValue; end
-      # def self.extract_values(scanner, matches, variables)
-      #   scan_state = :start
-      #   variables.each do |var|
-      #     scanned = scanner.getch
-      #     if scan_state == :start
-      #       return unless scanned == "?"
-      #       scanned = scanner.scan(/(#{var.name})=#{UNRESERVED_SCAN}/)
-      #       if scanned
-      #         matches[var.name] = scanner[2]
-      #       end
-      #       scan_state = :next
-      #     else
-      #       return unless scanned == "&"
-      #       scanned = scanner.scan(/(#{var.name})=#{UNRESERVED_SCAN}/)
-      #       if scanned
-      #         matches[var.name] = scanner[2]
-      #       end
-      #     end
-      #   end
-      #   matches
-      # end
+
+      def self.value_steps(matcher, label_dots)
+        OpFormContinuation.value_steps(matcher, label_dots)
+      end
     end
   end
 end

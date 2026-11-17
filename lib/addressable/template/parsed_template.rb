@@ -19,13 +19,14 @@
 
 require "addressable/uri"
 require "addressable/template/lexer"
-require "strscan"
+require "addressable/template/matcher"
+require "addressable/template/matching"
 
 module Addressable
   class Template
     # The :machine engine. A Template whose engine is :machine hands its
     # operations to its own ParsedTemplate, which parses the pattern once
-    # into literal strings and expression nodes (see Lexer and Machine), then
+    # into literal and expression nodes (see Lexer and Machine), then
     # expands and matches by walking those nodes instead of building a
     # regular expression.
     #
@@ -36,11 +37,6 @@ module Addressable
     #
     # @api private
     class ParsedTemplate
-      # Raised inside #match when the URI stops fitting the nodes; #match
-      # rescues it and returns nil.
-      class NoMatch < StandardError
-      end
-
       # Parses the template's pattern. Like Template.new, this never raises
       # for a pattern that isn't valid: the first invalid token's error is
       # raised by the first operation that needs a valid pattern.
@@ -73,22 +69,29 @@ module Addressable
         Addressable::Template.new(result, engine: @template.engine)
       end
 
-      def match(uri_or_string, processor)
+      # Matches the URI as Template#match does: the nodes' steps split it
+      # between the varspecs as Template's regexp would, and
+      # Matching.match_data turns what each varspec captured into the
+      # mapping.
+      def match(uri, processor)
         unsupported("match with a processor") unless processor.nil?
-        scanner = StringScanner.new(uri_or_string.to_s)
-        mapping = {}
-        nodes.each do |node|
-          extracted = nil
-          if node.is_a?(Machine::Literal)
-            extracted = scanner.scan(node.text)
-            raise NoMatch unless extracted
-          else
-            extracted = node.extract_values(scanner, mapping)
-            raise NoMatch unless extracted
-          end
-        end
-        MatchData.new(uri_or_string, @template, mapping)
-      rescue NoMatch
+        nodes
+        uri = Matching.parse_uri(uri)
+        return nil if uri == false
+        matcher = self.matcher
+        # A nil URI raises NoMethodError here, as it does in Template.
+        captures = matcher.match(uri.to_str)
+        return nil unless captures
+        Matching.match_data(@template, uri, matcher.expansions, captures,
+          processor)
+      end
+
+      # Builds the matcher, so a frozen template doesn't build it on every
+      # match, as Template#freeze builds its regexp. A pattern that isn't
+      # valid has none, and freezing it doesn't raise.
+      def freeze
+        @matcher ||= build_matcher unless @invalid
+        super
       end
 
       # Like Template#variables, this doesn't raise for a pattern that isn't
@@ -120,6 +123,54 @@ module Addressable
       def nodes
         raise @invalid.error_class, @invalid.message if @invalid
         @nodes
+      end
+
+      # The matcher for the pattern, built on first use.
+      def matcher
+        @matcher || (frozen? ? build_matcher : @matcher = build_matcher)
+      end
+
+      # Adds each node's steps to a new matcher. A fragment may start at a
+      # "#" in a literal or at a + or # expression, and from then on
+      # expansion encodes a later "#", so later literals and fragment
+      # leaders match it either way, as in Template's regexp.
+      def build_matcher
+        texts = @nodes.grep(Machine::Expression).map(&:text)
+        # The literal text before each expression and after the last, and
+        # whether a fragment may have started before each.
+        literals = [""]
+        either_literal = [false]
+        either_leader = []
+        fragment = false
+        @nodes.each do |node|
+          if node.is_a?(Machine::Literal)
+            literals[-1] += node.text
+            fragment ||= node.text.include?("#")
+          else
+            either_leader << fragment
+            fragment ||= node.class.allows_reserved?
+            literals << ""
+            either_literal << fragment
+          end
+        end
+
+        matcher = Matcher.new(texts)
+        fragment = false
+        index = 0
+        @nodes.each do |node|
+          if node.is_a?(Machine::Literal)
+            node.match_steps(matcher, fragment)
+            fragment ||= node.text.include?("#")
+          else
+            label_dots = Matching.label_takes_dots?(
+              index, texts, literals, either_leader, either_literal
+            )
+            node.match_steps(matcher, either_leader[index], label_dots)
+            fragment ||= node.class.allows_reserved?
+            index += 1
+          end
+        end
+        matcher.finish
       end
 
       # Raises the error for a pattern that isn't valid, then the values for

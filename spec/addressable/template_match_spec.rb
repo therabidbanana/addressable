@@ -116,10 +116,18 @@ module TemplateMatchSpec
     Addressable::Template.new(pattern).send(:parse_template_pattern, pattern)[1]
   end
 
-  # The mapping that #match gives with the engine, or nil.
-  def self.mapping(pattern, engine, string)
-    match = Addressable::Template.new(pattern, engine: engine).match(string)
-    match && match.mapping
+  # Expects the :machine engine's #match to give the same mapping, or nil,
+  # as the :regexp engine's for each string.
+  def self.expect_same_matches(example, pattern, strings)
+    machine = Addressable::Template.new(pattern, engine: :machine)
+    regexp = Addressable::Template.new(pattern, engine: :regexp)
+    strings.each do |string|
+      expected = regexp.match(string)
+      actual = machine.match(string)
+      example.expect(actual && actual.mapping).to example.eq(
+        expected && expected.mapping
+      ), "for #{string.inspect}"
+    end
   end
 
   # Expressions placed after a single expression, so that a different order
@@ -361,13 +369,9 @@ describe Addressable::Template, "#match" do
         if TestHelper.template_engine == :machine
           it "matches like the :regexp engine for #{pattern}" do
             alphabet = TemplateMatchSpec.alphabet(operator, "x")
-            TemplateMatchSpec.strings(alphabet, 5).each do |string|
-              expect(
-                TemplateMatchSpec.mapping(pattern, :machine, string)
-              ).to eq(
-                TemplateMatchSpec.mapping(pattern, :regexp, string)
-              ), "for #{string.inspect}"
-            end
+            TemplateMatchSpec.expect_same_matches(
+              self, pattern, TemplateMatchSpec.strings(alphabet, 5)
+            )
           end
         end
       end
@@ -380,13 +384,9 @@ describe Addressable::Template, "#match" do
         pattern = "{#{operator}a#{modifier}}#{context}"
         it "matches like the :regexp engine for #{pattern}" do
           alphabet = TemplateMatchSpec.alphabet(operator, "x")
-          TemplateMatchSpec.strings(alphabet, 5).each do |string|
-            expect(
-              TemplateMatchSpec.mapping(pattern, :machine, string)
-            ).to eq(
-              TemplateMatchSpec.mapping(pattern, :regexp, string)
-            ), "for #{string.inspect}"
-          end
+          TemplateMatchSpec.expect_same_matches(
+            self, pattern, TemplateMatchSpec.strings(alphabet, 5)
+          )
         end
       end
     end

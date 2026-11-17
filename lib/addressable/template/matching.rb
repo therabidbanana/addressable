@@ -64,6 +64,46 @@ module Addressable
       end
 
       ##
+      # Whether a label expression's value can contain ".". Label expansion
+      # leaves a "." in a value as it is (RFC 6570 section 3.2.5), so where
+      # the value ends is only known where the expression is delimited by
+      # the start or end of the URI or by characters that can't be part of
+      # its expansion (section 1.4): a lone, unexploded variable, with a
+      # reserved character in the literal text since the previous
+      # expression, and a reserved character next, after any expressions
+      # that start with one when they aren't empty. A "#" counts only if a
+      # fragment can't have started before it, since expansion encodes a
+      # later one as "%23".
+      #
+      # @param [Integer] index The expression's index.
+      # @param [Array<String>] expressions The pattern's expressions.
+      # @param [Array<String>] literals
+      #   The literal text before each expression, and after the last one.
+      # @param [Array<TrueClass, FalseClass>] either_leader
+      #   Whether a fragment may have started before each expression.
+      # @param [Array<TrueClass, FalseClass>] either_literal
+      #   Whether a fragment may have started before each literal.
+      #
+      # @return [TrueClass, FalseClass]
+      def self.label_takes_dots?(index, expressions, literals, either_leader,
+                                 either_literal)
+        _, operator, varlist = *expressions[index].match(EXPRESSION)
+        return false unless operator == '.' && varlist =~ VARSPEC && $2 != '*'
+        return false unless index == 0 || literals[index] =~ LABEL_DELIMITER
+        position = index + 1
+        while position < expressions.size && literals[position].empty?
+          operator = expressions[position][1]
+          return false unless "/?&;".include?(operator) ||
+            (operator == '#' && !either_leader[position])
+          position += 1
+        end
+        literal = literals[position]
+        return true if literal.empty?
+        literal[0] =~ LABEL_DELIMITER &&
+          !(literal[0] == '#' && either_literal[position]) ? true : false
+      end
+
+      ##
       # The MatchData for a URI that the template matched.
       #
       # @param [Addressable::Template] template The template.

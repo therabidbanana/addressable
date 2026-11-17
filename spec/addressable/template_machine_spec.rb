@@ -875,40 +875,192 @@ context "Template::Values#expand(variable) with explode: true" do
   end
 end
 
-context "Addressable::Template::Machine::OpPath" do
-  let(:name) { "foo" }
-  let(:var) {
-    Addressable::Template::Machine::Variable.new(
-      op: Addressable::Template::Machine::OpPath, name: name, explode: true
+describe Addressable::Template, "with the :machine engine, #match" do
+  # The match's mapping, URI and URI class, nil, or the error.
+  def outcome(engine, pattern, uri)
+    match = Addressable::Template.new(pattern, engine: engine).match(uri)
+    match && [match.mapping, match.uri, match.uri.class]
+  rescue StandardError => error
+    [error.class, error.message]
+  end
+
+  def expect_same(pattern, uri)
+    expect(outcome(:machine, pattern, uri)).
+      to eq(outcome(:regexp, pattern, uri)), "for #{uri.inspect}"
+  end
+
+  {
+    "{/foo*}" => [
+      "/true", "/42", "/hello%20world%21", "/", "", "/a/b/hello%20world%21",
+      "/foo=bar/baz=qux"
+    ],
+    "http://example.com/{a}/{b}" => [
+      "http://example.com/x/y", "http://example.com/x", "http://example.org/x/y"
+    ],
+    "{+base}{/path*}{?q*}{#f}" => [
+      "http://x.org/a/b?k=v&j=w#f", "/a?k", "", "#a#b", "?a=1&a=2"
+    ],
+    "{a}" => ["x y", "%zz", "%", "é", "€", "\u{1F642}", "a%2Cb"],
+    # Each operator's values and exploded members, a + or # variable before
+    # the last, and a joiner left before a later variable.
+    "{+a,b}{#c*}" => ["x,y#p,q", "x/y,z#p", "#p,,q", ""],
+    "{+a*}/{d}" => ["x,y/z/w", "/w"],
+    "{;a,b}{;c*}" => [";a=1;b;c=2;d", ";a;c", ";=;"],
+    "{?a,b}{&c*}" => ["?a=1&b=2&c=3&d=4", "?a=&b"],
+    "{a*,b}" => ["x,y,z", "x,,y"],
+    "{/a*,b}" => ["/x/y/z", "/x//"],
+    "{.a*}{.b}" => [".x.y.z"],
+    # A value that the next expression can take over at any position, and
+    # one that ends at a literal inside its run.
+    "{a}{b}" => ["xyz", "x%41y"],
+    "{+a}{b}" => ["p/qr", "p/q/r", "é/q"],
+    "{+a}/{b}" => ["x/y/z", "x%2Fy/z", "/"],
+    "{a}.json" => ["x.json", "x.y.json", "x.jsonx"]
+  }.each do |pattern, uris|
+    it "matches like the :regexp engine for #{pattern}" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
+  # A non-ASCII literal matches as it is or pct-encoded in either case, and
+  # an ASCII one only as written.
+  {
+    "é/{a}" => ["é/v", "%C3%A9/v", "%c3%a9/v", "%C3%a9/v", "e/v"],
+    "caf%C3%A9/{a}" => ["café/v", "caf%c3%a9/v", "caf%C3%A9/v"],
+    "%41/{a}" => ["%41/v", "%61/v", "A/v", "%41/"],
+    "%E9/{a}" => ["%E9/v", "%e9/v", "é/v"],
+    "\u{1F642}{a}" => ["\u{1F642}v", "%F0%9F%99%82v", "%f0%9f%99%82"],
+    "é" => ["é", "%C3%A9", "%c3%a9", "e"],
+    "a" => ["a", "A", "%61"]
+  }.each do |pattern, uris|
+    it "matches literals in #{pattern.inspect} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
+  # Template's regexp takes the encoding of the literals' non-ASCII
+  # characters, so it raises Encoding::CompatibilityError for a non-ASCII
+  # URI when that isn't UTF-8, and for characters in two encodings.
+  it "matches literals from a pattern in another encoding like the :regexp engine" do
+    [
+      "a b\xE9/{a}".dup.force_encoding(Encoding::ISO_8859_1),
+      "\x82\xA0/{a}".dup.force_encoding(Encoding::Shift_JIS),
+      "\xE9/{a}".b,
+      "a/{a}".dup.force_encoding(Encoding::US_ASCII),
+      "%C3%A9/{a}".dup.force_encoding(Encoding::ISO_8859_1),
+      "\xE9%C3%A9/{a}".dup.force_encoding(Encoding::ISO_8859_1),
+      "\xE9/{a}/%C3%A9".dup.force_encoding(Encoding::ISO_8859_1)
+    ].each do |pattern|
+      ["a b%E9/v", "%82%A0/v", "%E9/v", "a/v", "é/v"].each do |uri|
+        expect_same(pattern, uri)
+      end
+    end
+  end
+
+  it "freezes a pattern with literals in two encodings like the :regexp engine" do
+    pattern = "\xE9%C3%A9/{a}".dup.force_encoding(Encoding::ISO_8859_1)
+    outcomes = [:regexp, :machine].map do |engine|
+      begin
+        Addressable::Template.new(pattern, engine: engine).freeze
+        nil
+      rescue StandardError => error
+        [error.class, error.message]
+      end
+    end
+    expect(outcomes.last).to eq(outcomes.first)
+  end
+
+  # Once a fragment may have started, a later "#" matches as it is or as
+  # "%23", in a literal or a fragment expression's leader.
+  {
+    'x#y#{a}' => ["x#y#v", "x#y%23v", "x%23y#v"],
+    '{#a}#b' => ["#x#b", "#x%23b", "#x"],
+    '{+a}{#b}' => ["#x%23y", "x#y", "x%23y"],
+    '{+a}#{b}' => ["x%23y", "x#y"],
+    '#{a}{#b}' => ["#x%23y", "#x#y"],
+    '{#a}{#b}' => ["#x#y", "#x%23y"]
+  }.each do |pattern, uris|
+    it "matches number signs in #{pattern} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
+  # A label's value takes dots where nothing after it could continue it.
+  {
+    "{.a}" => [".x.y", ".x", "."],
+    "/{.a}/" => ["/.x.y/", "/.x/"],
+    "{a}{.b}" => ["x.y.z"],
+    "x{.a}" => ["x.y.z"],
+    "/{.a}{/b}" => ["/.x.y/z"],
+    "/{.a}{?b}" => ["/.x.y?b=1"],
+    "/{.a}{#b}" => ["/.x.y#z"],
+    "{#x}/{.a}{#b}" => ["#q/.x.y#z", "#q/.x.y%23z"],
+    "/{.a}#x" => ["/.x.y#x"],
+    "{#q}/{.a}#x" => ["#q/.x.y#x", "#q/.x.y%23x"],
+    "/{.a*}/" => ["/.x.y/"],
+    "/{.a:2}/" => ["/.x.y/"],
+    "/{.a,b}/" => ["/.x.y/"],
+    "/{.a}x" => ["/.x.yx"]
+  }.each do |pattern, uris|
+    it "matches labels in #{pattern} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
+  it "matches an Addressable::URI like the :regexp engine" do
+    expect_same("http://example.com/{a}",
+      Addressable::URI.parse("http://example.com/x"))
+    expect_same("http://example.com/{a}",
+      Addressable::URI.parse("http://example.com/x/y"))
+  end
+
+  it "matches text that isn't a valid URI like the :regexp engine" do
+    expect_same("http://{a}/", "http://[/")
+    expect_same("{a}", "\xE9".dup.force_encoding(Encoding::UTF_8))
+    expect_same("{a}", "\xC3\xA9".b)
+    expect_same("{a}", "\xE9".b)
+  end
+
+  it "raises for nil like the :regexp engine" do
+    expect_same("{a}", nil)
+  end
+
+  it "raises for a template that isn't valid like the :regexp engine" do
+    expect_same("{a", "x")
+    expect_same("{a}{!b}", "x")
+  end
+
+  it "doesn't build a regexp" do
+    template = Addressable::Template.new("{/a*}{?b}", engine: :machine)
+    expect(Regexp).not_to receive(:new)
+    expect(template.match("/x/y?b=1").mapping).to eq(
+      "a" => ["x", "y"], "b" => "1"
     )
-  }
+  end
 
-  subject { Addressable::Template::Machine::OpPath.new([var]) }
+  it "matches a frozen template" do
+    template = Addressable::Template.new("{/a*}", engine: :machine).freeze
+    expect(template.match("/x/y").mapping).to eq("a" => ["x", "y"])
+  end
 
-  context '#extract_values(scanner, matches)' do
-    it "normalizes simple types" do
-      expect(subject.extract_values("/true", {})).to include(name => "true")
-      expect(subject.extract_values("/false", {})).to include(name => "false")
-      expect(subject.extract_values("/42", {})).to include(name => "42")
-      expect(subject.extract_values("/string", {})).to include(name => "string")
+  # Runs tried from their end back (a greedy run's ends), runs that end at
+  # a literal, and possessive runs each read the URI once.
+  {
+    "{;a,b}" => ";a=", "{;a,b}x" => ";a=", "{?a,b}" => "?a=",
+    "{+a}/{b}" => "", "{+a,b,c}" => "", "{a}.json" => "", "{/a*}" => "/",
+    "{.a}" => ".", "{a}{b}" => "", "{#a,b}" => "#"
+  }.each do |pattern, prefix|
+    it "matches #{pattern} in linear time" do
+      template = Addressable::Template.new(pattern, engine: :machine)
+      ["a", "é", "a/"].each do |unit|
+        uri = prefix + unit * 50_000 + "!"
+        expect { Timeout.timeout(5) { template.match(uri) } }.
+          not_to raise_error
+      end
     end
+  end
 
-    it "does percent encoding for strings with reserved characters" do
-      expect(subject.extract_values("/hello%20world%21", {})).to include(name => "hello world!")
-    end
-
-    it "detects empty string" do
-      pending "the phase 3 matcher; extract_values sets nothing for an empty segment"
-      expect(subject.extract_values("/", {})).to include(name => [""])
-    end
-
-    it "detects undefined" do
-      expect(subject.extract_values("", {})).to include(name => nil)
-    end
-
-    it "can do a combination of normalize and join" do
-      expect(subject.extract_values("/a/b/hello%20world%21", {})).to include(name => ["a", "b", "hello world!"])
-      expect(subject.extract_values("/foo=bar/baz=qux", {})).to include(name => {"foo" => "bar", "baz" => "qux"})
-    end
+  it "matches with variable names that start with a digit" do
+    expect_same("{1a}/{2b*}", "x/y,z")
   end
 end
