@@ -14,7 +14,10 @@ Branch: `template-machine`, rebased onto `master` (a7924ec) on 2026-11-16.
    TruffleRuby). It must not depend on `Regexp.timeout`.
 3. **Same or better performance** than the current `Template` for `expand`,
    `match`, `extract`, and `partial_expand`, for both new and reused
-   templates, in both time and allocations.
+   templates, in both time and allocations. Decided in phase 3: matching
+   (`match`, `extract`) may take up to 2× `Template`'s time if that keeps
+   the matcher readable, as long as adversarial input stays linear (goal
+   2). Readability wins over the last factor of speed there.
 
 `Addressable::Template` stays the only public class. It gets two private
 engines, `:regexp` (today's code) and `:machine`, and delegates the
@@ -116,13 +119,14 @@ machine-mode failures. Each phase lowers them; record the count in
   `prefix`, `encode_later_number_signs`); `Template`'s private methods of
   the same names delegate to them. An instance is one machine expansion.
   Matching doesn't use an instance.
-- `lib/addressable/template/parsed_template.rb`, `machine.rb`, and
-  `lexer.rb`: the machine (see "Where the branch stands" and phase 2).
-  `ParsedTemplate#match` and `Machine::Expression#extract_values` (with
-  `Variable#unencode`) are the 2020 matcher that phase 3 replaces; it
-  ignores whatever follows the last node, and raises
-  `NotImplementedError` for a processor. Literals are `Machine::Literal`
-  nodes, which keep the text as written and its pct-encoded expansion.
+- `lib/addressable/template/parsed_template.rb`, `machine.rb`,
+  `lexer.rb`, and `matcher.rb`: the machine (see "Where the branch
+  stands", phase 2, and phase 3). Each node adds its steps to a
+  `Template::Matcher` (`#match_steps`), and `ParsedTemplate#match` runs
+  them; it raises `NotImplementedError` for a processor. Literals are
+  `Machine::Literal` nodes, which keep the text as written and its
+  pct-encoded expansion. `lib/addressable/template/matching.rb`: what
+  both engines' `#match` share.
 - `spec/addressable/template_lexer_spec.rb`: compares the machine's
   errors and `variables` with the `:regexp` engine's.
 - `spec/addressable/template_machine_spec.rb`: unit specs for `Values`
@@ -381,6 +385,19 @@ the compatibility rules in `CLAUDE.md`. The machine then follows the fix.
   byte sequence in UTF-8") from `freeze` and every operation, including
   `variables`, rather than `InvalidTemplateError`. A UTF-16 pattern raises
   `Encoding::CompatibilityError` the same way.
+- **`match(nil)` raises `NoMethodError`** (`undefined method 'to_str'
+  for nil`), where the docs say `match` returns `nil` for anything that
+  doesn't match. `template_match_spec.rb` pins it in both modes.
+- **Non-ASCII literals in a pattern that isn't UTF-8 make `match`
+  raise.** `Template`'s regexp holds the literals' non-ASCII characters,
+  so it takes their encoding: a pattern with a Latin-1, Shift_JIS or
+  binary non-ASCII literal raises `Encoding::CompatibilityError`
+  ("incompatible encoding regexp match (ISO-8859-1 regexp with UTF-8
+  string)") for any URI with non-ASCII text, and one whose literals mix
+  such a character with pct-encoded UTF-8 (`\xE9%C3%A9`) raises
+  ("incompatible character encodings: ISO-8859-1 and UTF-8") from every
+  `match`, and from `freeze`. `Matcher#literal` and `#match` raise the
+  same errors.
 
 ## Where the branch stands
 
@@ -430,6 +447,7 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, end of phase 1 | 1,909 | 674, plus 240 pending |
 | `TEMPLATE_MODE=machine`, end of phase 2 | 1,909 | 363, plus 240 pending |
 | `TEMPLATE_MODE=machine`, after the oracle rework | 2,197 | 651 (363, plus the 288 new oracle examples) |
+| `TEMPLATE_MODE=machine`, after the matcher | 2,198 | 60 (`named_captures` 47, processors 13) |
 
 Until the oracle rework, the 240 pending were the reference-oracle
 examples, skipped in machine mode because they test the regexp builder
@@ -829,6 +847,131 @@ Phase 2 is complete.
   template makes at most one more object (one per literal, less the
   second list), and over two profile runs each, expand and
   `partial_expand` times are within the runs' noise.
+- **Done: the steps and the matcher.** `Template::Matcher`
+  (`lib/addressable/template/matcher.rb`): the nodes call its builder
+  (`literal`, `exact`, `lazy_run`, `greedy_run`, `possessive_run`,
+  `optional`, `nothing_or`, `capture`, `repeat`), which adds states to a
+  small graph, one class per kind (`Literal`, `LazyRun`, `GreedyRun`,
+  `PossessiveRun`, `Choice`, `Capture`, `MemberStart`, `MemberEnd`,
+  `Done`). Each state's `follow` returns what to try next, in order.
+  `#match` is a depth-first search with an explicit stack of `Attempt`s
+  (no recursion, so long URIs can't overflow it), skipping any state and
+  position it has tried before; that's what keeps it linear. Captures
+  are an immutable list carried by each attempt, so going back needs no
+  undoing. One lookahead, `FirstBytes` (the bytes a match from a state
+  can start with, worked out once per template), lets a choice or a
+  run's stop skip what can't start with the next byte, and lets a run
+  take its whole extent at once when what follows can't start with any
+  of its characters. Character sets (`CharacterSet`) treat a non-ASCII
+  character or a pct-encoded triplet as one character, as `Template`'s
+  classes do. `Literal#match_steps` follows `literal_regexp`;
+  `Expression#match_steps` follows the reference regexp, with the
+  operator's value, member and required joiner from class methods
+  (`value_steps`, `member_steps`, `joiner_required?`), and
+  `Expression#text` gives the expression as written for `match_data`.
+  `ParsedTemplate#match` reads the URI with `Matching.parse_uri`, runs the
+  matcher, and hands its `Captures` to `Matching.match_data`. The matcher
+  is built on the first match, or by `freeze`, as `Template#freeze` builds
+  its regexp. `label_takes_dots?` moved to `Matching`, with `Template`
+  delegating. The 2020 matcher is gone (`extract_values`,
+  `Variable#unencode`, `UNRESERVED_SCAN`, `UNRESERVED_SET`,
+  `Machine::RESERVED`, `NoMatch`), and so are its `OpPath` unit specs,
+  whose cases are now comparisons with `:regexp`.
+  - Specs: `template_machine_spec.rb` compares `#match` with `:regexp`
+    for every operator, literals in either form and in other encodings,
+    number signs, dotted labels, `Addressable::URI` arguments, text that
+    isn't a valid URI or valid UTF-8, `nil`, invalid templates, frozen
+    templates, and names that start with a digit, and checks no regexp
+    is built. With the 288 oracle examples, machine mode is down to the
+    60 expected failures: `named_captures` (47, phase 4) and processors
+    (13, next piece).
+  - Fixed on the way: piece 1 made `match(nil)` return `nil` where it
+    raised `NoMethodError` (`URI.parse(nil)` is `nil`). `parse_uri` now
+    returns `false` for a URI that can't match, and a spec pins the
+    `NoMethodError` in both modes (see "`Template` bugs").
+  - The oracle examples build each template once and match every string
+    with it; built per string, they took 184 s in machine mode, and now
+    67 s.
+  - How it got here: the first matcher was a step interpreter, at
+    1.2–1.9× on new templates and 1.4–3.7× on reused ones. A round of
+    optimizations (below) brought reused templates to 1.15–1.7×, but
+    left the class near unreadable, so it was rewritten as the state
+    graph above, keeping only the lookahead. Along the way, a run cache
+    that only helped forward queries made `{;a,b}` quadratic (a greedy
+    run's ends are tried longest first); `template_match_forms_spec.rb`
+    caught it, and `template_machine_spec.rb` now checks ten patterns in
+    linear time on 50,000-character URIs in the default suite.
+  - Performance now (Ruby 3.3.1, two profile runs, noisy machine): match
+    and extract are 1.25–1.5× `Template`'s time for the simple template,
+    and 1.3–2.1× on new and 1.8–3.2× on reused templates with query,
+    exploded and reserved expressions; path and reserved are over the 2×
+    target on reused templates. The cost left is per character: in
+    `{?foo,bar}` the reference lets `bar` start right after any
+    character of `foo`'s value with no `&`, so each character of a
+    query value tries about six states, each about 500 ns. Every
+    adversarial payload grows about 4× for 4× the input (linear), at
+    10–600× `Template`'s absolute time on Ruby 3.3.
+- **To come back to at the end of phase 3: matcher optimizations.**
+  Options seen so far, with what each bought when it was measured, to
+  weigh against readability (goal 3) once processors are done:
+  1. **States push their attempts straight onto the to-try stack**, last
+     choice first, rather than returning an array. Saves an allocation
+     per state; estimated 10–15%. Not tried.
+  2. **Look one run ahead, not one character** (RE2's idea in
+     miniature): in `{?foo,bar}`, `bar`'s name must be followed by `=`,
+     so the rest can't start at most positions of `foo`'s value. Would
+     likely bring path and reserved under 2×; another concept to
+     explain. Not tried.
+  3. **RE2's backward pass:** work out, for every state and position,
+     whether the end is reachable, then walk forward without ever
+     backtracking. Predictable cost, but it always fills the whole
+     states × positions table (RE2 makes that cheap with a cached DFA in
+     C), and it's a second engine to read. Not tried.
+  4. **Don't mirror the regexp's structure.** Most of the shape
+     (nothing first, every varspec optional, optional joiners between
+     varspecs, the empty-member rule) is the reference regexp's. A
+     matcher that reasons at the template level (split `?` values at
+     `&`, names at `=`) could decide unambiguous URIs directly and
+     search only where a split is ambiguous. Each shortcut must give
+     the regexp's split, which only the oracle checks.
+  5. **Search for the literal that follows a run** with `String#index`
+     (on a binary copy for non-ASCII URIs, so offsets are bytes) and try
+     only where it occurs. Tried: reserved 41 → 33 µs, path 26 → 22 µs
+     for the matcher alone, with 4 and 6.
+  6. **Fixed run patterns** (`(?:[set]|%HH|[^\x00-\x7F])*+`, one per
+     set, compiled at load) with `StringScanner#skip`, so a run's extent
+     is found in C. Possessive, so they can't backtrack. Tried, with 5.
+     They could also define `CharacterSet` itself, as small named
+     regexps that read as what they mean. They don't give
+     `#to_regexp` for free, though: its source has to stay what
+     `Template`'s builder writes (phase 4, decided), and that differs
+     from the reference's shape (possessive members, lookbehinds, `(?!)`
+     leaders, group names like `.42`). Composing it from the nodes means
+     either porting those rewrites into the nodes or changing `#source`'s
+     output, which callers can see.
+  7. **End checks**, since a match must use the whole URI: a trailing
+     literal must end it (tried; catches templates that end in a
+     literal), the last byte must be one the template can end on, every
+     byte must be one the template can take, and a branch that leaves
+     fewer bytes than the rest needs can't finish. Prefilters flatter
+     the profile's adversarial payloads, so add payloads that get past
+     them.
+  8. **Interpreter tricks:** literal `when`s (symbols) so `case`
+     compiles to a jump table (15–25%), one step per run with a tight
+     loop (reserved 51 → 41 µs), `while` rather than `loop` (about 12%),
+     a bit-packed memo string, joining literal units (5 µs → 0.08 µs for
+     a 25-byte literal; kept). First sets as arrays rather than Integer
+     bitmasks: lookups 11 rather than 40 ns, but slow to build.
+  9. **`Matching.match_data`**, shared by both engines, is the largest
+     single cost of `#match` (22–47 µs). Speeding it up helps both
+     engines and doesn't change the gap between them.
+  10. **YJIT** isn't in this Ruby build; measure the matcher with it in
+      CI (Rails 7.1+ turns it on by default on Ruby 3.3).
+  - Ruled out: normalizing the URI first. `URI#normalize` does handle
+    pct-encoding (uppercases hex digits, decodes unreserved characters,
+    encodes non-ASCII), but it changes results (it lowercases the host,
+    and a literal `%41` stops matching once `%41` becomes `A`) and costs
+    about 50 µs per URI.
 - Replace `extract_values` with a matcher that never backtracks
   exponentially. Each expression's possible end positions come from the
   literal that follows and the operator's character set. Search the
@@ -848,7 +991,8 @@ Phase 2 is complete.
   in the profile (e.g. `{/foo*}` matches `/a/a/…/a/!`), where `Template`
   returns `nil`.
 - Target: `template_match_spec.rb` "with adversarial input" passes on every
-  runtime, and match and extract are at least as fast as `Template`.
+  runtime, and match and extract are within 2× `Template`'s time (goal
+  3, as decided in phase 3).
 
 ### 4. Regexp API and the reference oracle
 
