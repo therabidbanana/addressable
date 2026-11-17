@@ -48,13 +48,24 @@ module Addressable
         @template = template
         @nodes = Lexer.new.parse_nodes(template.pattern)
         @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
+        # Expansion pct-encodes non-ASCII literals (RFC 6570 section 3.1),
+        # and they don't change between calls, so they're encoded here.
+        # Matching keeps @nodes, since it accepts a literal either way.
+        @expansion_nodes = @nodes.map do |node|
+          if node.is_a?(String) && !node.ascii_only?
+            Addressable::URI.encode_component(node, LITERAL_ENCODE)
+          else
+            node
+          end
+        end
       end
 
       def expand(mapping, processor, normalize_values, &block)
+        nodes # Raises the error for a pattern that isn't valid.
         result = String.new
         values = Values.new(Values.mapping_or_block(mapping, block),
           normalize_values, processor)
-        nodes.each do |node|
+        @expansion_nodes.each do |node|
           if node.is_a?(String)
             result << node
           else
@@ -63,7 +74,7 @@ module Addressable
             end
           end
         end
-        return Addressable::URI.parse(result)
+        Addressable::URI.parse(Values.encode_later_number_signs(result))
       end
 
       def partial_expand(_mapping, _processor, _normalize_values)

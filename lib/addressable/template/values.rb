@@ -216,6 +216,19 @@ module Addressable
       end
 
       ##
+      # A URI fragment can't contain "#" (RFC 3986 section 3.5), so expansion
+      # encodes every "#" after the first one, which starts the fragment.
+      #
+      # @param [String] uri The expanded URI.
+      #
+      # @return [String] The URI with any later "#" encoded as "%23".
+      def self.encode_later_number_signs(uri)
+        start = uri.index('#')
+        return uri unless start && uri.index('#', start + 1)
+        uri[0..start] + uri[(start + 1)..-1].gsub('#', '%23')
+      end
+
+      ##
       # Takes the first characters of a value for a prefix modifier. Reserved
       # and fragment expansion count a pct-encoded triplet as one character,
       # so that it isn't split (RFC 6570 section 2.4.1).

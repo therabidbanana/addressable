@@ -17,6 +17,7 @@
 require "spec_helper"
 
 require "bigdecimal"
+require "timeout"
 require "addressable/template"
 
 describe Addressable::Template::Values do
@@ -444,6 +445,96 @@ describe Addressable::Template, "with the :machine engine, pct-encoded triplets"
     value = "%41%" * 10_000
     expect_same("{+x}", "x" => value)
     expect_same("{#x:9999}", "x" => value)
+  end
+end
+
+describe Addressable::Template, "with the :machine engine, literals" do
+  def outcome(engine, pattern, mapping)
+    uri = Addressable::Template.new(pattern, engine: engine).expand(mapping)
+    [uri.to_str, uri.to_str.encoding]
+  rescue StandardError => error
+    [error.class, error.message]
+  end
+
+  def expect_same(pattern, mapping = {"a" => "v"})
+    expect(outcome(:machine, pattern, mapping)).
+      to eq(outcome(:regexp, pattern, mapping))
+  end
+
+  [
+    "é/{a}", "{a}é", "xéy{a}zé", "\u{1F642}{a}",
+    "caf%C3%A9/{a}", "café%C3%A9/{a}", "a b/{a}", "%/{a}", "{a}%zz",
+    "http://é.example/{a}?q=é"
+  ].each do |pattern|
+    it "expands #{pattern.inspect}" do
+      expect_same(pattern)
+    end
+  end
+
+  it "keeps the bytes of a literal in another encoding" do
+    expect_same("a b\xE9/{a}".dup.force_encoding(Encoding::ISO_8859_1))
+    expect_same("\x82\xA0/{a}".dup.force_encoding(Encoding::Shift_JIS))
+    expect_same("\xE9/{a}".b)
+    expect_same("a/{a}".dup.force_encoding(Encoding::US_ASCII))
+  end
+
+  it "raises for a UTF-8 literal that isn't valid" do
+    expect_same("\xE9/{a}".dup.force_encoding(Encoding::UTF_8))
+  end
+
+  [
+    ['x#y#{a}', {"a" => "v"}],
+    ['{#a}#b', {"a" => "v"}],
+    ['{#a}{#b}', {"a" => "v", "b" => "w"}],
+    ['{#a}', {"a" => ["#", "#x"]}],
+    ['{+a}', {"a" => "#x#y"}],
+    ['{+a}{#b}', {"a" => "#x", "b" => "#"}],
+    ['#{a}', {"a" => "#"}],
+    ['{a}#', {"a" => "#"}],
+    ['{#a}', {}],
+    ["é#é" + '#{a}', {"a" => "v"}]
+  ].each do |pattern, mapping|
+    it "encodes a later number sign in #{pattern.inspect} with #{mapping.inspect}" do
+      expect_same(pattern, mapping)
+    end
+  end
+
+  it "encodes a long non-ASCII literal in linear time" do
+    pattern = "é" * 100_000 + "{a}"
+    expect_same(pattern)
+    template = Addressable::Template.new(pattern, engine: :machine)
+    expect { Timeout.timeout(10) { template.expand("a" => "v") } }.
+      not_to raise_error
+  end
+
+  it "encodes many number signs in linear time" do
+    expect_same('#{a}' + "#" * 100_000, "a" => "#" * 100_000)
+  end
+
+  it "matches a non-ASCII literal written as it is" do
+    template = Addressable::Template.new("é/{a}", engine: :machine)
+    expect(template.match("é/v").mapping).to eq("a" => "v")
+  end
+end
+
+describe Addressable::Template::Values, ".encode_later_number_signs" do
+  def encode(uri)
+    Addressable::Template::Values.encode_later_number_signs(uri)
+  end
+
+  it "leaves a URI with no number sign" do
+    expect(encode("a/b")).to eq("a/b")
+  end
+
+  it "keeps the first number sign and encodes the rest" do
+    expect(encode("a#b#c#")).to eq("a#b%23c%23")
+    expect(encode("##")).to eq("#%23")
+  end
+
+  it "returns a URI with one number sign as it is" do
+    uri = "a#b"
+    expect(encode(uri)).to equal(uri)
+    expect(encode("#")).to eq("#")
   end
 end
 

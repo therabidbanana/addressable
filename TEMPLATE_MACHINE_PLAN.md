@@ -655,14 +655,21 @@ Then parsing:
   names) stays in the `Expression` subclasses and `TaggedValue`s. No
   behaviour change: machine mode is still 543 failures, the same ones,
   and expand's time and objects are unchanged.
-- Encode non-ASCII literals as `Template` does (RFC 6570 section 3.1; see
-  `map_literals` and `LITERAL_ENCODE`), and run its
-  `encode_later_number_signs` step. Today the machine copies literal text
-  as it is: `é/{a}` expands to `é/v`, not `%C3%A9/v`. In a pattern that
-  isn't UTF-8, `Template` pct-encodes the literal's bytes as they are:
-  ISO-8859-1 `a b\xE9/{a}` gives `a b%E9/v`, where the machine gives the
-  raw byte. Literals don't change between calls, so the lexer or
-  `ParsedTemplate` can encode each one once.
+- **Done: non-ASCII literals and later number signs.** `é/{a}` expands
+  to `%C3%A9/v`, where the machine gave `é/v`, and a pattern that isn't
+  UTF-8 has its bytes encoded as they are (ISO-8859-1 `a b\xE9/{a}`
+  gives `a b%E9/v`). `ParsedTemplate.new` encodes each literal that
+  isn't `ascii_only?` once, with `LITERAL_ENCODE`, into a second node
+  list for expansion. It keeps the lexer's raw literals for `match`,
+  which must accept a literal written either way (phase 3). Every `#`
+  after the first is encoded as `%23`, through
+  `Values.encode_later_number_signs`, which `Template` now delegates to
+  as well. It now returns early when there's no second `#`, which saves
+  both engines about 6 objects per expand of a URI with a fragment;
+  output is unchanged. The specs compare literals in UTF-8, ISO-8859-1,
+  Shift_JIS, binary and US-ASCII, invalid UTF-8, and number signs from
+  literals and values, with the `:regexp` engine, and check both in
+  linear time. Machine mode: 521 failures, from 543.
 - `partial_expand`, including fragments and undefined variables.
 - Target: all expansion specs and the conformance suite pass. Expand is at
   least as fast as `Template`.

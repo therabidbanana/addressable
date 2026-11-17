@@ -1253,17 +1253,9 @@ module Addressable
       result << yield(scanner.rest, nil)
     end
 
-    ##
-    # A URI fragment can't contain "#" (RFC 3986 section 3.5), so expansion
-    # encodes every "#" after the first one, which starts the fragment.
-    #
-    # @param [String] uri The expanded URI.
-    #
-    # @return [String] The URI with any later "#" encoded as "%23".
+    # @see Values.encode_later_number_signs
     def encode_later_number_signs(uri)
-      start = uri.index('#')
-      return uri unless start
-      uri[0..start] + uri[(start + 1)..-1].gsub('#', '%23')
+      Values.encode_later_number_signs(uri)
     end
 
     ##
