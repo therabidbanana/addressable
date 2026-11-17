@@ -401,11 +401,9 @@ class Addressable::Template
           matcher.repeat(self.class.joiner, self.class.joiner_required?) do
             self.class.member_steps(matcher)
           end
-        elsif variables.size > 1 && self.class.allows_reserved? &&
-            variable.varspec != variables.last.varspec
+        elsif self.class.allows_reserved? && !last?(variable)
           # A + or # variable before the last takes its value up to the
-          # next comma. As in Template, a variable is the last one if its
-          # varspec is the same as the last varspec.
+          # next comma.
           matcher.possessive_run(:reserved_no_comma)
         else
           self.class.value_steps(matcher, label_dots)
@@ -436,31 +434,76 @@ class Addressable::Template
           else
             Regexp.escape(leader)
           end
-        values = variables.map do |variable|
-          name = Matching.capture_name(variable.name)
-          "(?<#{name}>#{variable_source(variable, label_dots)})?"
+        groups = variables.each_with_index.map do |variable, position|
+          group_source(variable, position, label_dots)
         end
-        "(?:|#{leader}#{values.join("#{joiner_source}?")})"
+        "(?:|#{leader}#{groups.join("#{joiner_source}?")})"
       end
 
       private
+
+      ##
+      # A variable's group in the regexp, as Template's builder writes it
+      # for a default, / or . expression. The other operators override it.
+      #
+      # @param [Variable] variable The variable.
+      # @param [Integer] position The variable's position in the expression.
+      # @param [TrueClass, FalseClass] label_dots
+      #   Whether a label's value can contain ".".
+      #
+      # @return [String] The regular expression source.
+      def group_source(variable, position, label_dots)
+        if variable.explode && exploded_after?(position)
+          # Exploded values were tried shortest first, and a later exploded
+          # variable can match whatever this one leaves, so once a split
+          # fails, every split where this variable is longer fails too. Of
+          # the values tried, only the leading joiners are shorter than
+          # every value tried before them.
+          group(variable, "(?:#{joiner_source})*")
+        else
+          optional_group(variable, label_dots)
+        end
+      end
+
+      # A group for the variable's value, left out when the value is.
+      def optional_group(variable, label_dots)
+        "#{group(variable, variable_source(variable, label_dots))}?"
+      end
+
+      # A group named after the variable (Matching.capture_name).
+      def group(variable, source)
+        "(?<#{Matching.capture_name(variable.name)}>#{source})"
+      end
+
+      # A variable's value: exploded, or as its operator takes a value.
+      def variable_source(variable, label_dots)
+        if variable.explode
+          member = self.class.member_source
+          "#{member}(?:#{joiner_source}#{member})*"
+        else
+          self.class.value_source(label_dots)
+        end
+      end
 
       # The joiner, escaped for a regular expression.
       def joiner_source
         Regexp.escape(self.class.joiner)
       end
 
-      # A variable's value, as variable_steps matches it.
-      def variable_source(variable, label_dots)
-        if variable.explode
-          member = self.class.member_source
-          "#{member}(?:#{joiner_source}#{member})*"
-        elsif variables.size > 1 && self.class.allows_reserved? &&
-            variable.varspec != variables.last.varspec
-          "#{RESERVED_NO_COMMA}*+"
-        else
-          self.class.value_source(label_dots)
-        end
+      # Whether a variable before the position is exploded.
+      def exploded_before?(position)
+        variables.first(position).any?(&:explode)
+      end
+
+      # Whether a variable after the position is exploded.
+      def exploded_after?(position)
+        variables.drop(position + 1).any?(&:explode)
+      end
+
+      # As in Template, a variable is the last one if its varspec is the
+      # same as the last varspec, so {+a,a} has no variable before the last.
+      def last?(variable)
+        variable.varspec == variables.last.varspec
       end
 
       # A value: unreserved characters, as few as can be first.
@@ -512,6 +555,29 @@ class Addressable::Template
 
       def self.member_source
         "#{RESERVED_NO_COMMA}*+"
+      end
+
+      private
+
+      def group_source(variable, position, label_dots)
+        if exploded_before?(position)
+          # Exploded values were tried longest first, so whatever this
+          # variable could match after an exploded one, that one already
+          # tried matching itself. Only the last unexploded variable can
+          # stop inside a member, where an exploded variable can't.
+          if !variable.explode && last?(variable)
+            "#{group(variable, "#{RESERVED_NO_COMMA}*?")}?"
+          else
+            # 2.9.0 skipped the variable when it couldn't be empty.
+            "(?:#{group(variable, '')}(?!#{RESERVED_NO_COMMA}))?"
+          end
+        elsif !variable.explode && !last?(variable)
+          # A variable before the last takes its value up to the next
+          # comma, as variable_steps matches it.
+          "#{group(variable, "#{RESERVED_NO_COMMA}*+")}?"
+        else
+          optional_group(variable, label_dots)
+        end
       end
     end
     # Reserved expansion after a "#" leader.
@@ -573,6 +639,19 @@ class Addressable::Template
       def self.member_source
         "(?:#{UNRESERVED}|=)*"
       end
+
+      private
+
+      def group_source(variable, position, label_dots)
+        if exploded_before?(position)
+          # Exploded values were tried longest first, so whatever this
+          # variable could match after an exploded one, that one already
+          # tried matching itself, and it's always empty.
+          group(variable, "")
+        else
+          optional_group(variable, label_dots)
+        end
+      end
     end
 
     class OpFormContinuation < Expression
@@ -595,6 +674,24 @@ class Addressable::Template
       # A name, then the value, with as many "=" as it has.
       def self.member_source
         "#{UNRESERVED}*=(?:#{UNRESERVED}*=)*#{UNRESERVED}*?"
+      end
+
+      private
+
+      def group_source(variable, position, label_dots)
+        if position > 0 && variables[position - 1].explode
+          # Whatever this variable could match after an exploded one, that
+          # one already tried matching itself, unless it couldn't: an
+          # exploded member can't be empty, so this variable may only start
+          # right after an empty one.
+          leader = Regexp.escape(self.class.leader)
+          joiner = joiner_source
+          after_empty = "(?<=#{leader}#{joiner}|#{joiner}#{joiner})"
+          value = variable_source(variable, label_dots)
+          "#{group(variable, after_empty + value)}?"
+        else
+          optional_group(variable, label_dots)
+        end
       end
     end
 

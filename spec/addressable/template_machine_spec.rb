@@ -1247,6 +1247,15 @@ describe Addressable::Template::ParsedTemplate, "#to_regexp" do
                  "{.a}?{b}", "{.a:3}"],
     "neighbours that don't take each other's values" => [
       "{a}{?b}", "{+a}{/b}", "{/a}{;b}", "{?a}{&b}"
+    ],
+    # A + # or ; varspec after an exploded one, an exploded default, / or
+    # . varspec with another exploded one after it, and a ? or & varspec
+    # right after an exploded one.
+    "varspecs after an exploded one" => [
+      "{+a*,b}", "{+a*,b*}", "{+a*,b,c}", "{#a,b*,c}", "{+a*,b,b}",
+      "{#a*,b*,c}", "{;a*,b}", "{;a*,b*}", "{;a*,b,c*}",
+      "{a*,b*}", "{/a*,b*}", "{.a*,b*}", "{/a*,b*,c}", "{a*,b*,c*}",
+      "{?a*,b}", "{?a*,b*}", "{&a*,b}", "{?a,b*,c}", "{&a*,b*,c}"
     ]
   }.each do |shape, patterns|
     it "writes the same source as the :regexp engine for #{shape}" do
