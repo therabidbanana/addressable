@@ -23,11 +23,11 @@ require "addressable/template"
 describe Addressable::Template::Lexer do
   machine = Addressable::Template::Machine
 
-  # Each node as a literal string, or [operator class, [name, explode,
+  # Each node as a literal's text, or [operator class, [name, explode,
   # prefix] for each variable].
   def nodes(pattern)
     described_class.new.parse_nodes(pattern).map do |node|
-      next node if node.is_a?(String)
+      next node.text if node.is_a?(Addressable::Template::Machine::Literal)
       [node.class, node.variables.map { |v| [v.name, v.explode, v.prefix] }]
     end
   end

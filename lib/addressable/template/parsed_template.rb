@@ -48,16 +48,6 @@ module Addressable
         @template = template
         @nodes = Lexer.new.parse_nodes(template.pattern)
         @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
-        # Expansion pct-encodes non-ASCII literals (RFC 6570 section 3.1),
-        # and they don't change between calls, so they're encoded here.
-        # Matching keeps @nodes, since it accepts a literal either way.
-        @expansion_nodes = @nodes.map do |node|
-          if node.is_a?(String) && !node.ascii_only?
-            Addressable::URI.encode_component(node, LITERAL_ENCODE)
-          else
-            node
-          end
-        end
       end
 
       # Expands the template into a URI. Literals are pct-encoded, and every
@@ -66,9 +56,7 @@ module Addressable
       # 3.2.1), and literals are pct-encoded ASCII.
       def expand(mapping, processor, normalize_values, &block)
         values = values_for(mapping, processor, normalize_values, block)
-        result = render(@expansion_nodes, Encoding::UTF_8) do |expression|
-          expression.expand(values)
-        end
+        result = render(Encoding::UTF_8) { |node| node.expand(values) }
         Addressable::URI.parse(Values.encode_later_number_signs(result))
       end
 
@@ -79,8 +67,8 @@ module Addressable
       # keeps the pattern's encoding.
       def partial_expand(mapping, processor, normalize_values, &block)
         values = values_for(mapping, processor, normalize_values, block)
-        result = render(@nodes, @template.pattern.encoding) do |expression|
-          expression.partial_expand(values)
+        result = render(@template.pattern.encoding) do |node|
+          node.partial_expand(values)
         end
         Addressable::Template.new(result, engine: @template.engine)
       end
@@ -91,8 +79,8 @@ module Addressable
         mapping = {}
         nodes.each do |node|
           extracted = nil
-          if node.is_a?(String)
-            extracted = scanner.scan(node)
+          if node.is_a?(Machine::Literal)
+            extracted = scanner.scan(node.text)
             raise NoMatch unless extracted
           else
             extracted = node.extract_values(scanner, mapping)
@@ -108,9 +96,7 @@ module Addressable
       # in order, once each.
       def variables
         @nodes.flat_map do |node|
-          if node.is_a?(String)
-            []
-          elsif node.is_a?(Machine::Invalid)
+          if node.is_a?(Machine::Invalid)
             node.names
           else
             node.variables.map(&:name)
@@ -144,13 +130,11 @@ module Addressable
           processor)
       end
 
-      # Joins literals as they are and each expression as the block writes
-      # it, into a string in the given encoding.
-      def render(list, encoding)
+      # Joins each node as the block writes it, into a string in the given
+      # encoding.
+      def render(encoding)
         result = String.new.force_encoding(encoding)
-        list.each do |node|
-          result << (node.is_a?(String) ? node : yield(node))
-        end
+        @nodes.each { |node| result << yield(node) }
         result
       end
 

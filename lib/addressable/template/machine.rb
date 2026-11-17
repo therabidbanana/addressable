@@ -46,6 +46,39 @@ class Addressable::Template
     # ParsedTemplate raises from the first operation that needs a valid
     # pattern, and the names Template#variables still finds in it.
     Invalid = Struct.new(:error_class, :message, :names)
+
+    # Literal text between expressions, as the pattern writes it.
+    class Literal
+      attr_reader :text
+
+      def initialize(text)
+        @text = text
+        # Expansion pct-encodes non-ASCII literals (RFC 6570 section 3.1),
+        # and they don't change between calls, so they're encoded once.
+        @expansion =
+          if text.ascii_only?
+            text
+          else
+            Addressable::URI.encode_component(text, LITERAL_ENCODE)
+          end
+      end
+
+      # The text in an expanded URI, with non-ASCII characters pct-encoded.
+      # A pattern that isn't UTF-8 has its bytes encoded as they are.
+      def expand(_values)
+        @expansion
+      end
+
+      # The text in a partially expanded pattern: as written, since expand
+      # encodes it later.
+      def partial_expand(_values)
+        @text
+      end
+
+      def variables
+        []
+      end
+    end
     LEADERS = {
       '?' => '?',
       '/' => '/',

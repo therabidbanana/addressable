@@ -4,10 +4,11 @@ require "addressable/template/machine"
 # Written as Addressable::Template, not nested, so the body keeps its
 # indentation from before the move.
 class Addressable::Template
-  # Turns a pattern into ParsedTemplate's nodes: literal strings, a Machine
-  # expression for each {...}, and a Machine::Invalid for each token that
-  # isn't valid. It splits the pattern and checks each expression as
-  # Template#check_expressions does, and never raises for an invalid one.
+  # Turns a pattern into ParsedTemplate's nodes: a Machine::Literal for each
+  # run of literal text, a Machine expression for each {...}, and a
+  # Machine::Invalid for each token that isn't valid. It splits the pattern
+  # and checks each expression as Template#check_expressions does, and never
+  # raises for an invalid one.
   #
   # @api private
   class Lexer
@@ -43,7 +44,7 @@ class Addressable::Template
       position = 0
       until scanner.eos?
         if (literal = scanner.scan(LITERAL))
-          nodes << literal
+          nodes << Machine::Literal.new(literal)
           position += literal.length
         elsif scanner.skip(CLOSE_BRACE)
           nodes << Machine::Invalid.new(

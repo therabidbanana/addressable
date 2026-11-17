@@ -654,6 +654,39 @@ describe Addressable::Template::Machine::Variable, "#varspec" do
   end
 end
 
+describe Addressable::Template::Machine::Literal do
+  def literal(text)
+    described_class.new(text)
+  end
+
+  it "keeps its text as the pattern wrote it" do
+    expect(literal("é/%C3%A9").text).to eq("é/%C3%A9")
+  end
+
+  it "expands to ASCII text as it is" do
+    text = "a/b%41?"
+    expect(literal(text).expand(nil)).to equal(text)
+  end
+
+  it "expands with non-ASCII characters pct-encoded" do
+    expect(literal("é/%C3%A9 x").expand(nil)).to eq("%C3%A9/%C3%A9 x")
+  end
+
+  it "expands the bytes of text in another encoding as they are" do
+    text = "a\xE9".dup.force_encoding(Encoding::ISO_8859_1)
+    expect(literal(text).expand(nil)).to eq("a%E9")
+  end
+
+  it "partially expands to its text as written" do
+    text = "é/"
+    expect(literal(text).partial_expand(nil)).to equal(text)
+  end
+
+  it "has no variables" do
+    expect(literal("a").variables).to eq([])
+  end
+end
+
 describe Addressable::Template, "with the :machine engine, literals" do
   def outcome(engine, pattern, mapping)
     uri = Addressable::Template.new(pattern, engine: engine).expand(mapping)

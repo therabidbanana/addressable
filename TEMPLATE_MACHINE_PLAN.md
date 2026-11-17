@@ -121,9 +121,8 @@ machine-mode failures. Each phase lowers them; record the count in
   `ParsedTemplate#match` and `Machine::Expression#extract_values` (with
   `Variable#unencode`) are the 2020 matcher that phase 3 replaces; it
   ignores whatever follows the last node, and raises
-  `NotImplementedError` for a processor. `ParsedTemplate` keeps the
-  lexer's raw literals in `@nodes` for matching (`@expansion_nodes` has
-  them encoded for expansion).
+  `NotImplementedError` for a processor. Literals are `Machine::Literal`
+  nodes, which keep the text as written and its pct-encoded expansion.
 - `spec/addressable/template_lexer_spec.rb`: compares the machine's
   errors and `variables` with the `:regexp` engine's.
 - `spec/addressable/template_machine_spec.rb`: unit specs for `Values`
@@ -804,6 +803,32 @@ Phase 2 is complete.
   full suite passes in both IDNA modes, `matching.rb` is fully covered,
   and `:regexp` `#match` time is unchanged (about 30, 45 and 53 µs on
   three templates, before and after).
+- **Decided: the nodes describe how they match.** Rather than a matcher
+  that switches on the operator, each node gives its part of the search
+  as steps (a literal written either way; a run of a character class,
+  shortest first, longest first or possessive; an optional joiner; a
+  capture), and `Expression`'s subclasses supply the operator's parts
+  (character class, value shape, exploded member, required joiner) as
+  class methods, as they supply `leader` and `joiner`. A small
+  `Template::Matcher`, which knows nothing about operators, runs the
+  steps for the whole template. It searches the choices in order and
+  remembers each (step, position) that failed, so nothing is searched
+  twice, and it ends an exploded value's repeat that matched nothing
+  rather than failing it, as Onigmo does (that order gives `{/a*}` on
+  `/a/a` the oracle's end positions 0, 1, 3, 4, 2). `label_takes_dots?`
+  moves to `Matching` for both engines. The matcher piece is split in
+  two: literal nodes first, then the steps and the matcher.
+- **Done: literal nodes.** Literals are `Machine::Literal` nodes rather
+  than `String`s. A literal keeps its text as written, for
+  `partial_expand` and matching, and its expansion with non-ASCII
+  characters pct-encoded, worked out once. Literals and expressions both
+  answer `expand` and `partial_expand`, so `ParsedTemplate` renders every
+  node the same way, and its second node list (`@expansion_nodes`) is
+  gone. No behaviour change: the full suite passes in both IDNA modes,
+  and machine mode is still 651. Objects per call are unchanged, a new
+  template makes at most one more object (one per literal, less the
+  second list), and over two profile runs each, expand and
+  `partial_expand` times are within the runs' noise.
 - Replace `extract_values` with a matcher that never backtracks
   exponentially. Each expression's possible end positions come from the
   literal that follows and the operator's character set. Search the
