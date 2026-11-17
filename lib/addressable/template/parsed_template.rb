@@ -28,12 +28,8 @@ module Addressable
     # operations to its own ParsedTemplate, which parses the pattern once
     # into literal and expression nodes (see Lexer and Machine), then
     # expands and matches by walking those nodes instead of building a
-    # regular expression.
-    #
-    # It isn't finished. An operation or argument it doesn't support yet
-    # raises NotImplementedError rather than falling back to Template's
-    # regexp code, so the specs run with TEMPLATE_MODE=machine list exactly
-    # what's left to build.
+    # regular expression. Only Template#to_regexp and #source build one,
+    # with Template's builder, when they're called.
     #
     # @api private
     class ParsedTemplate
@@ -121,8 +117,20 @@ module Addressable
         {}
       end
 
+      # Maps each variable name to the positions of its varspecs, counting
+      # every varspec in the pattern from 1, as Template's regexp numbers its
+      # groups: one per varspec, in order. Names are as the pattern writes
+      # them, not Template's group names.
       def named_captures
-        unsupported("named_captures")
+        captures = {}
+        position = 0
+        nodes.grep(Machine::Expression).each do |expression|
+          expression.variables.each do |variable|
+            position += 1
+            (captures[variable.name] ||= []) << position
+          end
+        end
+        captures
       end
 
       private
@@ -198,11 +206,6 @@ module Addressable
         result = String.new.force_encoding(encoding)
         @nodes.each { |node| result << yield(node) }
         result
-      end
-
-      def unsupported(operation)
-        raise NotImplementedError,
-          "the :machine template engine doesn't support #{operation} yet"
       end
     end
   end

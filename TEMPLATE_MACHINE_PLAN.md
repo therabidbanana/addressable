@@ -423,6 +423,12 @@ the compatibility rules in `CLAUDE.md`. The machine then follows the fix.
   ("incompatible character encodings: ISO-8859-1 and UTF-8") from every
   `match`, and from `freeze`. `Matcher#literal` and `#match` raise the
   same errors.
+- **On Ruby 2.3, `named_captures` merges `{42}` with `{__42__}`.** There
+  a group name can't start with a digit, so `{42}`'s group is `__42__`,
+  the same as `{__42__}`'s, and `{42}{__42__}` gives `{"42" => [1, 2]}`.
+  The machine gives `{"42" => [1], "__42__" => [2]}`, and doesn't follow
+  this one, since it merges two different variables; no spec covers it.
+  Ruby 2.4 and later name the group `.42`, which no variable can have.
 
 ## Where the branch stands
 
@@ -474,6 +480,7 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, after the oracle rework | 2,197 | 651 (363, plus the 288 new oracle examples) |
 | `TEMPLATE_MODE=machine`, after the matcher | 2,198 | 60 (`named_captures` 47, processors 13) |
 | `TEMPLATE_MODE=machine`, end of phase 3 (processors) | 2,198 | 47 (all `named_captures`) |
+| `TEMPLATE_MODE=machine`, after `named_captures` | 2,198 | 0 |
 
 Until the oracle rework, the 240 pending were the reference-oracle
 examples, skipped in machine mode because they test the regexp builder
@@ -1039,14 +1046,19 @@ Phase 3 is complete, apart from weighing the optimization list.
 
 ### 4. Regexp API
 
-- `named_captures` from the nodes, with no regexp: it maps each variable
-  name to the 1-based positions of its occurrences, in template order
-  (`{/a,b*}{?c,a}` gives `{"a" => [1, 4], "b" => [2], "c" => [3]}`).
-  It uses variable names as written, so `{42}` gives `{"42" => [1]}`,
-  not the group name `.42`. For a malformed pattern it raises
-  `Template`'s error (`ParsedTemplate#nodes`), as `Template`'s does from
-  `to_regexp`; `template_spec.rb`'s "raises ... when building a regexp"
-  examples check all three methods.
+- Decided at the start of phase 4: the matcher optimizations wait until
+  after it, and a frozen machine template's `to_regexp` is fixed by
+  building the regexp in `freeze`, as `:regexp` does.
+- **Done: `named_captures` from the nodes, with no regexp.** It maps
+  each variable name to the 1-based positions of its occurrences, in
+  template order (`{/a,b*}{?c,a}` gives `{"a" => [1, 4], "b" => [2],
+  "c" => [3]}`), since `Template`'s regexp has one named group per
+  varspec, in order. It uses variable names as written, so `{42}` gives
+  `{"42" => [1]}`, not the group name `.42`. For a malformed pattern it
+  raises `Template`'s error (`ParsedTemplate#nodes`). With it,
+  `ParsedTemplate` has no `NotImplementedError` left, and `unsupported`
+  is gone. Specs in `template_machine_spec.rb` compare 31 patterns and
+  invalid ones with `:regexp`. Machine mode: 0 failures, from 47.
 - `to_regexp` and `source`: build the regexp only when one of them is
   called, once per template, with the existing builder, so the result is
   exactly what `Template` gives now. `expand`, `match`, and `extract`

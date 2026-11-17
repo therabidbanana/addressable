@@ -240,10 +240,8 @@ describe Addressable::Template, "engine" do
       )
     end
 
-    it "doesn't have #named_captures yet" do
-      expect { template.named_captures }.to raise_error(
-        NotImplementedError, /\bnamed_captures\b/
-      )
+    it "has #named_captures" do
+      expect(template.named_captures).to eq("a" => [1], "b" => [2])
     end
 
     it "builds the same regexp as the :regexp engine" do

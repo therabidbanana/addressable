@@ -1140,3 +1140,59 @@ describe Addressable::Template, "with the :machine engine, #match" do
     expect_same("{1a}/{2b*}", "x/y,z")
   end
 end
+
+describe Addressable::Template, "with the :machine engine, #named_captures" do
+  # The named captures, or the error.
+  def named_captures(engine, pattern)
+    Addressable::Template.new(pattern, engine: engine).named_captures
+  rescue StandardError => error
+    [error.class, error.message]
+  end
+
+  # Every operator, with and without prefixes and explode, names used more
+  # than once, and the shapes Template's builder writes differently: + and
+  # # lists with nothing after them, values a later expression takes over,
+  # and processor-free runs of exploded variables.
+  [
+    "", "/a/b", "{a}", "{a,b}", "{a,b,a}", "{/a,b*}{?c,a}",
+    "{+a}", "{+a,b}", "{+a,b}/", "{+a,b},", "{#a,b*}", "{+a}{b}",
+    "{.a}", "{.a,b}.json", "{/a*,b}", "{a*,b*}",
+    "{;a,b}", "{;a*,b}", "{?a,b}", "{?a*,b}", "{&a,b}",
+    "{a:3}/{a}", "{a}{a}{a}",
+    "{42}", "{1a}/{2b*}", "/{42}/{_42}", "{a.b}", "{a%20b}",
+    "{x.y}/{%41}{?q}", "{%41}{%41}",
+    'http://example.com/{a}/{b}{?c*}#{d}'
+  ].each do |pattern|
+    it "gives the same named captures as :regexp for #{pattern.inspect}" do
+      expect(named_captures(:machine, pattern)).to eq(
+        named_captures(:regexp, pattern)
+      )
+    end
+  end
+
+  it "numbers each varspec, in template order" do
+    template = Addressable::Template.new("{/a,b*}{?c,a}", engine: :machine)
+    expect(template.named_captures).to eq(
+      "a" => [1, 4], "b" => [2], "c" => [3]
+    )
+  end
+
+  it "raises for a template that isn't valid like the :regexp engine" do
+    ["{a", "a}", "{a}{!b}", "{a b}", "{a:0}", "{{a}}"].each do |pattern|
+      expect(named_captures(:machine, pattern)).to eq(
+        named_captures(:regexp, pattern)
+      ), "for #{pattern.inspect}"
+    end
+  end
+
+  it "doesn't build a regexp" do
+    template = Addressable::Template.new("{/a*}{?b}", engine: :machine)
+    expect(Regexp).not_to receive(:new)
+    expect(template.named_captures).to eq("a" => [1], "b" => [2])
+  end
+
+  it "gives the named captures of a frozen template" do
+    template = Addressable::Template.new("{a}{b}", engine: :machine).freeze
+    expect(template.named_captures).to eq("a" => [1], "b" => [2])
+  end
+end
