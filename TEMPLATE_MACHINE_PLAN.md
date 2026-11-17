@@ -100,22 +100,67 @@ Performance (Ruby 3.3.1, compared with `:regexp`):
 ### Matcher speed
 
 Bring the reused-template cases under 2×, keeping only changes that
-stay easy to read. Ideas, roughly from cheapest to most involved:
+stay easy to read, and explaining each in plain words where it's used.
 
-- Have states push their next attempts straight onto the stack, rather
-  than returning an array.
-- Find a run's extent with `String#index` or a fixed `StringScanner`
-  pattern, so the work happens in C.
-- Reject URIs that can't match before searching (a trailing literal,
-  bytes the template can't end with).
-- Look one run ahead rather than one character. In `{?foo,bar}`, `bar`
-  can only start where `bar=` follows.
-- Speed up `Matching.match_data`, which both engines share and which is
-  the biggest single cost of a match.
-- Measure with YJIT.
+Where the time goes: the cost is per character. In `{?foo,bar}`, the
+reference regexp lets `bar` start right after any character of `foo`'s
+value, with no `&`, so each character of a query value tries about six
+states, at about 500 ns each. `Matching.match_data`, which both engines
+share, is the biggest single cost of a match (22–47 µs). Adversarial
+payloads grow linearly, but take 10–600× `Template`'s absolute time on
+Ruby 3.3, where regex memoization helps `Template`.
 
-Each needs adversarial payloads that get past it, so the profile can
-still show linear growth.
+Ideas, with what each bought when it was tried in phase 3 (an earlier
+step-interpreter matcher, so the numbers are a guide only):
+
+- **States push their next attempts straight onto the stack**, last
+  choice first, rather than returning an array. That saves an allocation
+  per state. Estimated 10–15%; not tried.
+- **Search for the literal after a run** with `String#index` (on a binary
+  copy for non-ASCII URIs, so offsets are bytes), and only try where it
+  occurs. With the next idea: reserved 41 → 33 µs, path 26 → 22 µs, for
+  the matcher alone.
+- **Fixed run patterns** (`(?:[set]|%HH|[^\x00-\x7F])*+`, one per
+  character set, compiled at load) with `StringScanner#skip`, so a run's
+  extent is found in C. They're possessive, so they can't backtrack.
+  They could also define `CharacterSet` as small named regexps that read
+  as what they mean.
+- **End checks**, since a match must use the whole URI: a trailing literal
+  must end it (tried; catches templates that end in a literal), the last
+  byte must be one the template can end on, every byte must be one it
+  can take, and a branch that leaves fewer bytes than the rest needs
+  can't finish.
+- **Look one run ahead rather than one character** (RE2's idea in
+  miniature). In `{?foo,bar}`, `bar` can only start where `bar=` follows.
+  Would likely bring the reused cases under 2×, at the cost of another
+  concept to explain. Not tried.
+- **Interpreter tricks**, measured on the step interpreter: symbols in
+  `case`/`when` so it compiles to a jump table (15–25%), one step per run
+  with a tight loop (reserved 51 → 41 µs), `while` rather than `loop`
+  (about 12%), a bit-packed memo string, and joining literal units (a
+  25-byte literal 5 µs → 0.08 µs; kept). First-byte sets as arrays
+  rather than Integer bitmasks: lookups take 11 rather than 40 ns, but
+  they're slow to build.
+- **RE2's backward pass:** work out, for every state and position,
+  whether the end is reachable, then walk forward without backtracking.
+  Its cost is predictable, but it fills the whole states × positions
+  table every time, and it's a second engine to read. Not tried.
+- **Speed up `Matching.match_data`.** It helps both engines, so it
+  doesn't close the gap between them.
+- **Measure with YJIT**, which this Ruby build doesn't have. Rails 7.1+
+  turns it on by default on Ruby 3.3, so measure the matcher with it in
+  CI.
+
+Ruled out: normalizing the URI before matching. `URI#normalize` does
+handle pct-encoding, but it changes results (it lowercases the host, and
+a literal `%41` stops matching once `%41` becomes `A`), and it costs
+about 50 µs per URI.
+
+Prefilters and shortcuts flatter the profile's adversarial payloads, so
+each one needs payloads that get past it, so the profile can still show
+linear growth. A run cache that only helped forward searches once made
+`{;a,b}` quadratic; the linear-time checks in `template_machine_spec.rb`
+catch that kind of mistake now.
 
 ### Simplification
 
