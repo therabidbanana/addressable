@@ -205,101 +205,172 @@ module Addressable
       #   isn't the pattern as written.
       def self.match_data(template, uri, expansions, matched, processor)
         mapping = {}
-        unparsed_values = matched.captures
-
         if uri.to_str == template.pattern
           return Addressable::Template::MatchData.new(uri, template, mapping)
-        elsif expansions.size > 0
-          index = 0
-          expansions.each do |expansion|
-            _, operator, varlist = *expansion.match(EXPRESSION)
-            varspecs = varlist.split(',')
-            varspecs.each_with_index do |varspec, position|
-              _, name, modifier = *varspec.match(VARSPEC)
-              mapping[name] ||= nil
-              case operator
-              when nil, '+', '#', '/', '.'
-                unparsed_value = unparsed_values[index]
-                name = varspec[VARSPEC, 1]
-                value = unparsed_value
-                if value && modifier == '*'
-                  # Members of the default, + and # operators are joined with
-                  # a comma. A member can be empty, but joiners at the end of
-                  # the value can be the ones before the later variables with
-                  # a value, when those start right where it ends.
-                  value = value.split(JOINERS.fetch(operator, ','), -1)
-                  # Right after the leader, an empty value is one empty
-                  # member.
-                  if value.empty? && position == 0 && LEADERS.key?(operator)
-                    value = ['']
-                  end
-                  reached = matched.end(index + 1)
-                  (1...(varspecs.size - position)).each do |ahead|
-                    later = unparsed_values[index + ahead]
-                    exploded = varspecs[position + ahead][VARSPEC, 2] == '*'
-                    # An empty list is undefined, and has no joiner.
-                    next if later.nil? || (exploded && later.empty?)
-                    group = index + ahead + 1
-                    break unless matched.begin(group) == reached &&
-                      value.last == ''
-                    value.pop
-                    reached = matched.end(group)
-                  end
-                end
-              when ';', '?', '&'
-                if modifier == '*'
-                  if unparsed_values[index]
-                    pairs = unparsed_values[index].split(JOINERS[operator])
-                    pairs = pairs.map do |pair|
-                      key, val = pair.split('=', 2)
-                      [key, val || ""]
-                    end
-                    # An exploded list repeats the variable's name, where an
-                    # associative array uses its own keys.
-                    if !pairs.empty? && pairs.all? { |key, _| key == name }
-                      value = pairs.map { |_, val| val }
-                    else
-                      value = pairs.inject({}) do |acc, (key, val)|
-                        acc[key] = val
-                        acc
-                      end
-                    end
-                  end
-                else
-                  if (unparsed_values[index])
-                    name, value = unparsed_values[index].split('=')
-                    value = "" if value.nil?
-                  end
-                end
+        end
+        return nil if expansions.empty?
+
+        captured = matched.captures
+        index = 0
+        expansions.each do |expansion|
+          _, operator, varlist = *expansion.match(EXPRESSION)
+          varspecs = varlist.split(',')
+          varspecs.each_with_index do |varspec, position|
+            _, name, modifier = *varspec.match(VARSPEC)
+            # Every varspec's name is in the mapping, even without a value.
+            mapping[name] ||= nil
+            value = captured[index]
+            case operator
+            when nil, '+', '#', '/', '.'
+              if value && modifier == '*'
+                value = exploded_members(operator, value, position == 0)
+                drop_joiners_before_later_values(value,
+                  varspecs.drop(position + 1), captured, matched, index + 1)
               end
-              if processor != nil && processor.respond_to?(:restore)
-                value = processor.restore(name, value)
-              end
-              if processor == nil
-                if value.is_a?(Hash)
-                  value = value.inject({}){|acc, (k, v)|
-                    acc[Addressable::URI.unencode_component(k)] =
-                      Addressable::URI.unencode_component(v)
-                    acc
-                  }
-                elsif value.is_a?(Array)
-                  value = value.map{|v| Addressable::URI.unencode_component(v) }
-                else
-                  value = Addressable::URI.unencode_component(value)
-                end
-              end
-              if !mapping.has_key?(name) || mapping[name].nil?
-                # Doesn't exist, set to value (even if value is nil)
-                mapping[name] = value
-              end
-              index = index + 1
+            when ';', '?', '&'
+              name, value = named_value(operator, name, modifier == '*', value)
             end
+            value = restore(name, value, processor)
+            # A name that appears again keeps its first value, unless that
+            # was nil.
+            mapping[name] = value if mapping[name].nil?
+            index += 1
           end
-          return Addressable::Template::MatchData.new(uri, template, mapping)
-        else
-          return nil
+        end
+        Addressable::Template::MatchData.new(uri, template, mapping)
+      end
+
+      ##
+      # An exploded value's members, for a default, +, #, / or .
+      # expression. A member can be empty.
+      #
+      # @param [String] operator The expression's operator, or nil.
+      # @param [String] value The value captured for the varspec.
+      # @param [TrueClass, FalseClass] first
+      #   Whether the varspec is the expression's first.
+      #
+      # @return [Array<String>] The members.
+      def self.exploded_members(operator, value, first)
+        members = value.split(JOINERS.fetch(operator, ','), -1)
+        # Right after the leader, an empty value is one empty member.
+        members = [''] if members.empty? && first && LEADERS.key?(operator)
+        members
+      end
+      private_class_method :exploded_members
+
+      ##
+      # Removes the empty members at the end of an exploded value that are
+      # really the joiners before later varspecs' values in the same
+      # expression: one for each later value that starts right where the
+      # value, or the later value before it, ends.
+      #
+      # @param [Array<String>] members The value's members, changed in place.
+      # @param [Array<String>] later_varspecs
+      #   The varspecs after the value's in its expression.
+      # @param [Array<String, nil>] captured The value captured for each
+      #   varspec, in order.
+      # @param [#begin, #end] matched Where each group begins and ends.
+      # @param [Integer] group The value's group, 1 for the first varspec.
+      def self.drop_joiners_before_later_values(members, later_varspecs,
+                                                captured, matched, group)
+        reached = matched.end(group)
+        later_varspecs.each_with_index do |varspec, offset|
+          later_group = group + offset + 1
+          later = captured[later_group - 1]
+          # An empty list is undefined, and has no joiner.
+          next if later.nil? || (varspec[VARSPEC, 2] == '*' && later.empty?)
+          break unless matched.begin(later_group) == reached &&
+            members.last == ''
+          members.pop
+          reached = matched.end(later_group)
         end
       end
+      private_class_method :drop_joiners_before_later_values
+
+      ##
+      # A ;, ? or & expression's value, and the name it goes in the mapping
+      # under.
+      #
+      # @param [String] operator The expression's operator.
+      # @param [String] name The varspec's name.
+      # @param [TrueClass, FalseClass] exploded Whether the varspec is.
+      # @param [String, nil] value The value captured for the varspec.
+      #
+      # @return [Array] The name and the value.
+      def self.named_value(operator, name, exploded, value)
+        if value.nil?
+          [name, nil]
+        elsif exploded
+          [name, named_members(operator, name, value)]
+        else
+          # The name is the one the URI gives, which may not be the
+          # varspec's.
+          uri_name, value = value.split('=')
+          [uri_name, value || ""]
+        end
+      end
+      private_class_method :named_value
+
+      ##
+      # An exploded ;, ? or & value's key=value pairs: a list if every key
+      # is the variable's name, as an exploded list repeats it, and an
+      # associative array otherwise.
+      #
+      # @param [String] operator The expression's operator.
+      # @param [String] name The varspec's name.
+      # @param [String] value The value captured for the varspec.
+      #
+      # @return [Array<String>, Hash] The list or associative array.
+      def self.named_members(operator, name, value)
+        pairs = value.split(JOINERS[operator]).map do |pair|
+          key, member = pair.split('=', 2)
+          [key, member || ""]
+        end
+        if !pairs.empty? && pairs.all? { |key, _| key == name }
+          pairs.map { |_, member| member }
+        else
+          Hash[pairs]
+        end
+      end
+      private_class_method :named_members
+
+      ##
+      # The value as the processor restores it, or pct-decoded when there's
+      # no processor. A processor without a restore method leaves it as it
+      # is.
+      #
+      # @param [String] name The name the value goes under.
+      # @param [String, Array, Hash, nil] value The value.
+      # @param [#restore, nil] processor The processor, if any.
+      #
+      # @return [Object] The restored value.
+      def self.restore(name, value, processor)
+        if processor.nil?
+          decode(value)
+        elsif processor.respond_to?(:restore)
+          processor.restore(name, value)
+        else
+          value
+        end
+      end
+      private_class_method :restore
+
+      # A value with its pct-encoded triplets decoded, and an associative
+      # array's keys as well.
+      def self.decode(value)
+        case value
+        when Hash
+          value.each_with_object({}) do |(key, member), decoded|
+            decoded[Addressable::URI.unencode_component(key)] =
+              Addressable::URI.unencode_component(member)
+          end
+        when Array
+          value.map { |member| Addressable::URI.unencode_component(member) }
+        else
+          Addressable::URI.unencode_component(value)
+        end
+      end
+      private_class_method :decode
     end
   end
 end
