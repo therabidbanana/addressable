@@ -71,11 +71,15 @@ class Addressable::Template
     }.freeze
 
     class TaggedValue < Struct.new(:name, :value, :keypairs)
+      # The value, or its members, for Expression#joined_values to join. A
+      # processor's transform result can hold anything, so members are left
+      # for Array#join to flatten and convert, as Template's join_values
+      # leaves them.
       def to_str
         if value.is_a?(Array)
-          value.map(&:to_str)
+          value
         else
-          value.to_str
+          value.to_s
         end
       end
     end
@@ -146,21 +150,26 @@ class Addressable::Template
 
 
       ##
-      # Pct-encodes a value and tags it for joining into its expression.
+      # Pct-encodes this variable's value and tags it for joining into its
+      # expression. A processor's transform result, from Values, replaces
+      # the pct-encoded value.
       #
-      # @param [String, Array, Hash, nil] value
-      #   The variable's value from Values: already converted,
-      #   type-checked and normalized, or nil if it's undefined.
+      # @param [Values] values
+      #   The expansion's values, which give this variable's value already
+      #   converted, type-checked and normalized, or nil if it's undefined.
       #
       # @return [TaggedValue, nil] The tagged value, or nil if it's undefined.
-      def expand_with(value)
+      def expand_with(values)
+        value = values[name]
         return if value.nil?
-        # RFC 6570 section 2.4.1
+        # RFC 6570 section 2.4.1. Template checks this before validating.
         if @prefix && (Hash === value || Array === value)
           raise InvalidTemplateValueError,
             "The prefix modifier :#{@prefix} can't be applied to the " \
             "list or associative array #{name.inspect}."
         end
+        values.validate(name, value)
+        return transformed(values.transform(name, value)) if values.transforms?
         # Handle percent escaping
         if @op.allows_reserved?
           encode_map = WITH_RESERVED
@@ -206,6 +215,17 @@ class Addressable::Template
         end
         op.tagged_value.new(name, transformed_value, keypairs)
       end
+
+      private
+
+      # A processor's transform result, which isn't pct-encoded. As
+      # Template's join_values does, an array whose first member has an "="
+      # is joined as key=value pairs.
+      def transformed(value)
+        keypairs = value.is_a?(Array) && value.first.is_a?(String) &&
+          value.first.include?("=")
+        op.tagged_value.new(name, value, keypairs)
+      end
     end
 
     class Expression
@@ -229,7 +249,7 @@ class Addressable::Template
       # @param [Values] values The template's values.
       def join_expansions(values)
         list = variables.map do |variable|
-          variable.expand_with(values[variable.name])
+          variable.expand_with(values)
         end
         list.compact!
         unless list.empty?

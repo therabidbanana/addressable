@@ -24,6 +24,77 @@ describe Addressable::Template::Values do
     Addressable::Template::Values.new(mapping, normalize_values)
   end
 
+  context "with a processor" do
+    def processor(methods)
+      calls = @calls = []
+      object = Object.new
+      methods.each do |method_name, result|
+        object.define_singleton_method(method_name) do |name, value|
+          calls << [method_name, name, value]
+          result
+        end
+      end
+      object
+    end
+
+    def with(methods, normalize_values = true)
+      Addressable::Template::Values.new({}, normalize_values, processor(methods))
+    end
+
+    it "validates nothing without a processor" do
+      expect(lookup({}).validate("a", "x")).to be_nil
+    end
+
+    it "validates nothing with a processor that doesn't validate" do
+      expect(with(transform: "y").validate("a", "x")).to be_nil
+      expect(@calls).to eq([])
+    end
+
+    it "gives validate the name and value" do
+      with(validate: true).validate("a", "x")
+      expect(@calls).to eq([[:validate, "a", "x"]])
+    end
+
+    it "raises InvalidTemplateValueError for a value that doesn't validate" do
+      expect { with(validate: false).validate("a", "x") }.to raise_error(
+        Addressable::Template::InvalidTemplateValueError,
+        "a=x is an invalid template value."
+      )
+    end
+
+    it "shows a list that doesn't validate with inspect" do
+      expect { with(validate: nil).validate("a", ["x", "y"]) }.to raise_error(
+        Addressable::Template::InvalidTemplateValueError,
+        "a=#{["x", "y"].inspect} is an invalid template value."
+      )
+    end
+
+    it "transforms only with a processor that has transform" do
+      expect(lookup({}).transforms?).to be false
+      expect(with(validate: true).transforms?).to be false
+      expect(with(transform: "y").transforms?).to be true
+    end
+
+    it "gives transform the name and value and normalizes its result" do
+      expect(with(transform: "é").transform("a", "x")).to eq("é")
+      expect(@calls).to eq([[:transform, "a", "x"]])
+    end
+
+    it "doesn't normalize a transform result when normalize_values is false" do
+      expect(with({transform: "é"}, false).transform("a", "x")).
+        to eq("é")
+    end
+
+    it "calls the processor each time, without caching" do
+      values = with(validate: true, transform: "y")
+      2.times do
+        values.validate("a", "x")
+        values.transform("a", "x")
+      end
+      expect(@calls.size).to eq(4)
+    end
+  end
+
   it "takes a mapping with symbol keys" do
     expect(lookup(a: "x")["a"]).to eq("x")
   end
@@ -181,21 +252,143 @@ context "valid Template::Machine::Variable(explode: false)" do
     Addressable::Template::Machine::Variable.new(op: op, name: name)
   }
 
-  context '#expand_with(value)' do
+  def expand(value)
+    subject.expand_with(Addressable::Template::Values.new({name => value}, true))
+  end
+
+  context '#expand_with(values)' do
     it "gives nil for an undefined value" do
-      expect(subject.expand_with(nil)).to be_nil
+      expect(expand(nil)).to be_nil
     end
 
     it "does percent encoding for strings with reserved characters" do
-      expect(subject.expand_with("hello world!")).to include(name, "hello%20world%21")
+      expect(expand("hello world!")).to include(name, "hello%20world%21")
     end
 
     it "can do a combination of normalize and join" do
-      expect(subject.expand_with(["a", "b", "hello world!"])).to include(name, "a,b,hello%20world%21")
-      expect(subject.expand_with({"foo" => "bar", "baz" => "qux"})).to include(name, "foo,bar,baz,qux")
+      expect(expand(["a", "b", "hello world!"])).to include(name, "a,b,hello%20world%21")
+      expect(expand({"foo" => "bar", "baz" => "qux"})).to include(name, "foo,bar,baz,qux")
     end
   end
 
+end
+
+describe Addressable::Template, "with the :machine engine, #expand with a processor" do
+  # The result, or the error's class and message, and the processor's calls.
+  def outcome(engine, pattern, mapping, processor_methods, normalize = true)
+    calls = []
+    processor = Object.new
+    processor_methods.each do |method_name, body|
+      processor.define_singleton_method(method_name) do |name, value|
+        calls << [method_name, name, value]
+        body.call(name, value)
+      end
+    end
+    template = Addressable::Template.new(pattern, engine: engine)
+    result = begin
+      template.expand(mapping, processor, normalize).to_str
+    rescue StandardError => error
+      [error.class, error.message]
+    end
+    [result, calls]
+  end
+
+  def expect_same(pattern, mapping, processor_methods, normalize = true)
+    expected = outcome(:regexp, pattern, mapping, processor_methods, normalize)
+    expect(outcome(:machine, pattern, mapping, processor_methods, normalize)).
+      to eq(expected)
+  end
+
+  upcase = {transform: lambda { |_name, value| value.upcase }}
+  ["", "+", "#", "/", ".", ";", "?", "&"].each do |operator|
+    it "transforms without encoding in {#{operator}a,b}" do
+      expect_same("{#{operator}a,b}", {"a" => "x y/z", "b" => "w"}, upcase)
+    end
+
+    it "transforms an array result in {#{operator}a}" do
+      expect_same("{#{operator}a}", {"a" => "x"},
+        transform: lambda { |_name, _value| ["p q", "r"] })
+    end
+
+    it "transforms an exploded array result in {#{operator}a*}" do
+      expect_same("{#{operator}a*}", {"a" => "x"},
+        transform: lambda { |_name, _value| ["p", "r"] })
+    end
+
+    it "joins a transformed array of pairs in {#{operator}a}" do
+      expect_same("{#{operator}a}", {"a" => "x"},
+        transform: lambda { |_name, _value| ["p=1", "r=2"] })
+    end
+
+    it "transforms a list value in {#{operator}a}" do
+      expect_same("{#{operator}a}", {"a" => ["x", "y"]},
+        transform: lambda { |_name, value| value.map(&:upcase) })
+    end
+  end
+
+  it "gives transform the normalized value" do
+    expect_same("{a}", {"a" => "é"}, upcase)
+  end
+
+  it "gives transform the value as it is when normalize_values is false" do
+    expect_same("{a}", {"a" => "é"}, upcase, false)
+  end
+
+  it "normalizes the transformed value" do
+    expect_same("{a}", {"a" => "x"},
+      transform: lambda { |_name, _value| "é" })
+  end
+
+  it "doesn't normalize the transformed value when normalize_values is false" do
+    expect_same("{a}", {"a" => "x"},
+      {transform: lambda { |_name, _value| "é" }}, false)
+  end
+
+  [42, nil, :sym, ["a", ["b", "c"]]].each do |result|
+    it "joins a transform result of #{result.inspect}" do
+      expect_same("{a}{/a}", {"a" => "x"},
+        transform: lambda { |_name, _value| result })
+    end
+  end
+
+  it "validates with the normalized value" do
+    expect_same("{a}", {"a" => "é"},
+      validate: lambda { |_name, _value| true })
+  end
+
+  ["bad", ["x", "y"], {"k" => "v"}].each do |value|
+    it "raises for a value of #{value.inspect} that doesn't validate" do
+      expect_same("{a}", {"a" => value},
+        validate: lambda { |_name, _value| false })
+    end
+  end
+
+  it "validates before transforming, for each variable in order" do
+    expect_same("{a,b}{+a}", {"a" => "x", "b" => "y"},
+      validate: lambda { |_name, _value| true },
+      transform: lambda { |_name, value| value.upcase })
+  end
+
+  it "stops at the first value that doesn't validate" do
+    expect_same("{a}{b}", {"a" => "x", "b" => "y"},
+      validate: lambda { |name, _value| name != "a" },
+      transform: lambda { |_name, value| value.upcase })
+  end
+
+  it "skips the processor for an undefined variable" do
+    expect_same("{a}{b}", {"b" => "y"},
+      validate: lambda { |_name, _value| true },
+      transform: lambda { |_name, value| value.upcase })
+  end
+
+  it "raises for a prefix on a list before validating" do
+    expect_same("{a:1}", {"a" => ["x"]},
+      validate: lambda { |_name, _value| true })
+  end
+
+  it "encodes as usual with a processor that does neither" do
+    expect_same("{a}", {"a" => "x y"}, {})
+  end
 end
 
 context "Template::Machine::Variable with a prefix" do
@@ -205,12 +398,16 @@ context "Template::Machine::Variable with a prefix" do
     )
   }
 
+  def expand(value)
+    subject.expand_with(Addressable::Template::Values.new({"x" => value}, true))
+  end
+
   it "truncates a string" do
-    expect(subject.expand_with("abcdef").value).to eq("abc")
+    expect(expand("abcdef").value).to eq("abc")
   end
 
   it "raises InvalidTemplateValueError for a list" do
-    expect { subject.expand_with(["a", "b"]) }.to raise_error(
+    expect { expand(["a", "b"]) }.to raise_error(
       Addressable::Template::InvalidTemplateValueError,
       "The prefix modifier :3 can't be applied to the list or associative " \
       "array \"x\"."
@@ -218,7 +415,7 @@ context "Template::Machine::Variable with a prefix" do
   end
 
   it "raises InvalidTemplateValueError for an associative array" do
-    expect { subject.expand_with("a" => "b") }.to raise_error(
+    expect { expand("a" => "b") }.to raise_error(
       Addressable::Template::InvalidTemplateValueError,
       "The prefix modifier :3 can't be applied to the list or associative " \
       "array \"x\"."
@@ -233,13 +430,17 @@ context "valid Template::Machine::Variable(explode: true)" do
     Addressable::Template::Machine::Variable.new(op: op, name: name, explode: true)
   }
 
+  def expand(value)
+    subject.expand_with(Addressable::Template::Values.new({name => value}, true))
+  end
+
   it "does percent encoding for strings with reserved characters" do
-    expect(subject.expand_with("hello world!")).to contain_exactly(name, "hello%20world%21", nil)
+    expect(expand("hello world!")).to contain_exactly(name, "hello%20world%21", nil)
   end
 
   it "can do a combination of normalize and join" do
-    expect(subject.expand_with(["a", "b", "hello world!"])).to contain_exactly(name, ["a","b","hello%20world%21"], nil)
-    expect(subject.expand_with({"foo" => "bar", "baz" => "qux"})).to contain_exactly(name, ["foo=bar","baz=qux"], true)
+    expect(expand(["a", "b", "hello world!"])).to contain_exactly(name, ["a","b","hello%20world%21"], nil)
+    expect(expand({"foo" => "bar", "baz" => "qux"})).to contain_exactly(name, ["foo=bar","baz=qux"], true)
   end
 end
 

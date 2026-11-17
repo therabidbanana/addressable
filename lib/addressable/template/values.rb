@@ -18,12 +18,15 @@
 
 module Addressable
   class Template
-    # The values of a template's variables for one expansion by the :machine
-    # engine, looked up in a mapping once each. The value for a name comes
-    # out ready to expand: nil if it's missing or undefined, otherwise a
-    # String, Array or Hash, type-checked, and normalized to NFC unless
-    # normalize_values is false. A variable used more than once, as in
-    # {a}{+a}, is looked up and prepared once.
+    # The values of one expansion by the :machine engine: looking them up,
+    # normalizing them, and the processor's validate and transform. The
+    # value for a name comes out ready to expand: nil if it's missing or
+    # undefined, otherwise a String, Array or Hash, type-checked, and
+    # normalized to NFC unless normalize_values is false. A variable used
+    # more than once, as in {a}{+a}, is looked up and prepared once. The
+    # processor is called each time Machine::Variable asks, once for each
+    # occurrence of a variable, as Template calls it. The syntax (prefixes,
+    # pct-encoding, joining) is Machine's.
     #
     # Its class methods normalize mappings and values for both engines.
     # Template's private methods of the same names call them.
@@ -33,12 +36,17 @@ module Addressable
       # @param [Hash, #each_pair, #inject, #[]] mapping
       #   The mapping, as Template#expand takes it.
       # @param [Boolean] normalize_values Whether to normalize values.
+      # @param [#validate, #transform, nil] processor
+      #   The processor passed to expand, if any.
       #
       # @raise [TypeError] If the mapping isn't one Values.normalize_keys
       #   takes.
-      def initialize(mapping, normalize_values)
+      def initialize(mapping, normalize_values, processor = nil)
         @mapping = Values.normalize_keys(mapping)
         @normalize_values = normalize_values
+        @processor = processor
+        @validates = processor.respond_to?(:validate)
+        @transforms = processor.respond_to?(:transform)
         @values = {}
       end
 
@@ -50,6 +58,38 @@ module Addressable
       # @return [String, Array, Hash, nil] The variable's value.
       def [](name)
         @values.fetch(name) { @values[name] = prepare(@mapping[name]) }
+      end
+
+      # Checks a value with the processor's validate method, if it has one.
+      #
+      # @param [String] name The variable's name.
+      # @param [String, Array, Hash] value The variable's value, from #[].
+      #
+      # @raise [InvalidTemplateValueError] If validate returns false.
+      def validate(name, value)
+        return unless @validates
+        return if @processor.validate(name, value)
+        display_value = value.kind_of?(Array) ? value.inspect : value
+        raise InvalidTemplateValueError,
+          "#{name}=#{display_value} is an invalid template value."
+      end
+
+      # @return [TrueClass, FalseClass]
+      #   Whether the processor's transform method replaces pct-encoding.
+      def transforms?
+        @transforms
+      end
+
+      # A value transformed by the processor, normalized again unless
+      # normalize_values is false. Call it only when #transforms?.
+      #
+      # @param [String] name The variable's name.
+      # @param [String, Array, Hash] value The variable's value, from #[].
+      #
+      # @return [Object] The transformed value, which isn't pct-encoded.
+      def transform(name, value)
+        result = @processor.transform(name, value)
+        @normalize_values ? Values.normalize_value(result) : result
       end
 
       private

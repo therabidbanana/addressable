@@ -51,10 +51,9 @@ module Addressable
       end
 
       def expand(mapping, processor, normalize_values, &block)
-        unsupported("expand with a processor") unless processor.nil?
         result = String.new
         values = Values.new(Values.mapping_or_block(mapping, block),
-          normalize_values)
+          normalize_values, processor)
         nodes.each do |node|
           if node.is_a?(String)
             result << node

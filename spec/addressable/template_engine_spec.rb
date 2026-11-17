@@ -227,12 +227,6 @@ describe Addressable::Template, "engine" do
       expect(template.extract("x/y")).to eq("a" => "x", "b" => "y")
     end
 
-    it "doesn't expand with a processor yet" do
-      expect { template.expand({"a" => "x"}, Object.new) }.to raise_error(
-        NotImplementedError, /\bprocessor/
-      )
-    end
-
     it "doesn't match with a processor yet" do
       expect { template.match("x/y", Object.new) }.to raise_error(
         NotImplementedError, /\bprocessor/

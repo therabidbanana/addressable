@@ -602,9 +602,28 @@ Then parsing:
   `expand()` with neither raises `ArgumentError` instead of `TypeError`.
   Machine mode: 611 failures. Most of `Template`'s block and lambda specs
   also call `partial_expand`, so they wait for that piece.
-- Processors (`validate`, `transform`), called with the same values as
-  now: `validate` gets the normalized value, and a `transform` result is
-  normalized again.
+- **Done: processors in `expand`** (`validate`, `transform`), called with
+  the same values, as often, and in the same order as `Template`:
+  `validate` gets the normalized value after the prefix check, and a
+  `transform` result replaces the pct-encoded value and is normalized
+  again unless `normalize_values` is false.
+  - Decided: `Values` owns values, and `Machine` owns syntax.
+    `Values.new(mapping, normalize_values, processor)` calls the processor:
+    `Values#validate` (raises `Template`'s error), `#transforms?`
+    (decided once per expansion), and `#transform` (normalizes the
+    result). `Variable#expand_with(values)` keeps the prefix check, which
+    `Template` runs before `validate`, the pct-encoding, and the tagging.
+    The processor is called for each occurrence of a variable, as
+    `Template` calls it (`{a}{+a}` validates `a` twice), so its calls
+    aren't cached.
+  - As in `Template`'s `join_values`, a transformed array whose first
+    member has an `=` joins as pairs, and `TaggedValue#to_str` leaves
+    members to `Array#join`, so nested arrays and non-strings join as
+    they do in `Template`.
+  - The specs in `template_machine_spec.rb` compare each case (every
+    operator, array, pair, nested and non-string results, validation
+    errors, call order) with the `:regexp` engine. Machine mode: 604
+    failures; the processor failures left are all `match` (phase 3).
 - **Done: a prefix on a list or hash** (`{x:3}` with `["a", "b"]`) raises
   `InvalidTemplateValueError` with `Template`'s message, from
   `Variable#expand_with`, after `Values` type-checks the value and before
