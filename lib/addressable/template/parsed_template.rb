@@ -60,25 +60,29 @@ module Addressable
         end
       end
 
+      # Expands the template into a URI. Literals are pct-encoded, and every
+      # "#" after the first is encoded. The text is UTF-8, as Template's is,
+      # whatever the pattern's encoding: values are UTF-8 (RFC 6570 section
+      # 3.2.1), and literals are pct-encoded ASCII.
       def expand(mapping, processor, normalize_values, &block)
-        nodes # Raises the error for a pattern that isn't valid.
-        result = String.new
-        values = Values.new(Values.mapping_or_block(mapping, block),
-          normalize_values, processor)
-        @expansion_nodes.each do |node|
-          if node.is_a?(String)
-            result << node
-          else
-            expand_varspec(values, node) do |expansion|
-              result << expansion
-            end
-          end
+        values = values_for(mapping, processor, normalize_values, block)
+        result = render(@expansion_nodes, Encoding::UTF_8) do |expression|
+          expression.expand(values)
         end
         Addressable::URI.parse(Values.encode_later_number_signs(result))
       end
 
-      def partial_expand(_mapping, _processor, _normalize_values)
-        unsupported("partial_expand")
+      # Expands the expressions whose variables the mapping gives, and keeps
+      # the rest, into a new template with the same engine. Literals are
+      # kept as the pattern writes them; expand encodes them later.
+      # Template#partial_expand edits a copy of the pattern, so the new one
+      # keeps the pattern's encoding.
+      def partial_expand(mapping, processor, normalize_values, &block)
+        values = values_for(mapping, processor, normalize_values, block)
+        result = render(@nodes, @template.pattern.encoding) do |expression|
+          expression.partial_expand(values)
+        end
+        Addressable::Template.new(result, engine: @template.engine)
       end
 
       def match(uri_or_string, processor)
@@ -132,9 +136,22 @@ module Addressable
         @nodes
       end
 
-      def expand_varspec(values, varspec)
-        val = varspec.join_expansions(values)
-        yield val if val
+      # Raises the error for a pattern that isn't valid, then the values for
+      # one expansion, from the mapping or the block.
+      def values_for(mapping, processor, normalize_values, block)
+        nodes
+        Values.new(Values.mapping_or_block(mapping, block), normalize_values,
+          processor)
+      end
+
+      # Joins literals as they are and each expression as the block writes
+      # it, into a string in the given encoding.
+      def render(list, encoding)
+        result = String.new.force_encoding(encoding)
+        list.each do |node|
+          result << (node.is_a?(String) ? node : yield(node))
+        end
+        result
       end
 
       def unsupported(operation)

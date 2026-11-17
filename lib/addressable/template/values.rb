@@ -67,6 +67,28 @@ module Addressable
         @values.fetch(name) { @values[name] = prepare(@mapping[name]) }
       end
 
+      # Whether the mapping gives the variable, even as nil. partial_expand
+      # keeps the expressions of variables that aren't given.
+      #
+      # @param [String] name The variable's name.
+      #
+      # @return [TrueClass, FalseClass]
+      def key?(name)
+        @mapping.key?(name)
+      end
+
+      # Whether the mapping gives the variable a defined value: not nil, and
+      # not a list or hash with no members once nil members are dropped. As
+      # in Template#partial_expand, the value isn't type-checked or prepared
+      # here, so errors come when it's expanded.
+      #
+      # @param [String] name The variable's name.
+      #
+      # @return [TrueClass, FalseClass]
+      def defined_value?(name)
+        key?(name) && !Values.defined_value(@mapping[name]).nil?
+      end
+
       ##
       # Expands a variable's value for one varspec: checks a prefix against
       # a list or hash, validates, then transforms or pct-encodes it with

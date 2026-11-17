@@ -492,6 +492,168 @@ describe Addressable::Template, "with the :machine engine, empty values" do
   end
 end
 
+describe Addressable::Template, "with the :machine engine, #partial_expand" do
+  # The new pattern and its encoding, or the error's class and message.
+  def outcome(engine, pattern, *args, &block)
+    template = Addressable::Template.new(pattern, engine: engine)
+    result = template.partial_expand(*args, &block)
+    [result.pattern, result.pattern.encoding]
+  rescue StandardError => error
+    [error.class, error.message]
+  end
+
+  def expect_same(pattern, *args, &block)
+    expect(outcome(:machine, pattern, *args, &block)).
+      to eq(outcome(:regexp, pattern, *args, &block))
+  end
+
+  kinds = [:missing, nil, "", "x y", ["a", "b"], {"k" => "v"}, [], [nil]]
+  ["", "+", "#", "/", ".", ";", "?", "&"].each do |operator|
+    [["a", "b", "c"], ["a*", "b", "c:2"], ["a", "a", "b"]].each do |varspecs|
+      pattern = "x{#{operator}#{varspecs.join(',')}}y"
+      it "partially expands #{pattern} with every mix of values" do
+        names = varspecs.map { |varspec| varspec[/\A\w+/] }.uniq
+        mismatches = kinds.product(*[kinds] * (names.size - 1)).
+          map do |combination|
+            mapping = {}
+            names.zip(combination).each do |name, kind|
+              mapping[name] = kind unless kind == :missing
+            end
+            machine = outcome(:machine, pattern, mapping)
+            regexp = outcome(:regexp, pattern, mapping)
+            [mapping, machine, regexp] unless machine == regexp
+          end.compact
+        expect(mismatches).to eq([])
+      end
+    end
+  end
+
+  it "keeps literals as they are written" do
+    expect_same("é/{a}/{b}#x", "a" => "v")
+    expect_same("a b\xE9/{a}{b}".dup.force_encoding(Encoding::ISO_8859_1),
+      "a" => "v")
+    expect_same("%zz{a}", "a" => "v")
+  end
+
+  it "expands every expression whose variables are all given" do
+    expect_same("{a}/{+b}{#c}{?d,e}", "a" => "1", "b" => "/", "c" => "#",
+      "d" => ["x"], "e" => {"k" => ""})
+  end
+
+  it "leaves a template with no variables given as it is" do
+    expect_same("{a}/{+b}{#c}{?d,e}", {})
+  end
+
+  it "keeps the engine" do
+    template = Addressable::Template.new("{a}{b}", engine: :machine)
+    expect(template.partial_expand("a" => "x").engine).to eq(:machine)
+  end
+
+  # Not always the whole expansion: a query moves its first defined
+  # variable to the front, as Template does.
+  it "expands the rest of a partial expansion as Template does" do
+    pattern = "{a}/{?b,c,d}{#e,f}"
+    whole = {"a" => "1", "b" => "2", "c" => nil, "d" => ["4"], "f" => "6"}
+    ["a", "b", "c", "d", "e", "f"].each do |name|
+      first = whole.select { |key, _| key == name }
+      rest = whole.reject { |key, _| key == name }
+      results = [:machine, :regexp].map do |engine|
+        Addressable::Template.new(pattern, engine: engine).
+          partial_expand(first).expand(rest).to_str
+      end
+      expect(results.first).to eq(results.last)
+    end
+  end
+
+  it "looks variables up with a block" do
+    values = {"a" => "1", "c" => nil, "d" => "4"}
+    expect_same("{a}{b}{?c,d}") { |name| values.fetch(name) }
+  end
+
+  it "takes a KeyError from a lambda as a missing variable" do
+    values = {"a" => "x"}
+    expect_same("{a}{?b,a}", lambda { |name| values.fetch(name) })
+  end
+
+  it "asks key? of a mapping that has it" do
+    lookup = Object.new
+    def lookup.key?(name); name != "b"; end
+    def lookup.[](name); name == "c" ? nil : name; end
+    expect_same("{a,b,c}{?b,c,a}", lookup)
+  end
+
+  it "raises for both a mapping and a block, or neither" do
+    expect_same("{a}", {}) { |name| name }
+    expect_same("{a}")
+  end
+
+  it "raises for a mapping it can't read" do
+    expect_same("{a}", "a")
+    expect_same("{a}", nil)
+  end
+
+  it "raises for a value of the wrong type in a given variable" do
+    expect_same("{?a,b,c}", "a" => "1", "c" => Object.new)
+  end
+
+  it "raises for a pattern that isn't valid" do
+    expect_same("{a}{", "a" => "x")
+    expect_same("{!a}", "a" => "x")
+  end
+
+  it "uses a processor for the variables it expands" do
+    calls = []
+    processor = Object.new
+    processor.define_singleton_method(:validate) do |name, value|
+      calls << [name, value]
+      true
+    end
+    processor.define_singleton_method(:transform) { |_name, value| value.upcase }
+    expect_same("{a,b}{?c,a}", {"a" => "x", "c" => "y"}, processor)
+    expect(calls.uniq).to eq([["a", "x"], ["c", "y"]])
+  end
+
+  it "doesn't normalize values when normalize_values is false" do
+    expect_same("{a}{b}", {"a" => "é"}, nil, false)
+    expect_same("{a}{b}", {"a" => "é"}, nil, true)
+  end
+
+  it "partially expands a long template in linear time" do
+    pattern = "{a}{b}" * 20_000
+    template = Addressable::Template.new(pattern, engine: :machine)
+    expect { Timeout.timeout(10) { template.partial_expand("a" => "x") } }.
+      not_to raise_error
+    expect_same(pattern, "a" => "x")
+  end
+end
+
+describe Addressable::Template::Values, "#key? and #defined_value?" do
+  def values(mapping)
+    Addressable::Template::Values.new(mapping, true)
+  end
+
+  it "says whether a variable is given, and whether it's defined" do
+    lookup = values("a" => "x", "b" => nil, "c" => [nil], "d" => Object.new)
+    expect(["a", "b", "c", "d", "e"].map { |name| lookup.key?(name) }).
+      to eq([true, true, true, true, false])
+    expect(["a", "b", "c", "d", "e"].map { |name| lookup.defined_value?(name) }).
+      to eq([true, false, false, true, false])
+  end
+
+  it "doesn't type-check or prepare a value to say it's defined" do
+    lookup = values("a" => Object.new)
+    expect(Addressable::Template::Values).not_to receive(:normalize_value)
+    expect(lookup.defined_value?("a")).to be true
+  end
+end
+
+describe Addressable::Template::Machine::Variable, "#varspec" do
+  it "writes the varspec as the pattern had it" do
+    expect(Addressable::Template::Lexer.new.parse_nodes("{a,b*,c:12,d.e,%41}").
+      first.variables.map(&:varspec)).to eq(["a", "b*", "c:12", "d.e", "%41"])
+  end
+end
+
 describe Addressable::Template, "with the :machine engine, literals" do
   def outcome(engine, pattern, mapping)
     uri = Addressable::Template.new(pattern, engine: engine).expand(mapping)

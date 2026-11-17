@@ -383,6 +383,7 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, after piece 3 (shared pieces) | 1,909 | 799, plus 240 pending |
 | `TEMPLATE_MODE=machine`, after piece 6's lexer | 1,909 | 721, plus 240 pending |
 | `TEMPLATE_MODE=machine`, end of phase 1 | 1,909 | 674, plus 240 pending |
+| `TEMPLATE_MODE=machine`, end of phase 2 | 1,909 | 363, plus 240 pending |
 
 The 240 pending are the reference-oracle examples, skipped in machine mode
 because they test the regexp builder (see "Spec inventory"). The rest of
@@ -680,9 +681,37 @@ Then parsing:
   with and without `*`, plus transform results, with the `:regexp`
   engine. Machine mode: 516 failures, from 521. The conformance suite
   passes, and the only expansion failures left are `partial_expand`.
-- `partial_expand`, including fragments and undefined variables.
-- Target: all expansion specs and the conformance suite pass. Expand is at
-  least as fast as `Template`.
+- **Done: `partial_expand`**, including fragments and undefined
+  variables. `ParsedTemplate`'s `expand` and `partial_expand` mirror each
+  other: each builds the `Values` and renders the nodes, literals as they
+  are and each expression through `Machine::Expression#expand` or
+  `#partial_expand`. `expand` renders the encoded literals into a URI;
+  `partial_expand` renders the lexer's raw nodes, so literals stay as
+  written, into a template with the same engine and the pattern's
+  encoding. (`Expression#join_expansions`, which returned `nil` for
+  nothing, is now `#expand`, which returns `""`.) `Machine::Expression#partial_expand`
+  follows `Template#transform_partial_capture` step by step: all given,
+  expanded; none given, kept; otherwise runs of given and missing
+  variables, a `?` expression's first defined variable moved to the
+  front, and the comma operators' separators and fragments.
+  `Values#key?` and `#defined_value?` answer "given" and "defined" from
+  the raw mapping, without type-checking, so errors and processor calls
+  come in `Template`'s order. `Variable#varspec` and each class's
+  `operator` write kept expressions back as text. Switching `?` to `&`
+  or `#` to `+` only changes the leader, since each pair allows the same
+  characters and tags values the same way. The specs compare about
+  12,000 partial expansions (every operator, three varspec lists, every
+  mix of eight kinds of value) and the edge cases with the `:regexp`
+  engine. Machine mode: 363 failures, from 516. `partial_expand` is
+  0.40–0.55× `Template`'s time on reused templates and 0.70–0.97× on new
+  ones.
+- **Target met.** All expansion specs and the conformance suite pass in
+  machine mode. Expand is 0.54–0.81× `Template`'s time and
+  `partial_expand` 0.40–0.97× (Ruby 3.3.1), with fewer objects. The 363
+  failures left are matching (299, including expand-then-match round
+  trips), `named_captures` (47), and `match` with a processor (13).
+
+Phase 2 is complete.
 
 ### 3. Matching and extraction
 

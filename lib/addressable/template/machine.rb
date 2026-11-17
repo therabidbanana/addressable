@@ -140,6 +140,18 @@ class Addressable::Template
       end
 
 
+      # The varspec as the pattern wrote it. VARSPEC allows no leading zero
+      # in a prefix, so the number reads back the same.
+      def varspec
+        if @prefix
+          "#{name}:#{@prefix}"
+        elsif @explode
+          "#{name}*"
+        else
+          name
+        end
+      end
+
       # Whether its operator keeps reserved characters and pct-encoded
       # triplets (+ and #). Values#expand encodes by this.
       def allows_reserved?
@@ -181,25 +193,131 @@ class Addressable::Template
         self.class.tagged_value
       end
 
-      # @param [Values] values The template's values.
-      def join_expansions(values)
+      ##
+      # The expression's expansion: its defined variables' values, joined
+      # with its leader and separator.
+      #
+      # @param [Values] values The expansion's values.
+      #
+      # @return [String] The expansion, or "" if no variable is defined.
+      def expand(values)
         list = variables.map do |variable|
           values.expand(variable)
         end
         list.compact!
-        unless list.empty?
-          joined_values(list)
-        end
+        list.empty? ? "" : joined_values(list)
       end
 
+      def self.operator; ""; end
       def self.leader; ""; end
       def self.joiner; ","; end
+
+      ##
+      # The expression's text in a partially expanded pattern, as
+      # Template#partial_expand writes it. An expression whose variables are
+      # all given is expanded, and one with none given is kept. Otherwise
+      # its given variables are expanded and its missing ones kept, in runs,
+      # and a given variable that's undefined is dropped, so that it doesn't
+      # split the missing variables around it.
+      #
+      # @param [Values] values The expansion's values.
+      #
+      # @return [String] The expression's new text.
+      def partial_expand(values)
+        given = lambda { |variable| values.key?(variable.name) }
+        defined = lambda { |variable| values.defined_value?(variable.name) }
+        operator = self.class.operator
+        return expand(values) if variables.all?(&given)
+        return source(operator, variables) if variables.none?(&given)
+
+        vars = variables
+        if operator == "?"
+          # The first defined variable starts the query, so it goes first.
+          first = vars.find(&defined)
+          if first
+            vars = [first] +
+              vars.reject { |variable| variable.varspec == first.varspec }
+          end
+        end
+        vars = vars.select do |variable|
+          !given.call(variable) || defined.call(variable)
+        end
+        # Consecutive variables that are all given, or all missing, stay in
+        # one expression, so that their separator is kept.
+        runs = vars.chunk(&given).to_a
+        if operator == "" || operator == "+" || operator == "#"
+          return partial_comma_runs(values, runs, defined)
+        end
+        runs.inject(String.new) do |acc, (is_given, run)|
+          if is_given
+            value = run_expansion(operator, run, values)
+            # After a value, the rest of a query continues with "&".
+            operator = "&" if operator == "?" && !value.empty?
+            acc << value
+          else
+            acc << source(operator, run)
+          end
+        end
+      end
 
       def joined_values(list)
         self.class.leader + list.flat_map{|val|
           val.to_str
         }.join(self.class.joiner)
       end
+
+      private
+
+      # Partially expands the runs of a simple, reserved or fragment
+      # expression, whose values are separated by commas, as Template's
+      # transform_partial_comma_runs does. A missing variable keeps its
+      # separator only if it ends up undefined. After the first value, a
+      # fragment expression's runs use reserved expansion, which adds no
+      # second "#".
+      def partial_comma_runs(values, runs, defined)
+        operator = self.class.operator
+        started = false
+        # Once a given variable is defined, a fragment expression's "#" is
+        # certain, so it comes first, and every run uses reserved expansion.
+        fragment = operator == "#" &&
+          runs.any? { |is_given, run| is_given && run.any?(&defined) }
+        result = fragment ? String.new("#") : String.new
+        runs.inject(result) do |acc, (is_given, run)|
+          run_operator =
+            (started || fragment) && operator == "#" ? "+" : operator
+          if is_given
+            # An empty string is defined, so it still takes a separator.
+            if run.any?(&defined)
+              acc << "," if started
+              started = true
+            end
+            acc << run_expansion(run_operator, run, values)
+          else
+            acc << source(run_operator, run)
+          end
+        end
+      end
+
+      # Expands a run of variables with an operator: this expression's, or
+      # the "&" that continues a query, or the "+" that continues a
+      # fragment. Those allow the same characters and join named values
+      # the same way as "?" and "#", so the variables don't change.
+      def run_expansion(operator, run, values)
+        expression_class =
+          case operator
+          when "&" then OpFormContinuation
+          when "+" then OpReserved
+          else self.class
+          end
+        expression_class.new(run).expand(values)
+      end
+
+      # An expression's text for a run of variables.
+      def source(operator, run)
+        "{#{operator}#{run.map(&:varspec).join(',')}}"
+      end
+
+      public
 
       def extract_values(scanner, matches)
         scanner = StringScanner.new(scanner) unless scanner.is_a?(StringScanner)
@@ -281,37 +399,44 @@ class Addressable::Template
     end
 
     class OpReserved < Expression
+      def self.operator; "+"; end
       def self.allows_reserved?; true; end
     end
     class OpFragment < Expression
+      def self.operator; "#"; end
       def self.allows_reserved?; true; end
       def self.leader; "#"; end
       def self.joiner; ","; end
     end
 
     class OpPath < Expression
+      def self.operator; "/"; end
       def self.leader; "/"; end
       def self.joiner; "/"; end
     end
 
     class OpLabel < Expression
+      def self.operator; "."; end
       def self.leader; "."; end
       def self.joiner; "."; end
     end
 
     class OpPathParams < Expression
+      def self.operator; ";"; end
       def self.leader; ";"; end
       def self.joiner; ";"; end
       def self.tagged_value; PathParamTaggedValue; end
     end
 
     class OpFormContinuation < Expression
+      def self.operator; "&"; end
       def self.leader; "&"; end
       def self.joiner; "&"; end
       def self.tagged_value; NamedTaggedValue; end
     end
 
     class OpForm < Expression
+      def self.operator; "?"; end
       def self.leader; "?"; end
       def self.joiner; "&"; end
       def self.tagged_value; NamedTaggedValue; end

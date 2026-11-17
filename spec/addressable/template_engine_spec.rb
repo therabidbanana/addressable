@@ -142,13 +142,19 @@ describe Addressable::Template, "engine" do
   end
 
   describe "#partial_expand" do
-    # The :machine engine doesn't have partial_expand yet; see below.
     it "returns a template with the same engine" do
       template = Addressable::Template.new("{a}{b}", engine: :regexp)
       Addressable::Template.engine = :machine
       partial = template.partial_expand("a" => "x")
       expect(partial.pattern).to eq("x{b}")
       expect(partial.engine).to eq(:regexp)
+    end
+
+    it "returns a template with the :machine engine from one" do
+      template = Addressable::Template.new("{a}{b}", engine: :machine)
+      partial = template.partial_expand("a" => "x")
+      expect(partial.pattern).to eq("x{b}")
+      expect(partial.engine).to eq(:machine)
     end
   end
 
@@ -233,16 +239,10 @@ describe Addressable::Template, "engine" do
       )
     end
 
-    # The method called, its arguments, and the operation the error names.
-    [
-      [:partial_expand, [{"a" => "x"}], "partial_expand"],
-      [:named_captures, [], "named_captures"]
-    ].each do |method, args, operation|
-      it "doesn't have ##{method} yet" do
-        expect { template.public_send(method, *args) }.to raise_error(
-          NotImplementedError, /\b#{operation}\b/
-        )
-      end
+    it "doesn't have #named_captures yet" do
+      expect { template.named_captures }.to raise_error(
+        NotImplementedError, /\bnamed_captures\b/
+      )
     end
 
     it "builds the same regexp as the :regexp engine" do
