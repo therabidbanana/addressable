@@ -391,6 +391,85 @@ describe Addressable::Template, "with the :machine engine, #expand with a proces
   end
 end
 
+describe Addressable::Template, "with the :machine engine, pct-encoded triplets" do
+  def outcome(engine, pattern, mapping)
+    Addressable::Template.new(pattern, engine: engine).expand(mapping).to_str
+  rescue StandardError => error
+    [error.class, error.message]
+  end
+
+  def expect_same(pattern, mapping)
+    expect(outcome(:machine, pattern, mapping)).
+      to eq(outcome(:regexp, pattern, mapping))
+  end
+
+  values = [
+    "%41", "%e9", "a%2Fb", "%", "%4", "%zz", "100%", "%%41", "%41%",
+    "caf%C3%A9", "%25", "% 41", "%4%41"
+  ]
+  ["", "+", "#", "/", ";", "?"].each do |operator|
+    values.each do |value|
+      it "expands {#{operator}x} with #{value.inspect}" do
+        expect_same("{#{operator}x}", "x" => value)
+      end
+    end
+
+    it "expands lists and hashes in {#{operator}x} and {#{operator}x*}" do
+      list = ["%41", "%", "a%2Fb"]
+      hash = {"%41" => "%42", "%" => "%zz"}
+      expect_same("{#{operator}x}", "x" => list)
+      expect_same("{#{operator}x*}", "x" => list)
+      expect_same("{#{operator}x}", "x" => hash)
+      expect_same("{#{operator}x*}", "x" => hash)
+    end
+  end
+
+  ["", "+", "#"].each do |operator|
+    [1, 2, 3, 4].each do |length|
+      ["%41bc", "a%41", "%4", "%%41", "%E9%41x", "caf%C3%A9"].each do |value|
+        it "takes {#{operator}x:#{length}} of #{value.inspect}" do
+          expect_same("{#{operator}x:#{length}}", "x" => value)
+        end
+      end
+    end
+
+    it "takes {#{operator}x:2} of a value that isn't valid UTF-8" do
+      expect_same("{#{operator}x:2}", "x" => "%41\xFF%42".b)
+      expect_same("{#{operator}x:2}", "x" => "\xFF%41%42".b)
+      expect_same("{#{operator}x:2}", "x" => "%4\xFF".b)
+    end
+  end
+
+  it "keeps the triplets of a long value with many of them" do
+    value = "%41%" * 10_000
+    expect_same("{+x}", "x" => value)
+    expect_same("{#x:9999}", "x" => value)
+  end
+end
+
+describe Addressable::Template::Values, ".prefix" do
+  def prefix(*args)
+    Addressable::Template::Values.prefix(*args)
+  end
+
+  it "takes characters when reserved characters aren't allowed" do
+    expect(prefix("%41bc", 2, false)).to eq("%4")
+  end
+
+  it "counts a pct-encoded triplet as one character otherwise" do
+    expect(prefix("%41bc", 2, true)).to eq("%41b")
+    expect(prefix("%4bc", 2, true)).to eq("%4bc")
+    expect(prefix("%4zc", 2, true)).to eq("%4")
+  end
+
+  it "reads a value that isn't valid UTF-8 one character at a time" do
+    expect(prefix("%41\xFF%42".b.force_encoding(Encoding::UTF_8), 3, true).b).
+      to eq("%41\xFF%42".b)
+    expect(prefix("\xFF%4".b.force_encoding(Encoding::UTF_8), 2, true).b).
+      to eq("\xFF%".b)
+  end
+end
+
 context "Template::Machine::Variable with a prefix" do
   subject {
     Addressable::Template::Machine::Variable.new(

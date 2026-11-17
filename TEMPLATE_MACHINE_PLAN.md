@@ -631,8 +631,19 @@ Then parsing:
   truncated each member instead, and that code is gone. Machine mode: 609
   failures. The `template_spec.rb` examples for it also call
   `partial_expand`, so they pass only once that's done.
-- Keep pct-encoded triplets in `+` and `#` expansions: `{+x}` with `%41`
-  gives `%41`, but the machine gives `%2541`.
+- **Done: pct-encoded triplets in `+` and `#` expansions.** `{+x}` with
+  `%41` gives `%41`, where the machine gave `%2541`. The machine encodes
+  reserved values with `Template::RESERVED_ENCODE` (public; its own
+  `WITH_RESERVED` is gone), and a prefix counts a triplet as one
+  character (`{+x:2}` with `%41bc` gives `%41b`). `Template#prefix`'s
+  body moved to `Values.prefix`, with `Template#prefix` delegating, so
+  both engines share it, including its path for values that aren't valid
+  UTF-8. The specs compare every operator, lists, hashes, prefixes, and
+  broken triplets (`%`, `%4`, `%zz`, `%%41`) with the `:regexp` engine.
+  Machine mode: 543 failures, from 604.
+  - Open: `prefix` is syntax rather than a value, so `Values` is only its
+    shared home. A small `Template::Encoding` module for what both
+    engines share about encoding would keep `Values` to values.
 - Encode non-ASCII literals as `Template` does (RFC 6570 section 3.1; see
   `map_literals` and `LITERAL_ENCODE`), and run its
   `encode_later_number_signs` step. Today the machine copies literal text

@@ -39,10 +39,6 @@ class Addressable::Template
     WITHOUT_RESERVED = /[^#{
       Addressable::URI::CharacterClasses::UNRESERVED
     }]/
-    WITH_RESERVED = /[^#{
-      Addressable::URI::CharacterClasses::RESERVED +
-      Addressable::URI::CharacterClasses::UNRESERVED
-    }]/
 
     variable =
       "(?:#{var_char}(?:\\.?#{var_char})*)"
@@ -170,9 +166,10 @@ class Addressable::Template
         end
         values.validate(name, value)
         return transformed(values.transform(name, value)) if values.transforms?
-        # Handle percent escaping
+        # Handle percent escaping. Reserved and fragment expansion keep
+        # pct-encoded triplets (RFC 6570 section 3.2.3).
         if @op.allows_reserved?
-          encode_map = WITH_RESERVED
+          encode_map = RESERVED_ENCODE
         else
           encode_map = WITHOUT_RESERVED
         end
@@ -207,7 +204,7 @@ class Addressable::Template
         else
           if @prefix
             transformed_value = Addressable::URI.encode_component(
-              value[0...@prefix], encode_map)
+              Values.prefix(value, @prefix, @op.allows_reserved?), encode_map)
           else
             transformed_value = Addressable::URI.encode_component(
               value, encode_map)

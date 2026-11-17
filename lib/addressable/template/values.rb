@@ -135,6 +135,40 @@ module Addressable
       end
 
       ##
+      # Takes the first characters of a value for a prefix modifier. Reserved
+      # and fragment expansion count a pct-encoded triplet as one character,
+      # so that it isn't split (RFC 6570 section 2.4.1).
+      #
+      # @param [String] value The value
+      # @param [Integer] length The maximum number of characters
+      # @param [Boolean] allow_reserved Whether pct-encoded triplets are kept
+      #
+      # @return [String] The prefix
+      def self.prefix(value, length, allow_reserved)
+        value = value.to_str
+        return value[0...length] unless allow_reserved
+        return value.scan(PCT_ENCODED_OR_CHARACTER).first(length).join if
+          value.valid_encoding?
+        # A regular expression can't scan text that isn't valid UTF-8, but
+        # its characters can be read one at a time, each invalid byte as one.
+        hex = lambda do |character|
+          character && character.bytesize == 1 &&
+            HEX_DIGITS.include?(character.getbyte(0))
+        end
+        characters = value.each_char.to_a
+        tokens = []
+        until characters.empty? || tokens.size == length
+          if characters[0] == "%" && hex.call(characters[1]) &&
+              hex.call(characters[2])
+            tokens << characters.shift(3).join
+          else
+            tokens << characters.shift
+          end
+        end
+        tokens.join
+      end
+
+      ##
       # Drops the undefined (nil) members of a list or associative array
       # value. RFC 6570 treats a list or associative array with no defined
       # members as undefined, as it does nil.
