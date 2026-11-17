@@ -244,7 +244,7 @@ describe Addressable::Template, "with the :machine engine, #expand" do
   end
 end
 
-context "valid Template::Machine::Variable(explode: false)" do
+context "Template::Values#expand(variable) with explode: false" do
   let(:name) { "foo" }
 
   let(:op) { Addressable::Template::Machine::OpPlain }
@@ -253,10 +253,10 @@ context "valid Template::Machine::Variable(explode: false)" do
   }
 
   def expand(value)
-    subject.expand_with(Addressable::Template::Values.new({name => value}, true))
+    Addressable::Template::Values.new({name => value}, true).expand(subject)
   end
 
-  context '#expand_with(values)' do
+  context '#expand(variable)' do
     it "gives nil for an undefined value" do
       expect(expand(nil)).to be_nil
     end
@@ -470,7 +470,28 @@ describe Addressable::Template::Values, ".prefix" do
   end
 end
 
-context "Template::Machine::Variable with a prefix" do
+describe Addressable::Template::Machine::Variable do
+  def variable(op)
+    Addressable::Template::Machine::Variable.new(op: op, name: "x")
+  end
+
+  it "allows reserved characters as its operator does" do
+    expect(variable(Addressable::Template::Machine::OpReserved).
+      allows_reserved?).to be true
+    expect(variable(Addressable::Template::Machine::OpFragment).
+      allows_reserved?).to be true
+    expect(variable(Addressable::Template::Machine::OpPlain).
+      allows_reserved?).to be false
+  end
+
+  it "tags an expanded value with its operator's tagged value" do
+    tagged = variable(Addressable::Template::Machine::OpForm).tag("v", nil)
+    expect(tagged).to be_a(Addressable::Template::Machine::NamedTaggedValue)
+    expect(tagged.to_a).to eq(["x", "v", nil])
+  end
+end
+
+context "Template::Values#expand(variable) with a prefix" do
   subject {
     Addressable::Template::Machine::Variable.new(
       op: Addressable::Template::Machine::OpPlain, name: "x", prefix: 3
@@ -478,7 +499,7 @@ context "Template::Machine::Variable with a prefix" do
   }
 
   def expand(value)
-    subject.expand_with(Addressable::Template::Values.new({"x" => value}, true))
+    Addressable::Template::Values.new({"x" => value}, true).expand(subject)
   end
 
   it "truncates a string" do
@@ -502,7 +523,7 @@ context "Template::Machine::Variable with a prefix" do
   end
 end
 
-context "valid Template::Machine::Variable(explode: true)" do
+context "Template::Values#expand(variable) with explode: true" do
   let(:op) { Addressable::Template::Machine::OpPlain }
   let(:name) { "foo" }
   subject {
@@ -510,7 +531,7 @@ context "valid Template::Machine::Variable(explode: true)" do
   }
 
   def expand(value)
-    subject.expand_with(Addressable::Template::Values.new({name => value}, true))
+    Addressable::Template::Values.new({name => value}, true).expand(subject)
   end
 
   it "does percent encoding for strings with reserved characters" do

@@ -19,20 +19,27 @@
 module Addressable
   class Template
     # The values of one expansion by the :machine engine: looking them up,
-    # normalizing them, and the processor's validate and transform. The
-    # value for a name comes out ready to expand: nil if it's missing or
-    # undefined, otherwise a String, Array or Hash, type-checked, and
-    # normalized to NFC unless normalize_values is false. A variable used
-    # more than once, as in {a}{+a}, is looked up and prepared once. The
-    # processor is called each time Machine::Variable asks, once for each
-    # occurrence of a variable, as Template calls it. The syntax (prefixes,
-    # pct-encoding, joining) is Machine's.
+    # normalizing them, the processor's validate and transform, and the
+    # value modifiers (prefix and explode, RFC 6570 section 2.4) and
+    # pct-encoding of each varspec. #[] gives a name's value: nil if it's
+    # missing or undefined, otherwise a String, Array or Hash, type-checked,
+    # and normalized to NFC unless normalize_values is false. A variable used
+    # more than once, as in {a}{+a}, is looked up and prepared once. #expand
+    # expands it for one varspec, calling the processor each time, once for
+    # each occurrence of a variable, as Template calls it. Joining a value
+    # into its expression (leaders, separators, names) is Machine's.
     #
     # Its class methods normalize mappings and values for both engines.
     # Template's private methods of the same names call them.
     #
     # @api private
     class Values
+      # Simple, path, label, and query expansion encode every character
+      # outside the unreserved set.
+      UNRESERVED_ENCODE =
+        /[^#{Addressable::URI::CharacterClasses::UNRESERVED}]/
+      private_constant :UNRESERVED_ENCODE
+
       # @param [Hash, #each_pair, #inject, #[]] mapping
       #   The mapping, as Template#expand takes it.
       # @param [Boolean] normalize_values Whether to normalize values.
@@ -58,6 +65,36 @@ module Addressable
       # @return [String, Array, Hash, nil] The variable's value.
       def [](name)
         @values.fetch(name) { @values[name] = prepare(@mapping[name]) }
+      end
+
+      ##
+      # Expands a variable's value for one varspec: checks a prefix against
+      # a list or hash, validates, then transforms or pct-encodes it with
+      # the varspec's modifiers. The variable tags the result for its
+      # expression.
+      #
+      # @param [Machine::Variable] variable
+      #   The varspec: its name, prefix, explode, and allows_reserved?.
+      #
+      # @raise [InvalidTemplateValueError]
+      #   If the varspec has a prefix and the value is a list or hash, or
+      #   the processor doesn't validate the value.
+      #
+      # @return [Machine::TaggedValue, nil]
+      #   The tagged value, or nil if the variable is undefined.
+      def expand(variable)
+        name = variable.name
+        value = self[name]
+        return if value.nil?
+        # RFC 6570 section 2.4.1. Template checks this before validating.
+        if variable.prefix && (Hash === value || Array === value)
+          raise InvalidTemplateValueError,
+            "The prefix modifier :#{variable.prefix} can't be applied to " \
+            "the list or associative array #{name.inspect}."
+        end
+        validate(name, value)
+        return transformed(variable, transform(name, value)) if @transforms
+        encoded(variable, value)
       end
 
       # Checks a value with the processor's validate method, if it has one.
@@ -93,6 +130,50 @@ module Addressable
       end
 
       private
+
+      # A value pct-encoded for its varspec. Reserved and fragment expansion
+      # keep pct-encoded triplets (RFC 6570 section 3.2.3). An exploded
+      # hash's members are key=value pairs.
+      def encoded(variable, value)
+        encode_map =
+          variable.allows_reserved? ? RESERVED_ENCODE : UNRESERVED_ENCODE
+        explode = variable.explode
+        if value.kind_of?(Array)
+          members = value.map do |member|
+            Addressable::URI.encode_component(member, encode_map)
+          end
+          variable.tag(explode ? members : members.join(','), nil)
+        elsif value.kind_of?(Hash)
+          separator = explode ? "=" : ","
+          pairs = value.map do |key, member|
+            "#{Addressable::URI.encode_component(key, encode_map)}" \
+              "#{separator}" \
+              "#{Addressable::URI.encode_component(member, encode_map)}"
+          end
+          if explode
+            variable.tag(pairs, true)
+          else
+            variable.tag(pairs.join(','), nil)
+          end
+        else
+          if variable.prefix
+            value = Values.prefix(value, variable.prefix,
+              variable.allows_reserved?)
+          end
+          variable.tag(
+            Addressable::URI.encode_component(value, encode_map), nil
+          )
+        end
+      end
+
+      # A processor's transform result, which isn't pct-encoded. As
+      # Template's join_values does, an array whose first member has an "="
+      # is joined as key=value pairs.
+      def transformed(variable, value)
+        keypairs = value.is_a?(Array) && value.first.is_a?(String) &&
+          value.first.include?("=")
+        variable.tag(value, keypairs)
+      end
 
       def prepare(value)
         value = Values.defined_value(value)

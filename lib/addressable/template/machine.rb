@@ -36,10 +36,6 @@ class Addressable::Template
         Addressable::URI::CharacterClasses::UNRESERVED
       }]|%[a-fA-F0-9][a-fA-F0-9])"
 
-    WITHOUT_RESERVED = /[^#{
-      Addressable::URI::CharacterClasses::UNRESERVED
-    }]/
-
     variable =
       "(?:#{var_char}(?:\\.?#{var_char})*)"
     varspec =
@@ -145,82 +141,22 @@ class Addressable::Template
       end
 
 
-      ##
-      # Pct-encodes this variable's value and tags it for joining into its
-      # expression. A processor's transform result, from Values, replaces
-      # the pct-encoded value.
-      #
-      # @param [Values] values
-      #   The expansion's values, which give this variable's value already
-      #   converted, type-checked and normalized, or nil if it's undefined.
-      #
-      # @return [TaggedValue, nil] The tagged value, or nil if it's undefined.
-      def expand_with(values)
-        value = values[name]
-        return if value.nil?
-        # RFC 6570 section 2.4.1. Template checks this before validating.
-        if @prefix && (Hash === value || Array === value)
-          raise InvalidTemplateValueError,
-            "The prefix modifier :#{@prefix} can't be applied to the " \
-            "list or associative array #{name.inspect}."
-        end
-        values.validate(name, value)
-        return transformed(values.transform(name, value)) if values.transforms?
-        # Handle percent escaping. Reserved and fragment expansion keep
-        # pct-encoded triplets (RFC 6570 section 3.2.3).
-        if @op.allows_reserved?
-          encode_map = RESERVED_ENCODE
-        else
-          encode_map = WITHOUT_RESERVED
-        end
-        if value.kind_of?(Array)
-          transformed_value = value.map do |val|
-            Addressable::URI.encode_component(val, encode_map)
-          end
-          unless self.explode
-            transformed_value = transformed_value.join(',')
-          end
-        elsif value.kind_of?(Hash)
-          transformed_value = value.map do |key, val|
-            if self.explode
-              "#{
-                Addressable::URI.encode_component( key, encode_map)
-              }=#{
-                Addressable::URI.encode_component( val, encode_map)
-              }"
-            else
-              "#{
-                Addressable::URI.encode_component( key, encode_map)
-              },#{
-                Addressable::URI.encode_component( val, encode_map)
-              }"
-            end
-          end
-          if self.explode
-            keypairs = true
-          else
-            transformed_value = transformed_value.join(',')
-          end
-        else
-          if @prefix
-            transformed_value = Addressable::URI.encode_component(
-              Values.prefix(value, @prefix, @op.allows_reserved?), encode_map)
-          else
-            transformed_value = Addressable::URI.encode_component(
-              value, encode_map)
-          end
-        end
-        op.tagged_value.new(name, transformed_value, keypairs)
+      # Whether its operator keeps reserved characters and pct-encoded
+      # triplets (+ and #). Values#expand encodes by this.
+      def allows_reserved?
+        @op.allows_reserved?
       end
 
-      private
-
-      # A processor's transform result, which isn't pct-encoded. As
-      # Template's join_values does, an array whose first member has an "="
-      # is joined as key=value pairs.
-      def transformed(value)
-        keypairs = value.is_a?(Array) && value.first.is_a?(String) &&
-          value.first.include?("=")
+      ##
+      # Tags an expanded value for joining into its expression, as its
+      # operator joins values.
+      #
+      # @param [String, Array] value The value from Values#expand.
+      # @param [TrueClass, FalseClass, nil] keypairs
+      #   Whether an array holds key=value pairs.
+      #
+      # @return [TaggedValue] The tagged value.
+      def tag(value, keypairs)
         op.tagged_value.new(name, value, keypairs)
       end
     end
@@ -246,7 +182,7 @@ class Addressable::Template
       # @param [Values] values The template's values.
       def join_expansions(values)
         list = variables.map do |variable|
-          variable.expand_with(values)
+          values.expand(variable)
         end
         list.compact!
         unless list.empty?

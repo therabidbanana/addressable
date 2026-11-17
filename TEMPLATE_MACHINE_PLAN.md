@@ -641,9 +641,20 @@ Then parsing:
   UTF-8. The specs compare every operator, lists, hashes, prefixes, and
   broken triplets (`%`, `%4`, `%zz`, `%%41`) with the `:regexp` engine.
   Machine mode: 543 failures, from 604.
-  - Open: `prefix` is syntax rather than a value, so `Values` is only its
-    shared home. A small `Template::Encoding` module for what both
-    engines share about encoding would keep `Values` to values.
+- **Done: `Values` expands each varspec.** RFC 6570 section 2.4 calls
+  prefix and explode *value modifiers*, so `Values` owns them along with
+  the pct-encoding, and `Machine` owns the expressions.
+  `Values#expand(variable)` looks the value up, checks a prefix against a
+  list or hash, validates, then transforms or encodes with the varspec's
+  modifiers (`Values.prefix`, `RESERVED_ENCODE` or its private
+  `UNRESERVED_ENCODE`). `Machine::Variable` is just the varspec: `name`,
+  `prefix`, `explode`, `allows_reserved?` from its operator, and `tag`,
+  which wraps the result in its operator's `TaggedValue`, so `Values`
+  doesn't know about operators. `Variable#expand_with` and
+  `Machine::WITHOUT_RESERVED` are gone. Joining (leaders, separators,
+  names) stays in the `Expression` subclasses and `TaggedValue`s. No
+  behaviour change: machine mode is still 543 failures, the same ones,
+  and expand's time and objects are unchanged.
 - Encode non-ASCII literals as `Template` does (RFC 6570 section 3.1; see
   `map_literals` and `LITERAL_ENCODE`), and run its
   `encode_later_number_signs` step. Today the machine copies literal text
