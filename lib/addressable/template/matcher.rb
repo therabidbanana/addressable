@@ -141,8 +141,7 @@ module Addressable
         private
 
         def hex?(byte)
-          !byte.nil? && ((byte >= 48 && byte <= 57) ||
-            (byte >= 65 && byte <= 70) || (byte >= 97 && byte <= 102))
+          HEX_DIGITS.include?(byte)
         end
       end
 

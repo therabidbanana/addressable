@@ -922,6 +922,15 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # A pct-encoded triplet takes two hex digits in either case. The
+  # characters either side of each range of hex digits aren't hex digits.
+  it "matches pct-encoded triplets in a value like the :regexp engine" do
+    %w(0 9 A F a f / : @ G ` g).each do |character|
+      expect_same("{a}", "x%#{character}#{character}y")
+      expect_same("{a}", "x%4#{character}y")
+    end
+  end
+
   # A non-ASCII literal matches as it is or pct-encoded in either case, and
   # an ASCII one only as written.
   {
