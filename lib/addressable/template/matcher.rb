@@ -93,6 +93,8 @@ module Addressable
 
       # Every state's first bytes before Matcher#finish works them out.
       NOTHING = FirstBytes.new
+      # A processor's pattern can start with anything, or match nothing.
+      ANYTHING = FirstBytes.new((1 << (FirstBytes::END_OF_URI + 1)) - 1)
       # Where the template ends: nothing but the end of the URI can follow.
       ONLY_END_OF_URI = FirstBytes.bytes(FirstBytes::END_OF_URI)
 
@@ -243,6 +245,35 @@ module Addressable
           walked.each { |start| ends[start] = ends[at] }
           ends[position]
         end
+
+        ##
+        # Where a processor's pattern can end, starting at the position, in
+        # the order Ruby's regexp engine prefers them. The engine only gives
+        # its first choice, so each later one comes from matching again with
+        # every end found so far ruled out, as template_match_spec.rb's
+        # end_positions does. Regexp offsets count characters, and the
+        # search's count bytes.
+        #
+        # @param [Regexp] pattern The pattern, starting with \G.
+        # @param [Integer] position A byte offset.
+        #
+        # @return [Array<Integer>] Byte offsets.
+        def pattern_ends(pattern, position)
+          start = @text.byteslice(0, position).length
+          characters = @text.length
+          ends = []
+          while true
+            ruled_out = ends.map do |finish|
+              "(?m:.{#{characters - finish}})\\z"
+            end
+            source = pattern.source
+            source += "(?!#{ruled_out.join("|")})" unless ruled_out.empty?
+            found = Regexp.new(source).match(@text, start)
+            break unless found
+            ends << found.end(0)
+          end
+          ends.map { |finish| @text[0, finish].bytesize }
+        end
       end
 
       # A state in the graph. Each one moves on to the state added after it
@@ -375,6 +406,30 @@ module Addressable
             attempts << attempt.move(@second_state, position)
           end
           attempts
+        end
+      end
+
+      # A value matched by a processor's pattern: a regexp the caller gives,
+      # which Template puts in its own regexp as it is. Its ends are tried
+      # in the order Ruby's regexp engine prefers them (Search#pattern_ends).
+      # The pattern can backtrack however it was written, so with one,
+      # matching is only as fast as the pattern, as it is with Template.
+      class ProcessorPattern < State
+        def initialize(index, source)
+          super(index)
+          # Compiled now, so a pattern that isn't valid raises RegexpError
+          # before any matching, as it does from Template's regexp.
+          @pattern = Regexp.new("\\G(?:#{source})")
+        end
+
+        def possible_first_bytes
+          ANYTHING
+        end
+
+        def follow(attempt, search)
+          search.pattern_ends(@pattern, attempt.position).map do |finish|
+            attempt.move(@next, finish)
+          end
         end
       end
 
@@ -522,6 +577,11 @@ module Addressable
       # Every character of a set that follows, giving none back.
       def possessive_run(set)
         add(PossessiveRun, SETS.fetch(set))
+      end
+
+      # A value matched by a processor's pattern, a regexp's source.
+      def processor_pattern(source)
+        add(ProcessorPattern, source)
       end
 
       # The block's states, or nothing, tried in that order.

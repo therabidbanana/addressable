@@ -98,7 +98,8 @@ class Addressable::Template
       private
 
       def either_form(character)
-        [character, Addressable::URI.encode_component(character, LITERAL_ENCODE)]
+        encoded = Addressable::URI.encode_component(character, LITERAL_ENCODE)
+        [character, encoded]
       end
     end
     LEADERS = {
@@ -378,7 +379,14 @@ class Addressable::Template
       # @param [TrueClass, FalseClass] label_dots
       #   Whether a label's value can contain "."
       #   (Matching.label_takes_dots?).
-      def match_steps(matcher, fragment, label_dots)
+      # @param [#match, nil] processor
+      #   A processor whose match method may give a variable's value a
+      #   pattern of its own, which then has to match.
+      def match_steps(matcher, fragment, label_dots, processor = nil)
+        # Asked for every variable before any steps, as Template asks.
+        patterns = variables.map do |variable|
+          processor && processor.match(variable.name)
+        end
         leader = self.class.leader
         matcher.nothing_or do
           if leader == "#" && fragment
@@ -390,8 +398,16 @@ class Addressable::Template
             if position > 0
               matcher.optional { matcher.exact(self.class.joiner) }
             end
-            matcher.optional do
-              matcher.capture { variable_steps(matcher, variable, label_dots) }
+            if patterns[position]
+              matcher.capture do
+                matcher.processor_pattern(patterns[position].to_s)
+              end
+            else
+              matcher.optional do
+                matcher.capture do
+                  variable_steps(matcher, variable, label_dots)
+                end
+              end
             end
           end
         end

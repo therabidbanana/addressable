@@ -233,9 +233,10 @@ describe Addressable::Template, "engine" do
       expect(template.extract("x/y")).to eq("a" => "x", "b" => "y")
     end
 
-    it "doesn't match with a processor yet" do
-      expect { template.match("x/y", Object.new) }.to raise_error(
-        NotImplementedError, /\bprocessor/
+    it "matches with a processor" do
+      processor = Class.new { def self.match(name) name == "a" ? "x" : nil end }
+      expect(template.match("x/y", processor).mapping).to eq(
+        "a" => "x", "b" => "y"
       )
     end
 

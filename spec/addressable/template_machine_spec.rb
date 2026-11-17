@@ -1060,6 +1060,82 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  context "with a processor" do
+    # A processor whose match gives patterns for some names, and records
+    # each call.
+    def processor(patterns, calls = [])
+      processor = Object.new
+      processor.define_singleton_method(:match) do |name|
+        calls << name
+        patterns[name]
+      end
+      processor
+    end
+
+    def outcome_with(engine, pattern, uri, processor)
+      match = Addressable::Template.new(pattern, engine: engine).
+        match(uri, processor)
+      match && [match.mapping, match.uri]
+    rescue StandardError => error
+      [error.class]
+    end
+
+    def expect_same_with(pattern, uri, patterns)
+      calls = {:regexp => [], :machine => []}
+      outcomes = [:regexp, :machine].map do |engine|
+        outcome_with(engine, pattern, uri, processor(patterns, calls[engine]))
+      end
+      expect(outcomes.last).to eq(outcomes.first), "for #{uri.inspect}"
+      expect(calls[:machine]).to eq(calls[:regexp])
+    end
+
+    {
+      ["{a}", {"a" => ".*"}] => ["xyz", "", "x/y"],
+      ["{a}{b}", {"a" => ".*?"}] => ["xyz", "x"],
+      ["{a}{b}", {"a" => ".*"}] => ["xyz"],
+      ["{a}{b}", {"b" => "[0-9]+"}] => ["x12", "12", "x"],
+      ["{/a,b,c}", {"b" => "[0-9]+"}] => ["/x/1/y", "/x1", "/1", "/x/y"],
+      ["{+a}/{b}", {"a" => ".*"}] => ["x/y/z", "/"],
+      ["/{a*}", {"a" => "[a-z,]*"}] => ["/x,y", "/"],
+      ["{?q,lang}", {"q" => "[^&]*"}] => ["?q=a&lang=b", "?q=a"],
+      ["{;a,b}", {"a" => "a=[0-9]+"}] => [";a=1;b=2", ";a=x"],
+      ["{a}.{b}", {"a" => "\\w+(?=\\.)"}] => ["x.y", "x.y.z"],
+      ["{a}{b}", {"b" => "(?<=x)y"}] => ["xy", "y"],
+      ["{a}/{b}", {"a" => "café"}] => ["café/v", "caf%C3%A9/v"],
+      ["{a}", {"a" => ""}] => ["", "x"]
+    }.each do |(pattern, patterns), uris|
+      it "matches #{pattern} with #{patterns.inspect} like the :regexp engine" do
+        uris.each { |uri| expect_same_with(pattern, uri, patterns) }
+      end
+    end
+
+    it "raises RegexpError for a pattern that isn't valid, like :regexp" do
+      expect_same_with("{a}", "x", "a" => "*")
+    end
+
+    it "calls match once per varspec, in order, like :regexp" do
+      expect_same_with("{a,b}/{a}{?c}", "x,y/z?c=1", {})
+    end
+
+    it "doesn't call match for text that isn't valid UTF-8, like :regexp" do
+      invalid = "\xE9".dup.force_encoding(Encoding::UTF_8)
+      expect_same_with("{a}", invalid, {})
+      calls = []
+      template = Addressable::Template.new("{a}", engine: :machine)
+      expect(template.match(invalid, processor({}, calls))).to be_nil
+      expect(calls).to eq([])
+    end
+
+    it "uses the cached matcher with a processor that only restores" do
+      restorer = Class.new { def self.restore(_name, value) value end }
+      expect_same_with("/files/{+path}{?q}", "/files/a%2Fb?q=c%20d", {})
+      template = Addressable::Template.new("{/a}", engine: :machine)
+      template.match("/x")
+      expect(Addressable::Template::Matcher).not_to receive(:new)
+      expect(template.match("/x", restorer).mapping).to eq("a" => "x")
+    end
+  end
+
   it "matches with variable names that start with a digit" do
     expect_same("{1a}/{2b*}", "x/y,z")
   end

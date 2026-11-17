@@ -448,6 +448,7 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, end of phase 2 | 1,909 | 363, plus 240 pending |
 | `TEMPLATE_MODE=machine`, after the oracle rework | 2,197 | 651 (363, plus the 288 new oracle examples) |
 | `TEMPLATE_MODE=machine`, after the matcher | 2,198 | 60 (`named_captures` 47, processors 13) |
+| `TEMPLATE_MODE=machine`, after processors | 2,198 | 47 (all `named_captures`) |
 
 Until the oracle rework, the 240 pending were the reference-oracle
 examples, skipped in machine mode because they test the regexp builder
@@ -911,6 +912,30 @@ Phase 2 is complete.
     query value tries about six states, each about 500 ns. Every
     adversarial payload grows about 4× for 4× the input (linear), at
     10–600× `Template`'s absolute time on Ruby 3.3.
+- **Done: processors in `match`.** As in `Template`, a processor's
+  `match(name)` is asked for every varspec of an expression, in template
+  order, before that expression's states are built, and a pattern it
+  gives replaces the value's states with a required capture of a
+  `ProcessorPattern` state (`Template` writes `(?<name>pattern)`, with no
+  `?`). The pattern is the caller's regexp, so a regexp matches it,
+  compiled when the matcher is built (an invalid one raises
+  `RegexpError` before any matching, as from `Template`'s regexp). Its
+  ends are tried in the order Ruby's engine prefers them, found as
+  `template_match_spec.rb`'s `end_positions` does: match with `\G` at
+  the position, then again with each end found so far ruled out by a
+  lookahead on the characters left. Patterns can differ per call, so
+  `ParsedTemplate#match` builds a matcher for each call with a processor
+  that answers `match`, as `Template` doesn't cache its regexp then; a
+  processor that only restores uses the cached matcher. `restore`, and
+  not unencoding values, were already shared in `Matching.match_data`.
+  With a processor's pattern, matching is only as linear as the pattern,
+  as with `Template`. Specs compare 13 templates and patterns (lazy,
+  greedy, lookaheads, lookbehinds, non-ASCII, empty), the call order,
+  invalid patterns and URIs, and restore-only processors with the
+  `:regexp` engine; `template_engine_spec.rb`'s "doesn't match with a
+  processor yet" now checks that it does. Machine mode: 47 failures, all
+  `named_captures` (phase 4). With `ExampleTwoProcessor`'s patterns,
+  `match` is about 1.8× `Template`'s time.
 - **To come back to at the end of phase 3: matcher optimizations.**
   Options seen so far, with what each bought when it was measured, to
   weigh against readability (goal 3) once processors are done:

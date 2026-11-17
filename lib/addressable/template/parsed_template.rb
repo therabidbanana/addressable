@@ -73,12 +73,21 @@ module Addressable
       # between the varspecs as Template's regexp would, and
       # Matching.match_data turns what each varspec captured into the
       # mapping.
+      #
+      # A processor's match method can give a variable's value a pattern of
+      # its own, and is asked on every call, so a matcher with its patterns
+      # is built for the call, as Template builds its regexp. A processor
+      # that only restores values uses the template's matcher.
       def match(uri, processor)
-        unsupported("match with a processor") unless processor.nil?
         nodes
         uri = Matching.parse_uri(uri)
         return nil if uri == false
-        matcher = self.matcher
+        matcher =
+          if processor.respond_to?(:match)
+            build_matcher(processor)
+          else
+            self.matcher
+          end
         # A nil URI raises NoMethodError here, as it does in Template.
         captures = matcher.match(uri.to_str)
         return nil unless captures
@@ -130,11 +139,12 @@ module Addressable
         @matcher || (frozen? ? build_matcher : @matcher = build_matcher)
       end
 
-      # Adds each node's steps to a new matcher. A fragment may start at a
-      # "#" in a literal or at a + or # expression, and from then on
-      # expansion encodes a later "#", so later literals and fragment
-      # leaders match it either way, as in Template's regexp.
-      def build_matcher
+      # Adds each node's steps to a new matcher, with the processor's
+      # patterns, if any. A fragment may start at a "#" in a literal or at a
+      # + or # expression, and from then on expansion encodes a later "#",
+      # so later literals and fragment leaders match it either way, as in
+      # Template's regexp.
+      def build_matcher(processor = nil)
         texts = @nodes.grep(Machine::Expression).map(&:text)
         # The literal text before each expression and after the last, and
         # whether a fragment may have started before each.
@@ -165,7 +175,8 @@ module Addressable
             label_dots = Matching.label_takes_dots?(
               index, texts, literals, either_leader, either_literal
             )
-            node.match_steps(matcher, either_leader[index], label_dots)
+            node.match_steps(matcher, either_leader[index], label_dots,
+              processor)
             fragment ||= node.class.allows_reserved?
             index += 1
           end
