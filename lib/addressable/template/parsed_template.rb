@@ -91,11 +91,14 @@ module Addressable
           processor)
       end
 
-      # Builds the matcher, so a frozen template doesn't build it on every
-      # match, as Template#freeze builds its regexp. A pattern that isn't
-      # valid has none, and freezing it doesn't raise.
+      # Builds the matcher and the regexp, as Template#freeze builds its
+      # regexp, so a frozen template can still give them. A pattern that
+      # isn't valid has neither, and freezing it doesn't raise.
       def freeze
-        @matcher ||= build_matcher unless @invalid
+        unless @invalid
+          @matcher ||= build_matcher
+          @regexp ||= build_regexp
+        end
         super
       end
 
@@ -133,11 +136,19 @@ module Addressable
         captures
       end
 
-      # The regexp Template's builder writes, from the nodes. Its source
-      # starts as UTF-8, as the builder's does, and takes the encoding of
-      # the pattern's non-ASCII literals.
+      # The regexp Template's builder writes, from the nodes, built on first
+      # use or by freeze.
       def to_regexp
         nodes
+        @regexp ||= build_regexp
+      end
+
+      private
+
+      # Renders the nodes as the regexp's source. It starts as UTF-8, as
+      # the builder's does, and takes the encoding of the pattern's
+      # non-ASCII literals.
+      def build_regexp
         followers = expression_followers
         in_context = to_enum(:each_node_in_context, expression_texts)
         result = render(Encoding::UTF_8, in_context) do |node, fragment, dots|
@@ -146,8 +157,6 @@ module Addressable
         end
         Regexp.new("\\A#{result}\\z")
       end
-
-      private
 
       # The pattern's literals and expressions, or Template's error for its
       # first invalid token.

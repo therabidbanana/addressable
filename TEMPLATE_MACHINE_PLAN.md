@@ -1092,11 +1092,26 @@ Phase 3 is complete, apart from weighing the optimization list.
     builder's processor-free branches are needed. Expand's objects and
     `build_matcher`'s are unchanged (the expression texts are built once
     and passed to `each_node_in_context`).
-  - Next, the builder's rewrites: after an exploded varspec; `;` and
-    varspecs before the last; then those that depend on the next
-    expression (absorbed, a lone `+`/`#` before a plain one, nested
-    `+`/`#` lists).
-- **Found at the end of phase 3:** a frozen machine template's
+  - **Done: the builder's rewrites**, each as its own commit. `OpFragment`
+    now subclasses `OpReserved`, and `OpForm` `OpFormContinuation`,
+    overriding only `operator` and `leader`, so the shared rewrites see
+    the right leader. Each operator family writes its varspec groups
+    (`Expression#group_source`, overridden by `OpReserved`,
+    `OpPathParams` and `OpFormContinuation`): after an exploded varspec,
+    `;` varspecs after the first, varspecs before the last. Expression
+    rewrites depend on what follows: `Expression#absorbs?` and
+    `#may_start_with_comma?` per operator, `OpReserved#values_source`
+    (a lone value before a lone plain one, nested lists), and
+    `ParsedTemplate#expression_followers`, one backward pass that only
+    `to_regexp` calls. A generated spec compares about 46,000 patterns
+    with `:regexp`, and all are identical.
+  - **Done: piece 3.** `Template#to_regexp` hands off to the machine
+    (`source` stays `to_regexp.source`), which builds the regexp once,
+    on first use or in `freeze`. Specs: a frozen template's
+    `to_regexp`, `source` and `named_captures` match `:regexp`'s; the
+    regexp is built once; `Template`'s builder isn't called; and a run
+    of 10,000 adjacent expressions builds in linear time.
+- **Fixed: found at the end of phase 3:** a frozen machine template's
   `to_regexp` (and so `source`) raises `FrozenError`, where `:regexp`
   works. `parse_template_pattern` caches in `@cached_template_parse`,
   and `Template#freeze` only fills that cache for `:regexp`, since the
@@ -1106,8 +1121,12 @@ Phase 3 is complete, apart from weighing the optimization list.
   and `named_captures` with `:regexp`'s.
 - Keep the grammar constants.
 - Done in phase 3: the reference-oracle rework.
-- Then: once the regexp API is done, machine mode should have 0
-  failures, which phase 5 (release N) requires on every runtime.
+- Done: machine mode has 0 failures on Ruby 3.3.1, which phase 5
+  (release N) requires on every runtime. The machine uses none of
+  `Template`'s regexp code.
+
+Phase 4 is complete. Next, as decided at its start: weigh the matcher
+optimizations listed at the end of phase 3.
 
 ## Releases
 

@@ -250,6 +250,11 @@ describe Addressable::Template, "engine" do
       expect(template.source).to eq(regexp.source)
     end
 
+    it "builds its regexp from its own nodes" do
+      expect(template).not_to receive(:parse_template_pattern)
+      expect(template.to_regexp.source).to start_with("\\A")
+    end
+
     it "freezes, and still expands and matches" do
       expect(template.freeze).to be_frozen
       expect(template.expand("a" => "x", "b" => "y").to_str).to eq("x/y")

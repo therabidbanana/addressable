@@ -1305,6 +1305,33 @@ describe Addressable::Template::ParsedTemplate, "#to_regexp" do
     expect(different).to eq([])
   end
 
+  it "gives a frozen template's regexp like :regexp" do
+    pattern = '/{a}{?b*}#{c}'
+    machine = Addressable::Template.new(pattern, engine: :machine).freeze
+    regexp = Addressable::Template.new(pattern, engine: :regexp).freeze
+    expect(machine.to_regexp).to eq(regexp.to_regexp)
+    expect(machine.source).to eq(regexp.source)
+    expect(machine.named_captures).to eq(regexp.named_captures)
+  end
+
+  it "builds the regexp once, when frozen" do
+    template = Addressable::Template.new("{a}/{b}", engine: :machine).freeze
+    expect(Regexp).not_to receive(:new)
+    expect(template.to_regexp.source).to eq(template.to_regexp.source)
+  end
+
+  it "builds the regexp once, on first use" do
+    template = Addressable::Template.new("{a}/{b}", engine: :machine)
+    template.to_regexp
+    expect(Regexp).not_to receive(:new)
+    template.to_regexp
+  end
+
+  it "builds the regexp for a long run of expressions in linear time" do
+    template = Addressable::Template.new("{a}" * 10_000, engine: :machine)
+    expect { Timeout.timeout(10) { template.to_regexp } }.not_to raise_error
+  end
+
   it "writes literals from a pattern in another encoding like :regexp" do
     [
       "a b\xE9/{a}".dup.force_encoding(Encoding::ISO_8859_1),

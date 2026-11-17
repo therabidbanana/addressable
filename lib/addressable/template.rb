@@ -921,6 +921,7 @@ module Addressable
     #   If the template doesn't match the RFC 6570 grammar, e.g. an unclosed
     #   expression or a stray <tt>}</tt>.
     def to_regexp
+      return parsed_template.to_regexp if engine == :machine
       check_expressions
       _, source = parse_template_pattern(pattern)
       Regexp.new(source)
