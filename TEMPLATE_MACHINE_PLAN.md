@@ -36,18 +36,28 @@ The engine is chosen app-wide with `Addressable::Template.engine =
 
 ## Starting the next phase
 
-This section is for an agent picking up the next phase (phase 2,
-expansion) with no other context. Read `CLAUDE.md`, then this plan's
-Goals, the "Decided" list under "Open decisions", "Phase 1, piece by
-piece" (what was built and why), "`Template` bugs found along the way",
-and phase 2 under "Build phases".
+This section is for an agent picking up the next phase (phase 3,
+matching and extraction) with no other context. Read `CLAUDE.md`, then
+this plan's Goals, the "Decided" list under "Open decisions", "Phase 1,
+piece by piece" and phase 2 under "Build phases" (what was built and
+why), "`Template` bugs found along the way", "Risks and constraints",
+and phases 3 and 4 under "Build phases".
+
+**Decide first: the order of phases 3 and 4.** "Risks and constraints"
+says the reworked reference oracle (phase 4's last item) must be in
+place before the old `#match` is replaced, because a matcher that splits
+a URI differently from `Template` would silently change `#match`
+results, and nothing else in the suite pins every split. So phase 3
+probably starts with that rework: turning the 240 `REGEXP_BUILDER_ONLY`
+examples in `template_match_spec.rb` into comparisons of `#match`
+results, so they run in machine mode. Ask the user before starting.
 
 ### The branch
 
-`template-machine`, 24 commits ahead of `master` at the end of phase 1
-(c5e7fec). It's local only. `origin/template-machine` is still the 2020 branch from
-before the rebase, so pushing needs a force push. Don't push without
-asking.
+`template-machine`, 34 commits ahead of `master` at the end of phase 2
+(eaec133). It's local only. `origin/template-machine` is still the 2020
+branch from before the rebase, so pushing needs a force push. Don't push
+without asking.
 
 ### Commands
 
@@ -70,14 +80,19 @@ TEMPLATE_MODE=machine bundle exec rspec \
 ITERATIONS=5000 bundle exec rake profile:template_machine
 ```
 
-What they give at the end of phase 1 (Ruby 3.3.1):
+What they give at the end of phase 2 (Ruby 3.3.1):
 
 | Run | Result |
 |---|---|
-| Full suite, native IDNA | 3,769 examples, 0 failures, 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
-| Full suite, pure IDNA | 3,655 examples, 0 failures, 6 pending |
-| Machine, engine and lexer specs | 208 examples, 1 pending |
-| Machine mode, the four `Template` spec files | 1,909 examples, 674 failures, 240 pending (see "Baseline") |
+| Full suite, native IDNA | 4,275 examples, 0 failures, 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
+| Full suite, pure IDNA | 4,161 examples, 0 failures, 6 pending |
+| Machine, engine and lexer specs | 714 examples, 1 pending |
+| Machine mode, the four `Template` spec files | 1,909 examples, 363 failures, 240 pending (see "Baseline") |
+
+The 363 are all matching: 299 `#match` or `#extract` results, including
+round trips that expand and then match, 47 `named_captures` (phase 4),
+and 13 `match` with a processor. Group them with `-f json -o
+tmp/machine.json` as described under "Baseline".
 
 The full suite must stay at 0 failures, and no piece should increase the
 machine-mode failures. Each phase lowers them; record the count in
@@ -85,27 +100,40 @@ machine-mode failures. Each phase lowers them; record the count in
 
 ### Where things are
 
-- `lib/addressable/template.rb` (about 1,980 lines). Search for these:
+- `lib/addressable/template.rb` (about 1,920 lines). Search for these:
   `class << self` (`Template.engine`), `MappingLookup` (a private
   constant), `class MatchData`, `def initialize(pattern, engine: nil)`
   (it never raises for an invalid pattern), `def freeze`, `def ==` and
   `def hash` (pattern only), the operations (`def extract`, `def match`,
   `def partial_expand`, `def expand`, `def variables`, `def
   variable_defaults`, `def to_regexp`, `def source`, `def
-  named_captures`), each starting with an `if engine == :machine` guard,
-  `def resolve_mapping`, `def transform_capture` (expansion of one
-  expression), `def map_literals` and `def encode_later_number_signs`,
-  and `def parse_template_pattern` (the regexp builder, cached in
-  `@cached_template_parse`).
-- `lib/addressable/template/values.rb`: `Template::Values`, the
-  normalization both engines share (`normalize_value`, `utf8_value`,
-  `normalize_keys`).
+  named_captures`), each starting with an `if engine == :machine` guard.
+  For matching: `def match` (how `Template` calls a processor's `match`
+  and `restore`, and when it returns `nil`), `def valid_utf8?`, `def
+  literal_regexp` and `def either_form` (a literal matches as written or
+  pct-encoded), and `def parse_template_pattern` (the regexp builder,
+  cached in `@cached_template_parse`, whose split order `#match` must
+  keep).
+- `lib/addressable/template/values.rb`: `Template::Values`. Its class
+  methods are the helpers both engines share (`normalize_value`,
+  `utf8_value`, `normalize_keys`, `defined_value`, `mapping_or_block`,
+  `prefix`, `encode_later_number_signs`); `Template`'s private methods of
+  the same names delegate to them. An instance is one machine expansion.
+  Matching doesn't use an instance.
 - `lib/addressable/template/parsed_template.rb`, `machine.rb`, and
-  `lexer.rb`: the machine (see "Where the branch stands").
-  `ParsedTemplate#expand` is where phase 2 starts; its `unsupported`
-  calls list what's missing.
+  `lexer.rb`: the machine (see "Where the branch stands" and phase 2).
+  `ParsedTemplate#match` and `Machine::Expression#extract_values` (with
+  `Variable#unencode`) are the 2020 matcher that phase 3 replaces; it
+  ignores whatever follows the last node, and raises
+  `NotImplementedError` for a processor. `ParsedTemplate` keeps the
+  lexer's raw literals in `@nodes` for matching (`@expansion_nodes` has
+  them encoded for expansion).
 - `spec/addressable/template_lexer_spec.rb`: compares the machine's
   errors and `variables` with the `:regexp` engine's.
+- `spec/addressable/template_machine_spec.rb`: unit specs for `Values`
+  and the nodes, and the phase 2 specs that compare expansion and
+  partial expansion with the `:regexp` engine. Phase 3's matching specs
+  can follow the same pattern.
 - `spec/spec_helper.rb`: `TestHelper.template_engine` and the
   `TEMPLATE_MODE` block that sets `Template.engine`.
 - `spec/addressable/template_engine_spec.rb`: the engine switch.
@@ -135,6 +163,28 @@ machine-mode failures. Each phase lowers them; record the count in
 - **Keep this plan current.** Mark items done as they land, record the
   counts at the end of each phase, and add anything learned to the
   phase it affects.
+- **Never fall back to the regexp engine.** An operation or argument the
+  machine doesn't handle yet raises `NotImplementedError` naming it, so
+  machine-mode failures list what's left. Code both engines need lives
+  once, and `Template`'s private method of the same name delegates to
+  it. `Template` uses `ParsedTemplate` only to hand an operation to it
+  (the `engine == :machine` guards, `#parsed_template` and `#freeze`),
+  never for shared code, and never uses `Machine` or `Lexer`. So far
+  that code has been about parsing and normalizing values, so it's
+  `Values` class methods. Shared code of another kind belongs wherever
+  fits it, not in `Values` by default.
+- **`Values` owns values and `Machine` owns syntax** (decided in phase
+  2). `Values` looks values up and applies the value modifiers and
+  encoding; `Machine` expressions own leaders, separators and joining.
+- **Compare with the `:regexp` engine.** Phase 2's specs build the same
+  call on both engines and expect the same result or the same error
+  class and message, over generated mixes of inputs. When a spec and
+  `Template` disagree, check `Template` first: twice in phase 2 the
+  spec's assumption was wrong, not the machine.
+- **Edit files with the Edit tool**, not scripts, and read them with
+  Read, so each change can be reviewed.
+- **Measure with the profile** after each piece, and run it twice before
+  calling a slowdown real; one run can be off by 30%.
 
 ### Phase 1, piece by piece
 
