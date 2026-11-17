@@ -391,6 +391,13 @@ describe Addressable::Template, "#match" do
       end
     end
 
+    # Not a contract worth keeping, but a change to it belongs in a minor
+    # release (see TEMPLATE_MACHINE_PLAN.md, "Template bugs").
+    it "raises NoMethodError for nil" do
+      expect { Addressable::Template.new("{a}").match(nil) }.
+        to raise_error(NoMethodError)
+    end
+
     it "calls a processor's match method once per variable, in order" do
       processor = Object.new
       names = []

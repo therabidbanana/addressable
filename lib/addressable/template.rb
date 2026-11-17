@@ -652,7 +652,7 @@ module Addressable
       return parsed_template.match(uri, processor) if engine == :machine
       check_expressions
       uri = Matching.parse_uri(uri)
-      return nil unless uri
+      return nil if uri == false
 
       # First, we need to process the pattern, and extract the values.
       expansions, expansion_regexp =

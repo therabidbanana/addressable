@@ -43,22 +43,24 @@ module Addressable
       end
 
       ##
-      # The URI to match, or nil if it can't match any template.
+      # The URI to match, or false if it can't match any template.
+      # Addressable::URI.parse gives nil for nil, which is returned as it is,
+      # so #match raises NoMethodError for it as it always has.
       #
       # @param [Addressable::URI, #to_str] uri The URI.
       #
-      # @return [Addressable::URI, NilClass]
+      # @return [Addressable::URI, NilClass, FalseClass]
       def self.parse_uri(uri)
         # Text that isn't valid UTF-8 isn't a valid URI or IRI, so it doesn't
         # match.
-        return nil unless valid_utf8?(uri)
+        return false unless valid_utf8?(uri)
         return uri if uri.is_a?(Addressable::URI)
         Addressable::URI.parse(uri)
       rescue Addressable::URI::InvalidURIError
         # Per the documented contract, match returns nil for any input that
         # doesn't match the template - including a string that isn't even a
         # valid URI.
-        nil
+        false
       end
 
       ##
