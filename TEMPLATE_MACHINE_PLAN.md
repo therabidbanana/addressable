@@ -670,6 +670,16 @@ Then parsing:
   Shift_JIS, binary and US-ASCII, invalid UTF-8, and number signs from
   literals and values, with the `:regexp` engine, and check both in
   linear time. Machine mode: 521 failures, from 543.
+- **Done: empty values in `;`.** `{;a*}` with `{"k" => ""}` gives `;k`,
+  where the machine gave `;k=`, and `{;a}` with `[""]` gives `;a=`, where
+  it gave `;a`. `TaggedValue` has a `composite` member, set by `Values`
+  from the value before any transform, and `PathParamTaggedValue`
+  follows `Template`'s `;` join (pairs lose a trailing `=`; a composite
+  value keeps its `=` even when empty; a `nil` or empty value doesn't).
+  The specs compare empty strings, lists and hashes in every operator,
+  with and without `*`, plus transform results, with the `:regexp`
+  engine. Machine mode: 516 failures, from 521. The conformance suite
+  passes, and the only expansion failures left are `partial_expand`.
 - `partial_expand`, including fragments and undefined variables.
 - Target: all expansion specs and the conformance suite pass. Expand is at
   least as fast as `Template`.

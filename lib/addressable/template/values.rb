@@ -93,7 +93,9 @@ module Addressable
             "the list or associative array #{name.inspect}."
         end
         validate(name, value)
-        return transformed(variable, transform(name, value)) if @transforms
+        if @transforms
+          return transformed(variable, value, transform(name, value))
+        end
         encoded(variable, value)
       end
 
@@ -142,7 +144,7 @@ module Addressable
           members = value.map do |member|
             Addressable::URI.encode_component(member, encode_map)
           end
-          variable.tag(explode ? members : members.join(','), nil)
+          variable.tag(explode ? members : members.join(','), nil, true)
         elsif value.kind_of?(Hash)
           separator = explode ? "=" : ","
           pairs = value.map do |key, member|
@@ -151,9 +153,9 @@ module Addressable
               "#{Addressable::URI.encode_component(member, encode_map)}"
           end
           if explode
-            variable.tag(pairs, true)
+            variable.tag(pairs, true, true)
           else
-            variable.tag(pairs.join(','), nil)
+            variable.tag(pairs.join(','), nil, true)
           end
         else
           if variable.prefix
@@ -161,18 +163,19 @@ module Addressable
               variable.allows_reserved?)
           end
           variable.tag(
-            Addressable::URI.encode_component(value, encode_map), nil
+            Addressable::URI.encode_component(value, encode_map), nil, false
           )
         end
       end
 
       # A processor's transform result, which isn't pct-encoded. As
       # Template's join_values does, an array whose first member has an "="
-      # is joined as key=value pairs.
-      def transformed(variable, value)
-        keypairs = value.is_a?(Array) && value.first.is_a?(String) &&
-          value.first.include?("=")
-        variable.tag(value, keypairs)
+      # is joined as key=value pairs. Whether it's composite comes from the
+      # value before it was transformed, as in Template.
+      def transformed(variable, value, result)
+        keypairs = result.is_a?(Array) && result.first.is_a?(String) &&
+          result.first.include?("=")
+        variable.tag(result, keypairs, Array === value || Hash === value)
       end
 
       def prepare(value)

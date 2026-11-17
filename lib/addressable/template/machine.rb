@@ -62,7 +62,12 @@ class Addressable::Template
       '/' => '/'
     }.freeze
 
-    class TaggedValue < Struct.new(:name, :value, :keypairs)
+    # A variable's expanded value, for its expression to join. keypairs
+    # says an array holds key=value pairs; composite says the value was a
+    # list or associative array before it was expanded, so it isn't empty
+    # even when its members join to an empty string (RFC 6570 section
+    # 3.2.7).
+    class TaggedValue < Struct.new(:name, :value, :keypairs, :composite)
       # The value, or its members, for Expression#joined_values to join. A
       # processor's transform result can hold anything, so members are left
       # for Array#join to flatten and convert, as Template's join_values
@@ -76,26 +81,20 @@ class Addressable::Template
       end
     end
 
+    # Path-style parameters (;). An empty member or pair value gets no "="
+    # (RFC 6570 appendix A), but a list or associative array whose members
+    # join to an empty string does, as in Template's join_values.
     class PathParamTaggedValue < TaggedValue
       def to_str
-        if !keypairs
-          if value.is_a?(Array)
-            value.map do |inner|
-              if inner == ""
-                name
-              else
-                "#{name}=#{inner}"
-              end
-            end
-          else
-            if value == ""
-              name
-            else
-              "#{name}=#{value}"
-            end
-          end
+        if keypairs
+          # Values are pct-encoded, so a pair that ends in "=" is empty.
+          value.map { |pair| pair.end_with?("=") ? pair[0...-1] : pair }
+        elsif value.is_a?(Array)
+          value.map { |inner| inner == "" ? name : "#{name}=#{inner}" }
+        elsif (value && value != "") || composite
+          "#{name}=#{value}"
         else
-          super
+          name
         end
       end
     end
@@ -154,10 +153,13 @@ class Addressable::Template
       # @param [String, Array] value The value from Values#expand.
       # @param [TrueClass, FalseClass, nil] keypairs
       #   Whether an array holds key=value pairs.
+      # @param [TrueClass, FalseClass] composite
+      #   Whether the value was a list or associative array before it was
+      #   expanded.
       #
       # @return [TaggedValue] The tagged value.
-      def tag(value, keypairs)
-        op.tagged_value.new(name, value, keypairs)
+      def tag(value, keypairs, composite)
+        op.tagged_value.new(name, value, keypairs, composite)
       end
     end
 

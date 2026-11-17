@@ -352,6 +352,28 @@ describe Addressable::Template, "with the :machine engine, #expand with a proces
     end
   end
 
+  [
+    ["{;a}", {"a" => ["x"]}, ""],
+    ["{;a}", {"a" => {"k" => "v"}}, ""],
+    ["{;a}", {"a" => "x"}, ""],
+    ["{;a}", {"a" => ["x"]}, ["k=", "l=v"]],
+    ["{;a*}", {"a" => {"k" => "v"}}, ["k=", "l=v"]],
+    ["{;a}", {"a" => ["x"]}, ["", "y"]],
+    ["{?a}", {"a" => ["x"]}, ""],
+    ["{&a}", {"a" => ["x"]}, ["k=", "l=v"]]
+  ].each do |pattern, mapping, result|
+    it "joins a transform result of #{result.inspect} for #{mapping.inspect} in #{pattern}" do
+      expect_same(pattern, mapping, transform: lambda { |_name, _value| result })
+    end
+  end
+
+  it "joins a nil transform result in {;a} when normalize_values is false" do
+    expect_same("{;a}", {"a" => "x"},
+      {transform: lambda { |_name, _value| nil }}, false)
+    expect_same("{;a}", {"a" => ["x"]},
+      {transform: lambda { |_name, _value| nil }}, false)
+  end
+
   it "validates with the normalized value" do
     expect_same("{a}", {"a" => "é"},
       validate: lambda { |_name, _value| true })
@@ -445,6 +467,28 @@ describe Addressable::Template, "with the :machine engine, pct-encoded triplets"
     value = "%41%" * 10_000
     expect_same("{+x}", "x" => value)
     expect_same("{#x:9999}", "x" => value)
+  end
+end
+
+describe Addressable::Template, "with the :machine engine, empty values" do
+  def outcome(engine, pattern, mapping)
+    Addressable::Template.new(pattern, engine: engine).expand(mapping).to_str
+  end
+
+  [
+    "", ["", nil], [""], ["", ""], ["", "x"], ["x", ""], {"k" => ""},
+    {"k" => "", "l" => "v"}, {"k" => "v", "l" => ""}, {"" => ""}, {"" => "v"}
+  ].each do |value|
+    ["", "+", "#", "/", ".", ";", "?", "&"].each do |operator|
+      ["", "*"].each do |modifier|
+        pattern = "{#{operator}a#{modifier},b}"
+        it "expands #{pattern} with #{value.inspect}" do
+          mapping = {"a" => value, "b" => "x"}
+          expect(outcome(:machine, pattern, mapping)).
+            to eq(outcome(:regexp, pattern, mapping))
+        end
+      end
+    end
   end
 end
 
@@ -576,9 +620,10 @@ describe Addressable::Template::Machine::Variable do
   end
 
   it "tags an expanded value with its operator's tagged value" do
-    tagged = variable(Addressable::Template::Machine::OpForm).tag("v", nil)
+    tagged = variable(Addressable::Template::Machine::OpForm).
+      tag("v", nil, false)
     expect(tagged).to be_a(Addressable::Template::Machine::NamedTaggedValue)
-    expect(tagged.to_a).to eq(["x", "v", nil])
+    expect(tagged.to_a).to eq(["x", "v", nil, false])
   end
 end
 
@@ -626,12 +671,12 @@ context "Template::Values#expand(variable) with explode: true" do
   end
 
   it "does percent encoding for strings with reserved characters" do
-    expect(expand("hello world!")).to contain_exactly(name, "hello%20world%21", nil)
+    expect(expand("hello world!").to_a).to eq([name, "hello%20world%21", nil, false])
   end
 
   it "can do a combination of normalize and join" do
-    expect(expand(["a", "b", "hello world!"])).to contain_exactly(name, ["a","b","hello%20world%21"], nil)
-    expect(expand({"foo" => "bar", "baz" => "qux"})).to contain_exactly(name, ["foo=bar","baz=qux"], true)
+    expect(expand(["a", "b", "hello world!"]).to_a).to eq([name, ["a","b","hello%20world%21"], nil, true])
+    expect(expand({"foo" => "bar", "baz" => "qux"}).to_a).to eq([name, ["foo=bar","baz=qux"], true, true])
   end
 end
 
