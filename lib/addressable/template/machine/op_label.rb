@@ -1,0 +1,37 @@
+require "addressable/template/machine/expression"
+
+# Written as Addressable::Template, not nested, as in machine.rb.
+class Addressable::Template
+  module Machine
+    # Label expansion with a dot prefix ({.var}).
+    class OpLabel < Expression
+      def self.operator; "."; end
+      def self.leader; "."; end
+      def self.joiner; "."; end
+
+      private
+
+      # --- Matching ---
+
+      # A label's value can't contain a ".", unless nothing after it could
+      # continue it, when it takes every character up to the delimiter.
+      def value_steps(matcher, label_dots)
+        if label_dots
+          matcher.possessive_run(:unreserved)
+        else
+          matcher.lazy_run(:unreserved_no_dot)
+        end
+      end
+
+      # --- Regexp ---
+
+      def value_source(label_dots)
+        if label_dots
+          "#{UNRESERVED}*+"
+        else
+          "#{UNRESERVED.gsub('\.', '')}*?"
+        end
+      end
+    end
+  end
+end
