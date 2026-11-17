@@ -39,22 +39,27 @@ The engine is chosen app-wide with `Addressable::Template.engine =
 
 ## Starting the next phase
 
-This section is for an agent picking up the next phase (phase 3,
-matching and extraction) with no other context. Read `CLAUDE.md`, then
-this plan's Goals, the "Decided" list under "Open decisions", "Phase 1,
-piece by piece" and phase 2 under "Build phases" (what was built and
-why), "`Template` bugs found along the way", "Risks and constraints",
-and phases 3 and 4 under "Build phases".
+This section is for an agent picking up the next phase (phase 4, the
+regexp API: `named_captures`, `to_regexp`, `source`) with no other
+context. Read `CLAUDE.md`, then this plan's Goals (goal 3 was loosened
+for matching in phase 3), the "Decided" list under "Open decisions",
+"Phase 1, piece by piece", phases 2 and 3 under "Build phases" (what was
+built and why), "`Template` bugs found along the way", "Risks and
+constraints", and phase 4.
 
-**Decided: phase 3 starts with the reference-oracle rework**, moved
-from phase 4, because a matcher that splits a URI differently from
-`Template` would silently change `#match` results. See phase 3's first
-item.
+**Ask the user first: the matcher optimizations.** Phase 3 ended with a
+list, "To come back to at the end of phase 3: matcher optimizations",
+saved to weigh once processors were done. Matching is within the 2×
+target for the simple template and new templates, but over it on reused
+templates with query, exploded and reserved expressions (2.1–2.9×). Ask
+whether to work through that list before phase 4, after it, or not at
+all. The user prefers a readable matcher to a fast one (goal 3), so each
+optimization has to earn its place.
 
 ### The branch
 
-`template-machine`, 34 commits ahead of `master` at the end of phase 2
-(eaec133). It's local only. `origin/template-machine` is still the 2020
+`template-machine`, 42 commits ahead of `master` at the end of phase 3
+(abac08a). It's local only. `origin/template-machine` is still the 2020
 branch from before the rebase, so pushing needs a force push. Don't push
 without asking.
 
@@ -79,19 +84,23 @@ TEMPLATE_MODE=machine bundle exec rspec \
 ITERATIONS=5000 bundle exec rake profile:template_machine
 ```
 
-What they give at the end of phase 2 (Ruby 3.3.1):
+What they give at the end of phase 3 (Ruby 3.3.1):
 
 | Run | Result |
 |---|---|
-| Full suite, native IDNA | 4,275 examples, 0 failures, 6 pending (5 from `master`, plus the `OpPath` one in `template_machine_spec.rb`) |
-| Full suite, pure IDNA | 4,161 examples, 0 failures, 6 pending |
-| Machine, engine and lexer specs | 714 examples, 1 pending |
-| Machine mode, the four `Template` spec files | 1,909 examples, 363 failures, 240 pending (see "Baseline") |
+| Full suite, native IDNA | 4,355 examples, 0 failures, 5 pending (all from `master`) |
+| Full suite, pure IDNA | 4,241 examples, 0 failures, 5 pending |
+| Machine, engine and lexer specs | 793 examples, 0 failures |
+| Machine mode, the four `Template` spec files | 2,198 examples, 47 failures (see "Baseline") |
 
-The 363 are all matching: 299 `#match` or `#extract` results, including
-round trips that expand and then match, 47 `named_captures` (phase 4),
-and 13 `match` with a processor. Group them with `-f json -o
-tmp/machine.json` as described under "Baseline".
+The 47 are all `named_captures`, which `ParsedTemplate` still answers
+with `NotImplementedError`: 40 where a spec expects
+`InvalidTemplateError` or `InvalidTemplateOperatorError` from
+`named_captures` for a malformed pattern (with `to_regexp` and `source`,
+which already pass), and 7 that check its names, including names that
+start with a digit or hold a dot or a triplet. Group them with `-f json
+-o tmp/machine.json` as described under "Baseline". Machine mode takes
+about 80 s; the 288 oracle examples are most of it.
 
 The full suite must stay at 0 failures, and no piece should increase the
 machine-mode failures. Each phase lowers them; record the count in
@@ -99,20 +108,21 @@ machine-mode failures. Each phase lowers them; record the count in
 
 ### Where things are
 
-- `lib/addressable/template.rb` (about 1,920 lines). Search for these:
+- `lib/addressable/template.rb` (about 1,775 lines). Search for these:
   `class << self` (`Template.engine`), `MappingLookup` (a private
   constant), `class MatchData`, `def initialize(pattern, engine: nil)`
   (it never raises for an invalid pattern), `def freeze`, `def ==` and
   `def hash` (pattern only), the operations (`def extract`, `def match`,
   `def partial_expand`, `def expand`, `def variables`, `def
   variable_defaults`, `def to_regexp`, `def source`, `def
-  named_captures`), each starting with an `if engine == :machine` guard.
-  For matching: `def match` (how `Template` calls a processor's `match`
-  and `restore`, and when it returns `nil`), `def valid_utf8?`, `def
-  literal_regexp` and `def either_form` (a literal matches as written or
-  pct-encoded), and `def parse_template_pattern` (the regexp builder,
-  cached in `@cached_template_parse`, whose split order `#match` must
-  keep).
+  named_captures`), most starting with an `if engine == :machine` guard.
+  For phase 4: `def to_regexp` and `def source` have no guard; both
+  engines use the builder, `def parse_template_pattern`, which caches in
+  `@cached_template_parse` (see "Found at the end of phase 3" under
+  phase 4). `def named_captures` maps the regexp's group names back to
+  variable names with `def capture_name` and `def variable_name` (a
+  name that starts with a digit gets a leading "." as a group name, or
+  `__name__` on Ruby 2.3).
 - `lib/addressable/template/values.rb`: `Template::Values`. Its class
   methods are the helpers both engines share (`normalize_value`,
   `utf8_value`, `normalize_keys`, `defined_value`, `mapping_or_block`,
@@ -123,16 +133,21 @@ machine-mode failures. Each phase lowers them; record the count in
   `lexer.rb`, and `matcher.rb`: the machine (see "Where the branch
   stands", phase 2, and phase 3). Each node adds its steps to a
   `Template::Matcher` (`#match_steps`), and `ParsedTemplate#match` runs
-  them; it raises `NotImplementedError` for a processor. Literals are
-  `Machine::Literal` nodes, which keep the text as written and its
-  pct-encoded expansion. `lib/addressable/template/matching.rb`: what
-  both engines' `#match` share.
+  them. `ParsedTemplate#named_captures` is the one operation still
+  raising `NotImplementedError`. Literals are `Machine::Literal` nodes,
+  which keep the text as written and its pct-encoded expansion;
+  `Machine::Expression#variables` lists an expression's varspecs, and
+  each `Variable` has `name`. `lib/addressable/template/matching.rb`:
+  what both engines' `#match` share.
 - `spec/addressable/template_lexer_spec.rb`: compares the machine's
   errors and `variables` with the `:regexp` engine's.
 - `spec/addressable/template_machine_spec.rb`: unit specs for `Values`
-  and the nodes, and the phase 2 specs that compare expansion and
-  partial expansion with the `:regexp` engine. Phase 3's matching specs
-  can follow the same pattern.
+  and the nodes, and the specs that compare expansion, partial
+  expansion and matching (with and without processors) with the
+  `:regexp` engine. Phase 4's specs can follow the same pattern.
+- `spec/addressable/template_match_spec.rb`: the reference oracle
+  (`TemplateMatchSpec`), the split examples, and the adversarial
+  payloads.
 - `spec/spec_helper.rb`: `TestHelper.template_engine` and the
   `TEMPLATE_MODE` block that sets `Template.engine`.
 - `spec/addressable/template_engine_spec.rb`: the engine switch.
@@ -184,6 +199,16 @@ machine-mode failures. Each phase lowers them; record the count in
   Read, so each change can be reviewed.
 - **Measure with the profile** after each piece, and run it twice before
   calling a slowdown real; one run can be off by 30%.
+- **Readable over fast** (decided in phase 3). The user would rather
+  have a matcher that's far easier to read than one that's faster, up to
+  2× `Template`'s time on matching, as long as adversarial input stays
+  linear. Keep an optimization only if a bound needs it, and explain it
+  in plain words where it's used; avoid unexplained jargon.
+- **Check linear time on the machine in the default suite.** The
+  `TEMPLATE_MODE=machine` specs catch slow matching, but only in machine
+  mode; a run cache that only helped forward queries went quadratic in
+  phase 3, and `template_machine_spec.rb` now times ten patterns on
+  50,000-character URIs with `engine: :machine`. Add new shapes there.
 
 ### Phase 1, piece by piece
 
@@ -448,7 +473,7 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, end of phase 2 | 1,909 | 363, plus 240 pending |
 | `TEMPLATE_MODE=machine`, after the oracle rework | 2,197 | 651 (363, plus the 288 new oracle examples) |
 | `TEMPLATE_MODE=machine`, after the matcher | 2,198 | 60 (`named_captures` 47, processors 13) |
-| `TEMPLATE_MODE=machine`, after processors | 2,198 | 47 (all `named_captures`) |
+| `TEMPLATE_MODE=machine`, end of phase 3 (processors) | 2,198 | 47 (all `named_captures`) |
 
 Until the oracle rework, the 240 pending were the reference-oracle
 examples, skipped in machine mode because they test the regexp builder
@@ -997,39 +1022,50 @@ Phase 2 is complete.
     encodes non-ASCII), but it changes results (it lowercases the host,
     and a literal `%41` stops matching once `%41` becomes `A`) and costs
     about 50 µs per URI.
-- Replace `extract_values` with a matcher that never backtracks
-  exponentially. Each expression's possible end positions come from the
-  literal that follows and the operator's character set. Search the
-  positions in the same order as the reference regexp, and memoize on
-  (node, position) so the work stays polynomial.
-- Exploded lists and hashes, named operators (`;`, `?`, `&`), prefixes,
-  processors' `match` and `restore`.
-- Done in phase 1: `extract`, and `match` returning
-  `Addressable::Template::MatchData` (piece 3).
-- Match a non-ASCII literal written either as it is or pct-encoded, as
-  `Template` does (see `literal_regexp`). Today `é/{a}` matches `é/v`,
-  and matching `%C3%A9/v` raises `NoMethodError`. Don't match a URI that
-  isn't valid UTF-8 (`valid_utf8?`; the specs are under "with text that
-  isn't valid UTF-8" in `template_spec.rb`).
-- Match only when the whole URI is consumed. `ParsedTemplate#match` ignores
-  whatever follows the last node, so it matches every adversarial payload
-  in the profile (e.g. `{/foo*}` matches `/a/a/…/a/!`), where `Template`
-  returns `nil`.
-- Target: `template_match_spec.rb` "with adversarial input" passes on every
-  runtime, and match and extract are within 2× `Template`'s time (goal
-  3, as decided in phase 3).
+- Done, by the pieces above: the 2020 matcher (`extract_values`) is
+  replaced by one that never backtracks exponentially and splits as the
+  reference regexp does; exploded lists and hashes, the named operators,
+  prefixes, and processors' `match` and `restore`; `extract` and
+  `MatchData` (phase 1); non-ASCII literals and `#` in either form, and
+  no match for text that isn't valid UTF-8; and only whole-URI matches.
+- Target: `template_match_spec.rb` "with adversarial input" passes on
+  every runtime (in machine mode in CI), and match and extract are
+  within 2× `Template`'s time (goal 3, as decided in phase 3). Met for
+  new templates and the simple one; reused templates with query,
+  exploded and reserved expressions are at 2.1–2.9×, which the
+  optimization list above is for.
 
-### 4. Regexp API and the reference oracle
+Phase 3 is complete, apart from weighing the optimization list.
+
+### 4. Regexp API
 
 - `named_captures` from the nodes, with no regexp: it maps each variable
   name to the 1-based positions of its occurrences, in template order
   (`{/a,b*}{?c,a}` gives `{"a" => [1, 4], "b" => [2], "c" => [3]}`).
+  It uses variable names as written, so `{42}` gives `{"42" => [1]}`,
+  not the group name `.42`. For a malformed pattern it raises
+  `Template`'s error (`ParsedTemplate#nodes`), as `Template`'s does from
+  `to_regexp`; `template_spec.rb`'s "raises ... when building a regexp"
+  examples check all three methods.
 - `to_regexp` and `source`: build the regexp only when one of them is
   called, once per template, with the existing builder, so the result is
   exactly what `Template` gives now. `expand`, `match`, and `extract`
   never build one with the machine engine.
+- **Found at the end of phase 3:** a frozen machine template's
+  `to_regexp` (and so `source`) raises `FrozenError`, where `:regexp`
+  works. `parse_template_pattern` caches in `@cached_template_parse`,
+  and `Template#freeze` only fills that cache for `:regexp`, since the
+  machine's `freeze` computes nothing it doesn't need. Decide how to
+  keep both: build the regexp in `freeze` for the machine too (about
+  40 µs per frozen template, used or not), build it without caching
+  once frozen (each call rebuilds it), or keep the cache somewhere that
+  isn't frozen. Ask the user. Add a spec that compares a frozen machine
+  template's `to_regexp`, `source` and `named_captures` with
+  `:regexp`'s.
 - Keep the grammar constants.
 - Done in phase 3: the reference-oracle rework.
+- Then: once the regexp API is done, machine mode should have 0
+  failures, which phase 5 (release N) requires on every runtime.
 
 ## Releases
 
