@@ -84,7 +84,7 @@ class Addressable::Template
       #
       # @param [TrueClass, FalseClass] fragment
       #   Whether a fragment may have started before the literal.
-      def regexp_source(fragment, _label_dots)
+      def regexp_source(fragment, _label_dots, _following, _comma_follows)
         Matching.literal_source(Matching.literal_units(@text, fragment))
       end
     end
@@ -431,9 +431,14 @@ class Addressable::Template
       # @param [TrueClass, FalseClass] label_dots
       #   Whether a label's value can contain "."
       #   (Matching.label_takes_dots?).
+      # @param [Expression, nil] following
+      #   The expression right after this one, if no literal text comes
+      #   between them.
+      # @param [TrueClass, FalseClass] comma_follows
+      #   Whether the text after this expression could start with a comma.
       #
       # @return [String] The regular expression source.
-      def regexp_source(fragment, label_dots)
+      def regexp_source(fragment, label_dots, following, comma_follows)
         leader = self.class.leader
         leader =
           if leader == "#" && fragment
@@ -441,13 +446,52 @@ class Addressable::Template
           else
             Regexp.escape(leader)
           end
-        groups = variables.each_with_index.map do |variable, position|
-          group_source(variable, position, label_dots)
+        if following && following.absorbs?(self)
+          # Each expression tried its empty alternative first. When the
+          # next one can match anything this one could, followed by
+          # anything it could match on its own, every other choice ends
+          # where the empty one can also end, so the empty alternative
+          # always gave the first match.
+          "(?:|(?!)#{leader}#{joined_groups(label_dots)})"
+        else
+          "(?:|#{leader}#{values_source(label_dots, following, comma_follows)})"
         end
-        "(?:|#{leader}#{groups.join("#{joiner_source}?")})"
+      end
+
+      # Whether this expression, right after the other one, can match
+      # anything the other could, followed by anything it could match on
+      # its own. Only a default or + expression can.
+      def absorbs?(_previous)
+        false
+      end
+
+      # Whether this expression could match a string that starts with a
+      # comma. Only a default or + expression, which has no leader, can.
+      def may_start_with_comma?
+        false
+      end
+
+      # Whether the expression is one variable that isn't exploded.
+      def single_value?
+        variables.size == 1 && !variables.first.explode
       end
 
       private
+
+      # The variables' groups, as Template's builder writes them for what
+      # follows the expression. A + or # expression writes them
+      # differently before text that can't start with a comma.
+      def values_source(label_dots, _following, _comma_follows)
+        joined_groups(label_dots)
+      end
+
+      # Each variable's group, with an optional joiner between them.
+      def joined_groups(label_dots)
+        groups = variables.each_with_index.map do |variable, position|
+          group_source(variable, position, label_dots)
+        end
+        groups.join("#{joiner_source}?")
+      end
 
       ##
       # A variable's group in the regexp, as Template's builder writes it
@@ -548,6 +592,26 @@ class Addressable::Template
       def self.leader; ""; end
       def self.joiner; ","; end
       def self.joiner_required?; true; end
+
+      # An exploded last variable matches any unreserved characters and
+      # commas, which is all a default or . expression matches, and a lone
+      # variable matches any unreserved characters, which is all a . or a
+      # lone default value matches.
+      def absorbs?(previous)
+        if variables.last.explode
+          previous.is_a?(OpPlain) || previous.is_a?(OpLabel)
+        elsif variables.size == 1
+          previous.is_a?(OpLabel) ||
+            (previous.is_a?(OpPlain) && previous.single_value?)
+        else
+          false
+        end
+      end
+
+      # Every value but a lone unexploded one can hold a comma.
+      def may_start_with_comma?
+        !single_value?
+      end
     end
 
     class OpReserved < Expression
@@ -571,7 +635,49 @@ class Addressable::Template
         "#{RESERVED_NO_COMMA}*+"
       end
 
+      # An unexploded last variable matches any characters that an
+      # expression can, and can end anywhere.
+      def absorbs?(_previous)
+        !variables.last.explode
+      end
+
+      def may_start_with_comma?
+        true
+      end
+
       private
+
+      def values_source(label_dots, following, comma_follows)
+        if single_value? && following.is_a?(OpPlain) &&
+            following.single_value?
+          # Values were tried shortest first, and the next expression can
+          # match any unreserved characters, so the value only needs to
+          # end after a character that the next expression couldn't
+          # match.
+          group(variables.first, "#{RESERVED}*?#{NOT_AFTER_VALUE}") + "?"
+        elsif variables.size > 1 && !comma_follows &&
+            variables.none?(&:explode) &&
+            variables[0...-1].none? { |variable| last?(variable) }
+          nested_values_source(label_dots)
+        else
+          super
+        end
+      end
+
+      # 2.9.0 tried each value with the joiner after it first, then the
+      # value on its own, then skipping the variable, and every other
+      # choice gave a value to a later variable that an earlier one had
+      # already been tried with. A variable after a skipped one is skipped
+      # too. Stopping before a joiner is left out, so this is only used
+      # when no joiner can follow the expression.
+      def nested_values_source(label_dots)
+        last = variables.size - 1
+        nested = variables[0...last].reverse.inject("") do |inner, variable|
+          "(?:#{group(variable, "#{RESERVED_NO_COMMA}*+")}" \
+            "#{joiner_source}?+#{inner}|(?=#{RESERVED_NO_COMMA}))"
+        end
+        nested + group_source(variables.last, last, label_dots)
+      end
 
       def group_source(variable, position, label_dots)
         if exploded_before?(position)
@@ -598,6 +704,15 @@ class Addressable::Template
     class OpFragment < OpReserved
       def self.operator; "#"; end
       def self.leader; "#"; end
+
+      # Its "#" leader has to come first.
+      def absorbs?(_previous)
+        false
+      end
+
+      def may_start_with_comma?
+        false
+      end
     end
 
     class OpPath < Expression

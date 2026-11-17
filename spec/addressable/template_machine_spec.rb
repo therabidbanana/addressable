@@ -1263,11 +1263,46 @@ describe Addressable::Template::ParsedTemplate, "#to_regexp" do
       "{;a,b}", "{;a,b,c}", "{;a,b*}", "{;a:3,b}", "{;a,b*,c}",
       "{a,b}", "{/a,b}", "{.a,b}", "{a,b,c}", "{a,b*}", "{/a,b,c*}",
       "{a*,b,c*}", "x{.a,b}y", "{a:2,a}"
+    ],
+    # An expression the next one can take over, which never matches
+    # anything first.
+    "an expression the next one absorbs" => [
+      "{a}{+b}", "{/a}{+b}", "{+a,b}{+c}", "{?a}{+b*}", "{a}{b*}",
+      "{.a}{b*}", "{/a}{b*}", "{.a}{b}", "{a}{b}", "{a,b}{c}", "{a*}{b}",
+      "{a}{b,c}", "{#a}{+b}", '#{#a}{+b}', "{a}{#b}", "{a}{b}{c}"
+    ],
+    # A lone + or # varspec before a plain one, and a + or # list with
+    # no comma after it.
+    "+ and # expressions before what can't start with a comma" => [
+      "{+a}{b}", "{#a}{b:3}", "{+a*}{b}", "{+a}{b*}", "{+a,b}",
+      "{+a,b,c}", "{#a,b}", "{+a,b}x", "{+a,b}{c}", "{+a,b}{c,d}",
+      "{+a,a}", "{+b,a,a}", "{+a,b}{/c}{d,e}", "{+a,b}{/c},",
+      "{+a,b}{/c}{?d}", '#{#a,b}'
     ]
   }.each do |shape, patterns|
     it "writes the same source as the :regexp engine for #{shape}" do
       patterns.each { |pattern| expect_same_source(pattern) }
     end
+  end
+
+  # Every operator with each of a dozen varspec lists, alone, between
+  # literals, and in every pair, with no text, a delimiter, a comma, a
+  # letter or a "#" between them.
+  it "writes the same source as :regexp for generated patterns" do
+    lists = ["a", "a*", "a:2", "a,b", "a*,b", "a,b*", "a*,b*", "a,b,c",
+             "a,a", "b,a,a", "a,b*,c", "1a"]
+    expressions = ["", "+", "#", "/", ".", ";", "?", "&"].product(lists).
+      map { |operator, list| "{#{operator}#{list}}" }
+    patterns = expressions.flat_map do |expression|
+      [expression, "x#{expression}", "#{expression},", "/#{expression}/"]
+    end
+    expressions.product(["", "/", ",", "x", "#"], expressions) do |parts|
+      patterns << parts.join
+    end
+    different = patterns.reject do |pattern|
+      regexp(:machine, pattern) == regexp(:regexp, pattern)
+    end
+    expect(different).to eq([])
   end
 
   it "writes literals from a pattern in another encoding like :regexp" do

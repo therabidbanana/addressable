@@ -138,9 +138,11 @@ module Addressable
       # the pattern's non-ASCII literals.
       def to_regexp
         nodes
+        followers = expression_followers
         in_context = to_enum(:each_node_in_context, expression_texts)
         result = render(Encoding::UTF_8, in_context) do |node, fragment, dots|
-          node.regexp_source(fragment, dots)
+          following, comma_follows = followers[node]
+          node.regexp_source(fragment, dots, following, comma_follows)
         end
         Regexp.new("\\A#{result}\\z")
       end
@@ -216,6 +218,27 @@ module Addressable
             index += 1
           end
         end
+      end
+
+      # For each expression, the expression right after it, if no literal
+      # text comes between them, and whether the text after it could start
+      # with a comma. Expressions can match nothing, so that looks past any
+      # that can't start with one. Worked out from the end, in one pass.
+      def expression_followers
+        followers = {}.compare_by_identity
+        following = nil
+        comma_follows = false
+        @nodes.reverse_each do |node|
+          if node.is_a?(Machine::Literal)
+            following = nil
+            comma_follows = node.text.start_with?(",")
+          else
+            followers[node] = [following, comma_follows]
+            following = node
+            comma_follows ||= node.may_start_with_comma?
+          end
+        end
+        followers
       end
 
       # Each expression as the pattern writes it, in order.
