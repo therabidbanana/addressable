@@ -133,6 +133,18 @@ module Addressable
         captures
       end
 
+      # The regexp Template's builder writes, from the nodes. Its source
+      # starts as UTF-8, as the builder's does, and takes the encoding of
+      # the pattern's non-ASCII literals.
+      def to_regexp
+        nodes
+        in_context = to_enum(:each_node_in_context, expression_texts)
+        result = render(Encoding::UTF_8, in_context) do |node, fragment, dots|
+          node.regexp_source(fragment, dots)
+        end
+        Regexp.new("\\A#{result}\\z")
+      end
+
       private
 
       # The pattern's literals and expressions, or Template's error for its
@@ -148,12 +160,29 @@ module Addressable
       end
 
       # Adds each node's steps to a new matcher, with the processor's
-      # patterns, if any. A fragment may start at a "#" in a literal or at a
-      # + or # expression, and from then on expansion encodes a later "#",
-      # so later literals and fragment leaders match it either way, as in
-      # Template's regexp.
+      # patterns, if any.
       def build_matcher(processor = nil)
-        texts = @nodes.grep(Machine::Expression).map(&:text)
+        texts = expression_texts
+        matcher = Matcher.new(texts)
+        each_node_in_context(texts) do |node, fragment, label_dots|
+          if node.is_a?(Machine::Literal)
+            node.match_steps(matcher, fragment)
+          else
+            node.match_steps(matcher, fragment, label_dots, processor)
+          end
+        end
+        matcher.finish
+      end
+
+      # Yields each node with what matching it depends on around it: whether
+      # a fragment may have started before it, and, for an expression,
+      # whether a label's value can contain "." (Matching.label_takes_dots?).
+      # A fragment may start at a "#" in a literal or at a + or #
+      # expression, and from then on expansion encodes a later "#", so
+      # later literals and fragment leaders match it either way, as in
+      # Template's regexp. Takes the expressions as written
+      # (expression_texts), which the caller may need as well.
+      def each_node_in_context(texts)
         # The literal text before each expression and after the last, and
         # whether a fragment may have started before each.
         literals = [""]
@@ -172,24 +201,26 @@ module Addressable
           end
         end
 
-        matcher = Matcher.new(texts)
         fragment = false
         index = 0
         @nodes.each do |node|
           if node.is_a?(Machine::Literal)
-            node.match_steps(matcher, fragment)
+            yield node, fragment, nil
             fragment ||= node.text.include?("#")
           else
             label_dots = Matching.label_takes_dots?(
               index, texts, literals, either_leader, either_literal
             )
-            node.match_steps(matcher, either_leader[index], label_dots,
-              processor)
+            yield node, either_leader[index], label_dots
             fragment ||= node.class.allows_reserved?
             index += 1
           end
         end
-        matcher.finish
+      end
+
+      # Each expression as the pattern writes it, in order.
+      def expression_texts
+        @nodes.grep(Machine::Expression).map(&:text)
       end
 
       # Raises the error for a pattern that isn't valid, then the values for
@@ -201,10 +232,15 @@ module Addressable
       end
 
       # Joins each node as the block writes it, into a string in the given
-      # encoding.
-      def render(encoding)
+      # encoding. The block gets each node with its context, which is nil
+      # unless the nodes come from to_enum(:each_node_in_context); expand
+      # and partial_expand don't need it. A non-ASCII node in another
+      # encoding changes the string's encoding to its own.
+      def render(encoding, nodes = @nodes)
         result = String.new.force_encoding(encoding)
-        @nodes.each { |node| result << yield(node) }
+        nodes.each do |node, fragment, label_dots|
+          result << yield(node, fragment, label_dots)
+        end
         result
       end
     end

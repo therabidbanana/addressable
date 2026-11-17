@@ -71,6 +71,15 @@ class Addressable::Template
       def match_steps(matcher, fragment)
         matcher.literal(Matching.literal_units(@text, fragment))
       end
+
+      # The literal's part of Template#to_regexp, matching it as
+      # match_steps does.
+      #
+      # @param [TrueClass, FalseClass] fragment
+      #   Whether a fragment may have started before the literal.
+      def regexp_source(fragment, _label_dots)
+        Matching.literal_source(Matching.literal_units(@text, fragment))
+      end
     end
     LEADERS = {
       '?' => '?',
@@ -403,14 +412,73 @@ class Addressable::Template
         end
       end
 
+      public
+
+      ##
+      # The expression's part of Template#to_regexp, as Template's builder
+      # writes it: nothing, or the leader and each variable's value, which
+      # may be left out, with an optional joiner between them. Each value is
+      # a group named after its variable (Matching.capture_name).
+      #
+      # @param [TrueClass, FalseClass] fragment
+      #   Whether a fragment may have started before the expression, so
+      #   that expansion encoded its "#" leader as "%23".
+      # @param [TrueClass, FalseClass] label_dots
+      #   Whether a label's value can contain "."
+      #   (Matching.label_takes_dots?).
+      #
+      # @return [String] The regular expression source.
+      def regexp_source(fragment, label_dots)
+        leader = self.class.leader
+        leader =
+          if leader == "#" && fragment
+            NUMBER_SIGN_EITHER_FORM
+          else
+            Regexp.escape(leader)
+          end
+        values = variables.map do |variable|
+          name = Matching.capture_name(variable.name)
+          "(?<#{name}>#{variable_source(variable, label_dots)})?"
+        end
+        "(?:|#{leader}#{values.join("#{joiner_source}?")})"
+      end
+
+      private
+
+      # The joiner, escaped for a regular expression.
+      def joiner_source
+        Regexp.escape(self.class.joiner)
+      end
+
+      # A variable's value, as variable_steps matches it.
+      def variable_source(variable, label_dots)
+        if variable.explode
+          member = self.class.member_source
+          "#{member}(?:#{joiner_source}#{member})*"
+        elsif variables.size > 1 && self.class.allows_reserved? &&
+            variable.varspec != variables.last.varspec
+          "#{RESERVED_NO_COMMA}*+"
+        else
+          self.class.value_source(label_dots)
+        end
+      end
+
       # A value: unreserved characters, as few as can be first.
       def self.value_steps(matcher, _label_dots)
         matcher.lazy_run(:unreserved)
       end
 
+      def self.value_source(_label_dots)
+        "#{UNRESERVED}*?"
+      end
+
       # An exploded value's member.
       def self.member_steps(matcher)
         value_steps(matcher, false)
+      end
+
+      def self.member_source
+        value_source(false)
       end
 
       # Whether an exploded value's members need the joiner between them.
@@ -433,9 +501,17 @@ class Addressable::Template
         matcher.lazy_run(:reserved)
       end
 
+      def self.value_source(_label_dots)
+        "#{RESERVED}*?"
+      end
+
       # A member takes everything up to the next comma.
       def self.member_steps(matcher)
         matcher.possessive_run(:reserved_no_comma)
+      end
+
+      def self.member_source
+        "#{RESERVED_NO_COMMA}*+"
       end
     end
     class OpFragment < Expression
@@ -450,6 +526,14 @@ class Addressable::Template
 
       def self.member_steps(matcher)
         OpReserved.member_steps(matcher)
+      end
+
+      def self.value_source(label_dots)
+        OpReserved.value_source(label_dots)
+      end
+
+      def self.member_source
+        OpReserved.member_source
       end
     end
 
@@ -473,6 +557,14 @@ class Addressable::Template
           matcher.lazy_run(:unreserved_no_dot)
         end
       end
+
+      def self.value_source(label_dots)
+        if label_dots
+          "#{UNRESERVED}*+"
+        else
+          "#{UNRESERVED.gsub('\.', '')}*?"
+        end
+      end
     end
 
     class OpPathParams < Expression
@@ -486,6 +578,17 @@ class Addressable::Template
         matcher.greedy_run(:unreserved)
         matcher.optional { matcher.exact("=") }
         matcher.lazy_run(:unreserved)
+      end
+
+      # Template's regexp writes the name with "=" and the name alone as
+      # two choices, which match the same strings in the same order.
+      def self.value_source(_label_dots)
+        "(?:#{UNRESERVED}*=#{UNRESERVED}*?|#{UNRESERVED}*)"
+      end
+
+      # Name and value characters and "=", in any order.
+      def self.member_source
+        "(?:#{UNRESERVED}|=)*"
       end
     end
 
@@ -501,6 +604,15 @@ class Addressable::Template
         matcher.exact("=")
         matcher.lazy_run(:unreserved)
       end
+
+      def self.value_source(_label_dots)
+        "#{UNRESERVED}*=#{UNRESERVED}*?"
+      end
+
+      # A name, then the value, with as many "=" as it has.
+      def self.member_source
+        "#{UNRESERVED}*=(?:#{UNRESERVED}*=)*#{UNRESERVED}*?"
+      end
     end
 
     class OpForm < Expression
@@ -511,6 +623,14 @@ class Addressable::Template
 
       def self.value_steps(matcher, label_dots)
         OpFormContinuation.value_steps(matcher, label_dots)
+      end
+
+      def self.value_source(label_dots)
+        OpFormContinuation.value_source(label_dots)
+      end
+
+      def self.member_source
+        OpFormContinuation.member_source
       end
     end
   end

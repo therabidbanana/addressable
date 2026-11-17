@@ -1209,6 +1209,67 @@ describe Addressable::Template::Matching, ".capture_name" do
   end
 end
 
+describe Addressable::Template::ParsedTemplate, "#to_regexp" do
+  # The machine's regexp or the :regexp engine's, with its source and that
+  # source's encoding, or the error.
+  def regexp(engine, pattern)
+    template = Addressable::Template.new(pattern, engine: engine)
+    regexp =
+      if engine == :machine
+        described_class.new(template).to_regexp
+      else
+        template.to_regexp
+      end
+    [regexp, regexp.source, regexp.source.encoding]
+  rescue StandardError => error
+    [error.class, error.message]
+  end
+
+  def expect_same_source(pattern)
+    expect(regexp(:machine, pattern)).to eq(regexp(:regexp, pattern)),
+      "for #{pattern.inspect}"
+  end
+
+  # Shapes the builder writes without rewriting a varspec or an
+  # expression for what's around it.
+  {
+    "literals" => ["", "/a/b", "a.b?c", "é/{a}", "%C3%A9/{a}", "%E9/{a}",
+                   "%41/{a}", "\u{1F642}{a}"],
+    "every operator" => ["{a}", "{+a}", "{#a}", "{/a}", "{.a}", "{;a}",
+                         "{?a}", "{&a}"],
+    "exploded values" => ["{a*}", "{+a*}", "{#a*}", "{/a*}", "{.a*}",
+                          "{;a*}", "{?a*}", "{&a*}"],
+    "prefixes and names" => ["{a:3}", "{42}", "{%41}", "{a.b}", "{_4}"],
+    "lists" => ["{a*,b}", "{/a*,b}", "{.a*,b}", "{+a,b},", "{#a,b,c},x",
+                "{+a,b*}", "{?a,b}", "{&a,b,c}", "{?a,b*}", "{&a,b,a}"],
+    "fragments" => ['#{#a}', '{+a}{#b}', '#{a}#{b}', '{#a}#', 'x#y{#a}'],
+    "labels" => ["{.a}", "/{.a}/", "x{.a}y", "{.a}{/b}", '{.a}#{b}',
+                 "{.a}?{b}", "{.a:3}"],
+    "neighbours that don't take each other's values" => [
+      "{a}{?b}", "{+a}{/b}", "{/a}{;b}", "{?a}{&b}"
+    ]
+  }.each do |shape, patterns|
+    it "writes the same source as the :regexp engine for #{shape}" do
+      patterns.each { |pattern| expect_same_source(pattern) }
+    end
+  end
+
+  it "writes literals from a pattern in another encoding like :regexp" do
+    [
+      "a b\xE9/{a}".dup.force_encoding(Encoding::ISO_8859_1),
+      "\x82\xA0/{a}".dup.force_encoding(Encoding::Shift_JIS),
+      "\xE9/{a}".b,
+      "a/{a}".dup.force_encoding(Encoding::US_ASCII),
+      "\xE9%C3%A9/{a}".dup.force_encoding(Encoding::ISO_8859_1),
+      "\xE9/{a}/%C3%A9".dup.force_encoding(Encoding::ISO_8859_1)
+    ].each { |pattern| expect_same_source(pattern) }
+  end
+
+  it "raises for a template that isn't valid like :regexp" do
+    ["{a", "a}", "{!a}", "{a b}"].each { |pattern| expect_same_source(pattern) }
+  end
+end
+
 describe Addressable::Template, "with the :machine engine, #named_captures" do
   # The named captures, or the error.
   def named_captures(engine, pattern)

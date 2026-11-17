@@ -143,7 +143,8 @@ module Addressable
 
       # A non-ASCII character, as it is and pct-encoded.
       def self.either_form(character)
-        [character, Addressable::URI.encode_component(character, LITERAL_ENCODE)]
+        encoded = Addressable::URI.encode_component(character, LITERAL_ENCODE)
+        [character, encoded]
       end
       private_class_method :either_form
 

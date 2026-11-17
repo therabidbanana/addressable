@@ -1076,6 +1076,26 @@ Phase 3 is complete, apart from weighing the optimization list.
      group of the builder's rewrites, with a comparison spec whose
      failures shrink.
   3. `freeze` builds it (below).
+
+  - **Done: piece 1** (`Matching.literal_units`, `.literal_source`,
+    `.capture_name`).
+  - **Done: piece 2, plain shapes.** `ParsedTemplate#to_regexp` is a
+    third render format, beside `expand` and `partial_expand`: `render`
+    yields each node with its context (whether a fragment may have
+    started, whether a label takes dots), which is `nil` from `@nodes`
+    and ignored by expansion, and from `each_node_in_context` (shared
+    with `build_matcher`) for the regexp. `Literal#regexp_source` and
+    `Expression#regexp_source` write each node, with per-operator
+    `value_source` and `member_source` beside `value_steps` and
+    `member_steps`. `Template#to_regexp` doesn't call it until every
+    rewrite is ported. `to_regexp` takes no processor, so only the
+    builder's processor-free branches are needed. Expand's objects and
+    `build_matcher`'s are unchanged (the expression texts are built once
+    and passed to `each_node_in_context`).
+  - Next, the builder's rewrites: after an exploded varspec; `;` and
+    varspecs before the last; then those that depend on the next
+    expression (absorbed, a lone `+`/`#` before a plain one, nested
+    `+`/`#` lists).
 - **Found at the end of phase 3:** a frozen machine template's
   `to_regexp` (and so `source`) raises `FrozenError`, where `:regexp`
   works. `parse_template_pattern` caches in `@cached_template_parse`,
