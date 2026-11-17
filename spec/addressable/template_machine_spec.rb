@@ -1256,6 +1256,13 @@ describe Addressable::Template::ParsedTemplate, "#to_regexp" do
       "{#a*,b*,c}", "{;a*,b}", "{;a*,b*}", "{;a*,b,c*}",
       "{a*,b*}", "{/a*,b*}", "{.a*,b*}", "{/a*,b*,c}", "{a*,b*,c*}",
       "{?a*,b}", "{?a*,b*}", "{&a*,b}", "{?a,b*,c}", "{&a*,b*,c}"
+    ],
+    # A ; varspec after the first, and an unexploded default, / or .
+    # varspec before the last.
+    "; varspecs and varspecs before the last" => [
+      "{;a,b}", "{;a,b,c}", "{;a,b*}", "{;a:3,b}", "{;a,b*,c}",
+      "{a,b}", "{/a,b}", "{.a,b}", "{a,b,c}", "{a,b*}", "{/a,b,c*}",
+      "{a*,b,c*}", "x{.a,b}y", "{a:2,a}"
     ]
   }.each do |shape, patterns|
     it "writes the same source as the :regexp engine for #{shape}" do

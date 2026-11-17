@@ -24,6 +24,13 @@ class Addressable::Template
       "(?:(#{variable})(\\*|:([1-9]\\d{0,3}))?)"
     VARSPEC = /#{varspec}/
 
+    # In Template's regexp: a position that isn't right after a character a
+    # value can hold, so a value starting there can't be split from one
+    # that ended just before.
+    NOT_AFTER_VALUE =
+      "(?<![#{Addressable::URI::CharacterClasses::UNRESERVED}])" \
+      "(?<![^\\x00-\\x7F])"
+
     # A token that isn't valid: the error Template raises for it, which
     # ParsedTemplate raises from the first operation that needs a valid
     # pattern, and the names Template#variables still finds in it.
@@ -460,6 +467,13 @@ class Addressable::Template
           # the values tried, only the leading joiners are shorter than
           # every value tried before them.
           group(variable, "(?:#{joiner_source})*")
+        elsif !variable.explode && position < variables.size - 1
+          # Values were tried shortest first, so a run of characters
+          # without a joiner went to a later variable. The only other value
+          # that could change the result is the whole run up to the next
+          # joiner.
+          value = self.class.value_source(label_dots)
+          group(variable, "(?:#{value}(?=#{joiner_source}))??")
         else
           optional_group(variable, label_dots)
         end
@@ -648,6 +662,12 @@ class Addressable::Template
           # variable could match after an exploded one, that one already
           # tried matching itself, and it's always empty.
           group(variable, "")
+        elsif position > 0
+          # Values were tried longest first, and splitting an earlier
+          # variable's run of characters with this one never gave a
+          # different result, so this one may only start after that run.
+          value = variable_source(variable, label_dots)
+          group(variable, "(?:#{NOT_AFTER_VALUE}#{value})?")
         else
           optional_group(variable, label_dots)
         end
