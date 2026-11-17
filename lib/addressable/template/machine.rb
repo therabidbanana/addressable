@@ -514,27 +514,10 @@ class Addressable::Template
         "#{RESERVED_NO_COMMA}*+"
       end
     end
-    class OpFragment < Expression
+    # Reserved expansion after a "#" leader.
+    class OpFragment < OpReserved
       def self.operator; "#"; end
-      def self.allows_reserved?; true; end
       def self.leader; "#"; end
-      def self.joiner; ","; end
-
-      def self.value_steps(matcher, label_dots)
-        OpReserved.value_steps(matcher, label_dots)
-      end
-
-      def self.member_steps(matcher)
-        OpReserved.member_steps(matcher)
-      end
-
-      def self.value_source(label_dots)
-        OpReserved.value_source(label_dots)
-      end
-
-      def self.member_source
-        OpReserved.member_source
-      end
     end
 
     class OpPath < Expression
@@ -615,23 +598,10 @@ class Addressable::Template
       end
     end
 
-    class OpForm < Expression
+    # A query's form continuation after a "?" leader.
+    class OpForm < OpFormContinuation
       def self.operator; "?"; end
       def self.leader; "?"; end
-      def self.joiner; "&"; end
-      def self.tagged_value; NamedTaggedValue; end
-
-      def self.value_steps(matcher, label_dots)
-        OpFormContinuation.value_steps(matcher, label_dots)
-      end
-
-      def self.value_source(label_dots)
-        OpFormContinuation.value_source(label_dots)
-      end
-
-      def self.member_source
-        OpFormContinuation.member_source
-      end
     end
   end
 end
