@@ -88,21 +88,6 @@ class Addressable::Template
         Matching.literal_source(Matching.literal_units(@text, fragment))
       end
     end
-    LEADERS = {
-      '?' => '?',
-      '/' => '/',
-      '#' => '#',
-      '.' => '.',
-      ';' => ';',
-      '&' => '&'
-    }.freeze
-    JOINERS = {
-      '?' => '&',
-      '.' => '.',
-      ';' => ';',
-      '&' => '&',
-      '/' => '/'
-    }.freeze
 
     # A variable's expanded value, for its expression to join. keypairs
     # says an array holds key=value pairs; composite says the value was a
@@ -114,7 +99,7 @@ class Addressable::Template
       # processor's transform result can hold anything, so members are left
       # for Array#join to flatten and convert, as Template's join_values
       # leaves them.
-      def to_str
+      def parts
         if value.is_a?(Array)
           value
         else
@@ -127,7 +112,7 @@ class Addressable::Template
     # (RFC 6570 appendix A), but a list or associative array whose members
     # join to an empty string does, as in Template's join_values.
     class PathParamTaggedValue < TaggedValue
-      def to_str
+      def parts
         if keypairs
           # Values are pct-encoded, so a pair that ends in "=" is empty.
           value.map { |pair| pair.end_with?("=") ? pair[0...-1] : pair }
@@ -141,18 +126,15 @@ class Addressable::Template
       end
     end
 
+    # Form-style query (? and &). Each value or member gets its name and
+    # "=", even when it's empty; key=value pairs already have their keys.
     class NamedTaggedValue < TaggedValue
-      def to_str
-        if !keypairs
-          if value.is_a?(Array)
-            value.map do |inner|
-              "#{name}=#{inner}"
-            end
-          else
-            "#{name}=#{value}"
-          end
+      def parts
+        return super if keypairs
+        if value.is_a?(Array)
+          value.map { |inner| "#{name}=#{inner}" }
         else
-          super
+          "#{name}=#{value}"
         end
       end
     end
@@ -288,9 +270,7 @@ class Addressable::Template
       end
 
       def joined_values(list)
-        self.class.leader + list.flat_map{|val|
-          val.to_str
-        }.join(self.class.joiner)
+        self.class.leader + list.flat_map(&:parts).join(self.class.joiner)
       end
 
       private
@@ -589,8 +569,6 @@ class Addressable::Template
     end
 
     class OpPlain < Expression
-      def self.leader; ""; end
-      def self.joiner; ","; end
       def self.joiner_required?; true; end
 
       # An exploded last variable matches any unreserved characters and
