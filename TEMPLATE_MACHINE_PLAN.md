@@ -43,14 +43,10 @@ piece by piece" and phase 2 under "Build phases" (what was built and
 why), "`Template` bugs found along the way", "Risks and constraints",
 and phases 3 and 4 under "Build phases".
 
-**Decide first: the order of phases 3 and 4.** "Risks and constraints"
-says the reworked reference oracle (phase 4's last item) must be in
-place before the old `#match` is replaced, because a matcher that splits
-a URI differently from `Template` would silently change `#match`
-results, and nothing else in the suite pins every split. So phase 3
-probably starts with that rework: turning the 240 `REGEXP_BUILDER_ONLY`
-examples in `template_match_spec.rb` into comparisons of `#match`
-results, so they run in machine mode. Ask the user before starting.
+**Decided: phase 3 starts with the reference-oracle rework**, moved
+from phase 4, because a matcher that splits a URI differently from
+`Template` would silently change `#match` results. See phase 3's first
+item.
 
 ### The branch
 
@@ -434,9 +430,12 @@ and `template_conformance_spec.rb`, on Ruby 3.3.1:
 | `TEMPLATE_MODE=machine`, after piece 6's lexer | 1,909 | 721, plus 240 pending |
 | `TEMPLATE_MODE=machine`, end of phase 1 | 1,909 | 674, plus 240 pending |
 | `TEMPLATE_MODE=machine`, end of phase 2 | 1,909 | 363, plus 240 pending |
+| `TEMPLATE_MODE=machine`, after the oracle rework | 2,197 | 651 (363, plus the 288 new oracle examples) |
 
-The 240 pending are the reference-oracle examples, skipped in machine mode
-because they test the regexp builder (see "Spec inventory"). The rest of
+Until the oracle rework, the 240 pending were the reference-oracle
+examples, skipped in machine mode because they test the regexp builder
+(see "Spec inventory"). They now run in both modes, and 288 machine-only
+examples compare `#match` with the `:regexp` engine. The rest of
 the drop from 1,388 is `#extract`, which now goes through the machine's
 `#match` instead of not existing. `#to_regexp` and `#source` use the
 shared builder by design (phase 4).
@@ -509,12 +508,14 @@ covered by `template_spec.rb`, `template_match_spec.rb`, and
 | 1,606 | Behaviour through `expand`, `match`, `extract`, `partial_expand`, `variables`, `==`, … | Yes, unmodified |
 | 53 | `#to_regexp`, `#source`, `#named_captures` (public) | Yes, unmodified |
 | 9 | Grammar constants `EXPRESSION`, `VARNAME`, `VARIABLE_LIST`, `VARSPEC` (public) | Yes, unmodified |
-| 240 | Regexp from the private `#parse_template_pattern` versus a reference regexp | Skipped in machine mode; rework (phase 4) |
+| 240 | Regexp from the private `#parse_template_pattern` versus a reference regexp | Runs in both modes, but tests only the regexp builder |
+| 288 | `#match` with `engine: :machine` versus `engine: :regexp` (machine mode only) | Yes; the machine's oracle |
 
 The 240 reference examples define which way `#match` splits a URI that
 can be split more than one way: the end positions it tries and the values
 it captures. That is observable behaviour, so the machine must match the
-same splits. It just can't be tested through a private regexp.
+same splits. It just can't be tested through a private regexp, so the 288
+compare the machine's `#match` with the `:regexp` engine's (see phase 3).
 
 ## Public API to keep
 
@@ -765,6 +766,25 @@ Phase 2 is complete.
 
 ### 3. Matching and extraction
 
+- **Done: the reference oracle, moved from phase 4.** Decided (option
+  A): chain two checks rather than copy `Template#match`'s
+  capture-to-mapping code into the spec. The 240 examples that compare
+  `Template`'s regexp builder with the reference regexp run in both
+  modes; `REGEXP_BUILDER_ONLY` is gone. In machine mode only, 288
+  examples compare `#match` mappings (or `nil`) from `engine: :machine`
+  and `engine: :regexp` over the same generated strings: the 224
+  capture patterns, and each of the 16 single expressions followed by
+  nothing, `x`, `{b}` and `{+b}` (`CONTEXTS`), so a different order of
+  end positions shows as a different split. Together they pin the
+  machine to the reference's splits, including `Template`'s quirks
+  (`{;a,b}` with `;a=1` gives `{"a" => "", "b" => nil, "1" => ""}`).
+  They aren't defined in the default mode, where they'd compare
+  `:regexp` with itself and fail the full suite until the matcher
+  passes them; once it does, consider defining them in both modes.
+  When `:regexp` is removed (next major), they need another oracle:
+  the reference regexp's captures turned into mappings, or stored
+  expected mappings. Machine mode: 651 failures, all 288 new examples
+  included (12 of them `TypeError`s from the 2020 matcher).
 - Replace `extract_values` with a matcher that never backtracks
   exponentially. Each expression's possible end positions come from the
   literal that follows and the operator's character set. Search the
@@ -796,12 +816,7 @@ Phase 2 is complete.
   exactly what `Template` gives now. `expand`, `match`, and `extract`
   never build one with the machine engine.
 - Keep the grammar constants.
-- Rework the 240 reference examples to compare `#match` results with the
-  reference regexp's matches, so they test the behaviour and run in both
-  modes. Today they compare the regexp builder with a reference regexp,
-  which says nothing about the machine's `match`, so machine mode skips
-  them (`REGEXP_BUILDER_ONLY` in `template_match_spec.rb`) until this
-  rework. Remove the skip then.
+- Done in phase 3: the reference-oracle rework.
 
 ## Releases
 
@@ -888,5 +903,5 @@ Decided:
 - Regex memoization in Ruby 3.2+ hides backtracking, so measure it on
   2.x, JRuby, and TruffleRuby too.
 - A matcher that prefers a different split than the regexp's order would
-  silently change `#match` results. The reworked oracle in phase 4 must be
-  in place before the old `#match` is replaced.
+  silently change `#match` results. The reworked oracle (done at the start
+  of phase 3) pins every split the reference examples cover.

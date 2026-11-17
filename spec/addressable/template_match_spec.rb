@@ -116,12 +116,15 @@ module TemplateMatchSpec
     Addressable::Template.new(pattern).send(:parse_template_pattern, pattern)[1]
   end
 
-  # The examples that compare Template's regexp builder with Reference only
-  # test the :regexp engine, so with TEMPLATE_MODE=machine they're skipped
-  # rather than counted as the machine's passes. Phase 4 of
-  # TEMPLATE_MACHINE_PLAN.md makes them compare #match with Reference.
-  REGEXP_BUILDER_ONLY =
-    "tests the :regexp engine's regexp builder, not the :machine engine"
+  # The mapping that #match gives with the engine, or nil.
+  def self.mapping(pattern, engine, string)
+    match = Addressable::Template.new(pattern, engine: engine).match(string)
+    match && match.mapping
+  end
+
+  # Expressions placed after a single expression, so that a different order
+  # of end positions picks a different split.
+  CONTEXTS = ["", "x", "{b}", "{+b}"]
 
   # The expression without the \A and \z anchors around the whole template.
   def self.unanchored(regexp)
@@ -300,15 +303,16 @@ describe Addressable::Template, "#match" do
       end
     end
 
+    # The reference regexp is the oracle for how #match splits a URI. These
+    # examples pin the :regexp engine's builder to it, and in machine mode,
+    # the examples after them pin the :machine engine's #match to the
+    # :regexp engine's, so both split as the reference does.
     TemplateMatchSpec::OPERATORS.product(["", "*"]).each do |operator, modifier|
       pattern = "{#{operator}a#{modifier}}"
       # A lone label variable at the end of a template takes every character
       # up to the end, so it's compared where it doesn't end the template.
       pattern += "a" if operator == "." && modifier == ""
       it "tries the reference's end positions in its order for #{pattern}" do
-        if TestHelper.template_engine == :machine
-          skip TemplateMatchSpec::REGEXP_BUILDER_ONLY
-        end
         reference = TemplateMatchSpec.unanchored(
           TemplateMatchSpec.reference_regexp(pattern)
         )
@@ -340,9 +344,6 @@ describe Addressable::Template, "#match" do
         "{#{operator}a,b}{c,d}"
       ].each do |pattern|
         it "captures the same values as the reference for #{pattern}" do
-          if TestHelper.template_engine == :machine
-            skip TemplateMatchSpec::REGEXP_BUILDER_ONLY
-          end
           reference = TemplateMatchSpec.reference_regexp(pattern)
           current = TemplateMatchSpec.regexp(pattern)
           alphabet = TemplateMatchSpec.alphabet(operator, "x")
@@ -351,6 +352,39 @@ describe Addressable::Template, "#match" do
             actual = current.match(string)
             expect(TemplateMatchSpec.named_captures(actual)).to eq(
               TemplateMatchSpec.named_captures(expected)
+            ), "for #{string.inspect}"
+          end
+        end
+
+        # In the default mode this would compare the :regexp engine with
+        # itself.
+        if TestHelper.template_engine == :machine
+          it "matches like the :regexp engine for #{pattern}" do
+            alphabet = TemplateMatchSpec.alphabet(operator, "x")
+            TemplateMatchSpec.strings(alphabet, 5).each do |string|
+              expect(
+                TemplateMatchSpec.mapping(pattern, :machine, string)
+              ).to eq(
+                TemplateMatchSpec.mapping(pattern, :regexp, string)
+              ), "for #{string.inspect}"
+            end
+          end
+        end
+      end
+    end
+
+    if TestHelper.template_engine == :machine
+      TemplateMatchSpec::OPERATORS.product(
+        ["", "*"], TemplateMatchSpec::CONTEXTS
+      ).each do |operator, modifier, context|
+        pattern = "{#{operator}a#{modifier}}#{context}"
+        it "matches like the :regexp engine for #{pattern}" do
+          alphabet = TemplateMatchSpec.alphabet(operator, "x")
+          TemplateMatchSpec.strings(alphabet, 5).each do |string|
+            expect(
+              TemplateMatchSpec.mapping(pattern, :machine, string)
+            ).to eq(
+              TemplateMatchSpec.mapping(pattern, :regexp, string)
             ), "for #{string.inspect}"
           end
         end
