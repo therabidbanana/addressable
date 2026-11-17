@@ -1155,49 +1155,10 @@ module Addressable
       Values.encode_later_number_signs(uri)
     end
 
-    ##
-    # Builds a regular expression for a non-ASCII character, as it is or
-    # pct-encoded in either case.
-    #
-    # @param [String] character The character.
-    #
-    # @return [String] The regular expression source.
-    def either_form(character)
-      encoded = Addressable::URI.encode_component(character, LITERAL_ENCODE)
-      "(?:#{Regexp.escape(character)}|(?i:#{encoded}))"
-    end
-
-    ##
-    # Builds a regular expression for literal text. A non-ASCII character,
-    # written as it is or as pct-encoded UTF-8, matches either way, since
-    # expansion pct-encodes it (RFC 6570 section 3.1). So does a "#" that
-    # expansion may have encoded because a fragment had already started.
-    #
-    # @param [String] literal The literal text.
-    # @param [TrueClass, FalseClass] fragment
-    #   Whether a fragment may have started before the literal.
-    #
-    # @return [String] The regular expression source.
+    # @see Matching.literal_units
+    # @see Matching.literal_source
     def literal_regexp(literal, fragment = false)
-      literal.scan(LITERAL_TOKEN).map do |token|
-        if token == '#'
-          source = fragment ? NUMBER_SIGN_EITHER_FORM : '\\#'
-          fragment = true
-          source
-        elsif token =~ LITERAL_ENCODE
-          token.each_char.map { |character| either_form(character) }.join
-        elsif token.length > 3 || token =~ /\A%[89A-Fa-f]/
-          decoded = Addressable::URI.unencode_component(token).dup
-          decoded.force_encoding(Encoding::UTF_8)
-          if decoded.valid_encoding?
-            decoded.each_char.map { |character| either_form(character) }.join
-          else
-            "(?i:#{Regexp.escape(token)})"
-          end
-        else
-          Regexp.escape(token)
-        end
-      end.join
+      Matching.literal_source(Matching.literal_units(literal, fragment))
     end
 
     # @see Values.prefix
@@ -1417,24 +1378,9 @@ module Addressable
       Values.normalize_keys(mapping)
     end
 
-    ##
-    # The name of the regular expression group for a variable. A group name
-    # can't start with a digit, which a variable name can (RFC 6570 section
-    # 2.3), so such a name gets a leading ".". No variable name starts with
-    # ".", so this can't collide with another variable's group. Ruby 2.3 and
-    # earlier only allow a letter or "_" as the first character, so there a
-    # name that starts with a digit or a pct-encoded triplet is wrapped in
-    # "__" instead.
-    #
-    # @param [String] name The variable name.
-    #
-    # @return [String] The group name.
+    # @see Matching.capture_name
     def capture_name(name)
-      if GROUP_NAME_CAN_START_WITH_DOT
-        name =~ /\A[0-9]/ ? ".#{name}" : name
-      else
-        name =~ /\A[A-Za-z_]/ ? name : "__#{name}__"
-      end
+      Matching.capture_name(name)
     end
 
     ##

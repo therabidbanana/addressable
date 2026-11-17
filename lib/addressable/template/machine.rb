@@ -62,44 +62,14 @@ class Addressable::Template
       end
 
       ##
-      # Adds the steps that match the literal to the matcher, as Template's
-      # literal_regexp matches it: a non-ASCII character as it is or
-      # pct-encoded in either case, a run of pct-encoded non-ASCII octets as
-      # the characters they encode, and a "#" also as "%23" once a fragment
-      # may have started, since expansion encodes a later one. Everything
-      # else matches only as written.
+      # Adds the steps that match the literal to the matcher (see
+      # Matching.literal_units).
       #
       # @param [Matcher] matcher The matcher.
       # @param [TrueClass, FalseClass] fragment
       #   Whether a fragment may have started before the literal.
       def match_steps(matcher, fragment)
-        units = []
-        @text.scan(LITERAL_TOKEN) do |token|
-          if token == "#"
-            units << (fragment ? ["#", "%23"] : ["#", nil])
-            fragment = true
-          elsif token =~ LITERAL_ENCODE
-            token.each_char { |character| units << either_form(character) }
-          elsif token.length > 3 || token =~ /\A%[89A-Fa-f]/
-            decoded = Addressable::URI.unencode_component(token).dup
-            decoded.force_encoding(Encoding::UTF_8)
-            if decoded.valid_encoding?
-              decoded.each_char { |character| units << either_form(character) }
-            else
-              units << [nil, token]
-            end
-          else
-            units << [token, nil]
-          end
-        end
-        matcher.literal(units)
-      end
-
-      private
-
-      def either_form(character)
-        encoded = Addressable::URI.encode_component(character, LITERAL_ENCODE)
-        [character, encoded]
+        matcher.literal(Matching.literal_units(@text, fragment))
       end
     end
     LEADERS = {

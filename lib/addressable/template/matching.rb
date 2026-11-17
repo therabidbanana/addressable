@@ -64,6 +64,90 @@ module Addressable
       end
 
       ##
+      # Splits literal text into units of [raw, encoded]: text that matches
+      # as it is (raw), or with ASCII letters in either case (encoded), as
+      # Matcher::Unit reads them. A non-ASCII character, written as it is or
+      # as pct-encoded UTF-8, matches either way, since expansion pct-encodes
+      # it (RFC 6570 section 3.1). So does a "#" that expansion may have
+      # encoded because a fragment had already started. A run of pct-encoded
+      # octets that isn't UTF-8 matches in either case, and anything else
+      # only as written.
+      #
+      # @param [String] literal The literal text.
+      # @param [TrueClass, FalseClass] fragment
+      #   Whether a fragment may have started before the literal.
+      #
+      # @return [Array<Array>] The units.
+      def self.literal_units(literal, fragment)
+        units = []
+        literal.scan(LITERAL_TOKEN) do |token|
+          if token == '#'
+            units << (fragment ? ['#', '%23'] : ['#', nil])
+            fragment = true
+          elsif token =~ LITERAL_ENCODE
+            token.each_char { |character| units << either_form(character) }
+          elsif token.length > 3 || token =~ /\A%[89A-Fa-f]/
+            decoded = Addressable::URI.unencode_component(token).dup
+            decoded.force_encoding(Encoding::UTF_8)
+            if decoded.valid_encoding?
+              decoded.each_char { |character| units << either_form(character) }
+            else
+              units << [nil, token]
+            end
+          else
+            units << [token, nil]
+          end
+        end
+        units
+      end
+
+      ##
+      # The regular expression source for a literal's units.
+      #
+      # @param [Array<Array>] units The units, from literal_units.
+      #
+      # @return [String] The regular expression source.
+      def self.literal_source(units)
+        units.map do |raw, encoded|
+          if raw == '#' && encoded
+            NUMBER_SIGN_EITHER_FORM
+          elsif encoded.nil?
+            Regexp.escape(raw)
+          elsif raw.nil?
+            "(?i:#{Regexp.escape(encoded)})"
+          else
+            "(?:#{Regexp.escape(raw)}|(?i:#{encoded}))"
+          end
+        end.join
+      end
+
+      ##
+      # The name of the regular expression group for a variable. A group name
+      # can't start with a digit, which a variable name can (RFC 6570 section
+      # 2.3), so such a name gets a leading ".". No variable name starts with
+      # ".", so this can't collide with another variable's group. Ruby 2.3 and
+      # earlier only allow a letter or "_" as the first character, so there a
+      # name that starts with a digit or a pct-encoded triplet is wrapped in
+      # "__" instead.
+      #
+      # @param [String] name The variable name.
+      #
+      # @return [String] The group name.
+      def self.capture_name(name)
+        if GROUP_NAME_CAN_START_WITH_DOT
+          name =~ /\A[0-9]/ ? ".#{name}" : name
+        else
+          name =~ /\A[A-Za-z_]/ ? name : "__#{name}__"
+        end
+      end
+
+      # A non-ASCII character, as it is and pct-encoded.
+      def self.either_form(character)
+        [character, Addressable::URI.encode_component(character, LITERAL_ENCODE)]
+      end
+      private_class_method :either_form
+
+      ##
       # Whether a label expression's value can contain ".". Label expansion
       # leaves a "." in a value as it is (RFC 6570 section 3.2.5), so where
       # the value ends is only known where the expression is delimited by

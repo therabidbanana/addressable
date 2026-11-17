@@ -116,10 +116,11 @@ machine-mode failures. Each phase lowers them; record the count in
   `def partial_expand`, `def expand`, `def variables`, `def
   variable_defaults`, `def to_regexp`, `def source`, `def
   named_captures`), most starting with an `if engine == :machine` guard.
-  For phase 4: `def to_regexp` and `def source` have no guard; both
-  engines use the builder, `def parse_template_pattern`, which caches in
-  `@cached_template_parse` (see "Found at the end of phase 3" under
-  phase 4). `def named_captures` maps the regexp's group names back to
+  For phase 4: `def to_regexp` and `def source` have no guard yet, so
+  for now both engines use the builder, `def parse_template_pattern`,
+  which caches in `@cached_template_parse` (see "Found at the end of
+  phase 3" under phase 4); the machine is to build its own from its
+  nodes. `def named_captures` maps the regexp's group names back to
   variable names with `def capture_name` and `def variable_name` (a
   name that starts with a digit gets a leading "." as a group name, or
   `__name__` on Ruby 2.3).
@@ -249,7 +250,8 @@ machine-mode failures. Each phase lowers them; record the count in
      comparison and runs the same code as before. At the next major, each
      guard's branch becomes the method body; grep for `engine ==
      :machine`. `extract` stays `match(...).mapping`, and `to_regexp` and
-     `source` stay shared (decided for phase 4). Considered and dropped: a
+     `source` stay on the builder until phase 4, which gives the machine
+     its own. Considered and dropped: a
      stateless `RegexpEngine` that called private `regexp_*` methods with
      `send` (three hops and three places to edit per operation, for no
      behaviour), and a `ParsedTemplate` that wrapped `UriTemplate`.
@@ -487,8 +489,8 @@ examples, skipped in machine mode because they test the regexp builder
 (see "Spec inventory"). They now run in both modes, and 288 machine-only
 examples compare `#match` with the `:regexp` engine. The rest of
 the drop from 1,388 is `#extract`, which now goes through the machine's
-`#match` instead of not existing. `#to_regexp` and `#source` use the
-shared builder by design (phase 4).
+`#match` instead of not existing. `#to_regexp` and `#source` used `Template`'s
+builder in both modes until phase 4.
 
 Largest groups of machine failures after piece 2:
 
@@ -1059,21 +1061,29 @@ Phase 3 is complete, apart from weighing the optimization list.
   `ParsedTemplate` has no `NotImplementedError` left, and `unsupported`
   is gone. Specs in `template_machine_spec.rb` compare 31 patterns and
   invalid ones with `:regexp`. Machine mode: 0 failures, from 47.
-- `to_regexp` and `source`: build the regexp only when one of them is
-  called, once per template, with the existing builder, so the result is
-  exactly what `Template` gives now. `expand`, `match`, and `extract`
-  never build one with the machine engine.
+- `to_regexp` and `source`: the machine builds the regexp from its
+  nodes, not with `Template`'s builder, only when one of them is called
+  (or by `freeze`), once per template. The source is byte-for-byte what
+  `Template`'s builder writes (decided at the start of phase 4), so each
+  node ports the builder's rewrites for its operator, and specs compare
+  the source with `:regexp`'s over the oracle's patterns and more.
+  `expand`, `match`, and `extract` never build one with the machine
+  engine. In pieces:
+  1. Move what both engines need (`capture_name`, `literal_regexp`) to
+     shared code, with `Template`'s private methods delegating. No
+     behaviour change.
+  2. The nodes write their source: the plain shapes first, then each
+     group of the builder's rewrites, with a comparison spec whose
+     failures shrink.
+  3. `freeze` builds it (below).
 - **Found at the end of phase 3:** a frozen machine template's
   `to_regexp` (and so `source`) raises `FrozenError`, where `:regexp`
   works. `parse_template_pattern` caches in `@cached_template_parse`,
   and `Template#freeze` only fills that cache for `:regexp`, since the
-  machine's `freeze` computes nothing it doesn't need. Decide how to
-  keep both: build the regexp in `freeze` for the machine too (about
-  40 µs per frozen template, used or not), build it without caching
-  once frozen (each call rebuilds it), or keep the cache somewhere that
-  isn't frozen. Ask the user. Add a spec that compares a frozen machine
-  template's `to_regexp`, `source` and `named_captures` with
-  `:regexp`'s.
+  machine's `freeze` computes nothing it doesn't need. Decided: the
+  machine's `freeze` builds its regexp too, as `:regexp`'s does. Add a
+  spec that compares a frozen machine template's `to_regexp`, `source`
+  and `named_captures` with `:regexp`'s.
 - Keep the grammar constants.
 - Done in phase 3: the reference-oracle rework.
 - Then: once the regexp API is done, machine mode should have 0
@@ -1114,8 +1124,8 @@ Changes:
 
 ### Next major
 
-- Remove the `:regexp` engine, its private methods, and `TEMPLATE_MODE`.
-  `to_regexp` keeps its builder.
+- Remove the `:regexp` engine, its private methods (the regexp builder
+  included), and `TEMPLATE_MODE`. `to_regexp` comes from the nodes.
 
 ## Open decisions
 
@@ -1152,8 +1162,9 @@ Decided:
 - **Shared, not copied:** the error classes, `MatchData`, value lookup and
   normalization, and the rest of `Template` outside the operations.
 - **Regexps only on request:** `named_captures` comes from the nodes, and
-  `to_regexp` and `source` build a regexp once per template, only when
-  called, with the existing builder.
+  `to_regexp` and `source` build a regexp from the nodes once per
+  template, only when called (or by `freeze`), byte-for-byte what
+  `Template`'s builder writes.
 
 ## Risks and constraints
 

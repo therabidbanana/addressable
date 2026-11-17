@@ -1141,6 +1141,74 @@ describe Addressable::Template, "with the :machine engine, #match" do
   end
 end
 
+describe Addressable::Template::Matching, ".literal_units" do
+  {
+    ["a.b", false] => [["a", nil], [".", nil], ["b", nil]],
+    ["#a#b", false] => [["#", nil], ["a", nil], ["#", "%23"], ["b", nil]],
+    ["#a", true] => [["#", "%23"], ["a", nil]],
+    ["é", false] => [["é", "%C3%A9"]],
+    ["%C3%A9", false] => [["é", "%C3%A9"]],
+    ["%41", false] => [["%41", nil]],
+    ["%E9", false] => [[nil, "%E9"]],
+    ["", false] => []
+  }.each do |(text, fragment), units|
+    it "splits #{text.inspect}#{" after a fragment" if fragment}" do
+      expect(described_class.literal_units(text, fragment)).to eq(units)
+    end
+  end
+end
+
+describe Addressable::Template::Matching, ".literal_source" do
+  def source(text, fragment)
+    described_class.literal_source(
+      described_class.literal_units(text, fragment)
+    )
+  end
+
+  {
+    ["a.b", false] => "a\\.b",
+    ["#a#b", false] => "\\#a(?:\\#|%23)b",
+    ["#a#b", true] => "(?:\\#|%23)a(?:\\#|%23)b",
+    ["é", false] => "(?:é|(?i:%C3%A9))",
+    ["%C3%A9", false] => "(?:é|(?i:%C3%A9))",
+    ["%41", false] => "%41",
+    ["%E9", false] => "(?i:%E9)",
+    ["", false] => ""
+  }.each do |(text, fragment), expected|
+    it "writes #{text.inspect}#{" after a fragment" if fragment}" do
+      expect(source(text, fragment)).to eq(expected)
+    end
+  end
+
+  it "keeps a literal's encoding" do
+    latin1 = "\xE9".dup.force_encoding(Encoding::ISO_8859_1)
+    expect(source(latin1, false)).to eq(
+      "(?:#{latin1}|(?i:%E9))".dup.force_encoding(Encoding::ISO_8859_1)
+    )
+  end
+end
+
+describe Addressable::Template::Matching, ".capture_name" do
+  dot_allowed = Addressable::Template.const_get(:GROUP_NAME_CAN_START_WITH_DOT)
+
+  it "keeps a name that starts with a letter or _" do
+    expect(described_class.capture_name("a.b")).to eq("a.b")
+    expect(described_class.capture_name("_4")).to eq("_4")
+  end
+
+  it "names the group of a name that starts with a digit" do
+    expect(described_class.capture_name("42")).to eq(
+      dot_allowed ? ".42" : "__42__"
+    )
+  end
+
+  it "names the group of a name that starts with a triplet" do
+    expect(described_class.capture_name("%41")).to eq(
+      dot_allowed ? "%41" : "__%41__"
+    )
+  end
+end
+
 describe Addressable::Template, "with the :machine engine, #named_captures" do
   # The named captures, or the error.
   def named_captures(engine, pattern)
