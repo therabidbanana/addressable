@@ -223,11 +223,6 @@ regexp shapes. Some ways to make it smaller and easier to read:
   `TEMPLATE_MODE`. Each `engine == :machine` guard's branch becomes its
   method body.
 
-If the maintainers drop `#match`, `#extract` and the regexp API (they
-aren't part of RFC 6570), the matcher, `Matching` and the regexp
-rendering go with them, and the machine is only the lexer and
-expansion.
-
 ## Working on it
 
 ```sh
