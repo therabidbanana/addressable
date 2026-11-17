@@ -785,6 +785,25 @@ Phase 2 is complete.
   the reference regexp's captures turned into mappings, or stored
   expected mappings. Machine mode: 651 failures, all 288 new examples
   included (12 of them `TypeError`s from the 2020 matcher).
+- The rest of phase 3, piece by piece: share `#match`'s URI handling and
+  capture-to-mapping code; the matcher; processors; performance.
+- **Done: shared URI handling and captures.** `Template#match` turns the
+  regexp's captures into a mapping with about 90 lines of post-processing
+  (splitting exploded values, dropping trailing empty members that are
+  joiners, `;` / `?` / `&` pairs, unencoding, the first value of a
+  repeated name winning), with quirks the specs pin. The machine must give
+  the same mappings, so that code moved, unchanged, to
+  `Template::Matching` (`lib/addressable/template/matching.rb`, `@api
+  private`): `Matching.parse_uri` (the UTF-8 check and parse, or `nil`),
+  `Matching.match_data(template, uri, expansions, matched, processor)`,
+  which takes anything that answers `captures`, `begin(n)` and `end(n)` as
+  a regexp `MatchData` does, and `Matching.valid_utf8?`, which
+  `Template#valid_utf8?` delegates to. `Template#match` keeps
+  `check_expressions`, the regexp, and the call to `match`. The machine
+  will hand its own captures to `match_data`. No behaviour change: the
+  full suite passes in both IDNA modes, `matching.rb` is fully covered,
+  and `:regexp` `#match` time is unchanged (about 30, 45 and 53 µs on
+  three templates, before and after).
 - Replace `extract_values` with a matcher that never backtracks
   exponentially. Each expression's possible end positions come from the
   literal that follows and the operator's character set. Search the
