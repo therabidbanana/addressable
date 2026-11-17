@@ -4,6 +4,10 @@ class Addressable::Template
     # Literal text between expressions, as the pattern writes it.
     class Literal
       attr_reader :text
+      # Whether a fragment may have started before the literal, so that
+      # expansion encoded a "#" in it as "%23". Set by
+      # ParsedTemplate#place_nodes.
+      attr_accessor :fragment
 
       def initialize(text)
         @text = text
@@ -38,18 +42,14 @@ class Addressable::Template
       # Matching.literal_units).
       #
       # @param [Matcher] matcher The matcher.
-      # @param [TrueClass, FalseClass] fragment
-      #   Whether a fragment may have started before the literal.
-      def match_steps(matcher, fragment)
+      # @param [#match, nil] _processor Unused: a literal has no variables.
+      def match_steps(matcher, _processor = nil)
         matcher.literal(Matching.literal_units(@text, fragment))
       end
 
       # The literal's part of Template#to_regexp, matching it as
       # match_steps does.
-      #
-      # @param [TrueClass, FalseClass] fragment
-      #   Whether a fragment may have started before the literal.
-      def regexp_source(fragment, _label_dots, _following, _comma_follows)
+      def regexp_source
         Matching.literal_source(Matching.literal_units(@text, fragment))
       end
     end

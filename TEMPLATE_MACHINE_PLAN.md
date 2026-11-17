@@ -167,8 +167,6 @@ catch that kind of mistake now.
 The code grew piece by piece, and much of it mirrors `Template`'s
 regexp shapes. Some ways to make it smaller and easier to read:
 
-- **Work out a node's context in one pass.** `each_node_in_context`
-  walks the nodes twice, and `expression_followers` once more.
 - **Remove what only served the build-up:** the profile task's
   `NotImplementedError` rescue and "missing" outcome, and any specs that
   only checked an operation wasn't implemented yet.

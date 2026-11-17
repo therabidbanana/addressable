@@ -38,6 +38,20 @@ class Addressable::Template
 
       attr_reader :variables
 
+      # What matching the expression depends on around it, set by
+      # ParsedTemplate#place_nodes.
+
+      # Whether a fragment may have started before the expression, so that
+      # expansion encoded its "#" leader as "%23".
+      attr_accessor :fragment
+      # Whether a label's value can contain "." (Matching.label_takes_dots?).
+      attr_accessor :label_dots
+      # The expression right after this one, if no literal text comes
+      # between them.
+      attr_accessor :following
+      # Whether the text after the expression could start with a comma.
+      attr_accessor :comma_follows
+
       def initialize(variables)
         @variables = variables
       end
@@ -130,16 +144,10 @@ class Addressable::Template
       # captured, for Matching.match_data.
       #
       # @param [Matcher] matcher The matcher.
-      # @param [TrueClass, FalseClass] fragment
-      #   Whether a fragment may have started before the expression, so
-      #   that expansion encoded its "#" leader as "%23".
-      # @param [TrueClass, FalseClass] label_dots
-      #   Whether a label's value can contain "."
-      #   (Matching.label_takes_dots?).
       # @param [#match, nil] processor
       #   A processor whose match method may give a variable's value a
       #   pattern of its own, which then has to match.
-      def match_steps(matcher, fragment, label_dots, processor = nil)
+      def match_steps(matcher, processor = nil)
         # Asked for every variable before any steps, as Template asks.
         patterns = variables.map do |variable|
           processor && processor.match(variable.name)
@@ -178,20 +186,8 @@ class Addressable::Template
       # may be left out, with an optional joiner between them. Each value is
       # a group named after its variable (Matching.capture_name).
       #
-      # @param [TrueClass, FalseClass] fragment
-      #   Whether a fragment may have started before the expression, so
-      #   that expansion encoded its "#" leader as "%23".
-      # @param [TrueClass, FalseClass] label_dots
-      #   Whether a label's value can contain "."
-      #   (Matching.label_takes_dots?).
-      # @param [Expression, nil] following
-      #   The expression right after this one, if no literal text comes
-      #   between them.
-      # @param [TrueClass, FalseClass] comma_follows
-      #   Whether the text after this expression could start with a comma.
-      #
       # @return [String] The regular expression source.
-      def regexp_source(fragment, label_dots, following, comma_follows)
+      def regexp_source
         leader = self.class.leader
         leader =
           if leader == "#" && fragment

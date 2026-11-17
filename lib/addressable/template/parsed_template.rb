@@ -149,12 +149,8 @@ module Addressable
       # the builder's does, and takes the encoding of the pattern's
       # non-ASCII literals.
       def build_regexp
-        followers = expression_followers
-        in_context = to_enum(:each_node_in_context, expression_texts)
-        result = render(Encoding::UTF_8, in_context) do |node, fragment, dots|
-          following, comma_follows = followers[node]
-          node.regexp_source(fragment, dots, following, comma_follows)
-        end
+        place_nodes
+        result = render(Encoding::UTF_8, &:regexp_source)
         Regexp.new("\\A#{result}\\z")
       end
 
@@ -173,34 +169,42 @@ module Addressable
       # Adds each node's steps to a new matcher, with the processor's
       # patterns, if any.
       def build_matcher(processor = nil)
-        texts = expression_texts
-        matcher = Matcher.new(texts)
-        each_node_in_context(texts) do |node, fragment, label_dots|
-          if node.is_a?(Machine::Literal)
-            node.match_steps(matcher, fragment)
-          else
-            node.match_steps(matcher, fragment, label_dots, processor)
-          end
-        end
+        place_nodes
+        matcher = Matcher.new(expression_texts)
+        @nodes.each { |node| node.match_steps(matcher, processor) }
         matcher.finish
       end
 
-      # Yields each node with what matching it depends on around it: whether
-      # a fragment may have started before it, and, for an expression,
-      # whether a label's value can contain "." (Matching.label_takes_dots?).
-      # A fragment may start at a "#" in a literal or at a + or #
-      # expression, and from then on expansion encodes a later "#", so
-      # later literals and fragment leaders match it either way, as in
-      # Template's regexp. Takes the expressions as written
-      # (expression_texts), which the caller may need as well.
-      def each_node_in_context(texts)
+      # The second step of building the machine, after Lexer makes the
+      # nodes: notes on each node what matching it, or writing its part of
+      # the regexp, depends on around it. Done once, before the first
+      # matcher or regexp is built, since expansion doesn't need it; freeze
+      # builds both, so a frozen template's nodes are already placed.
+      # Whether a fragment may have started is worked out going forward,
+      # and what follows each expression going back from the end.
+      def place_nodes
+        return if @placed
+        note_fragments_and_label_dots
+        note_followers
+        @placed = true
+      end
+
+      # Notes whether a fragment may have started before each node, and,
+      # for each expression, whether a label's value can contain "."
+      # (Matching.label_takes_dots?, which Template uses too). A fragment
+      # may start at a "#" in a literal or at a + or # expression, and from
+      # then on expansion encodes a later "#", so later literals and
+      # fragment leaders match it either way, as in Template's regexp.
+      def note_fragments_and_label_dots
         # The literal text before each expression and after the last, and
-        # whether a fragment may have started before each.
+        # whether a fragment may have started before each, and before each
+        # expression, as Matching.label_takes_dots? takes them.
         literals = [""]
         either_literal = [false]
         either_leader = []
         fragment = false
         @nodes.each do |node|
+          node.fragment = fragment
           if node.is_a?(Machine::Literal)
             literals[-1] += node.text
             fragment ||= node.text.include?("#")
@@ -212,29 +216,19 @@ module Addressable
           end
         end
 
-        fragment = false
-        index = 0
-        @nodes.each do |node|
-          if node.is_a?(Machine::Literal)
-            yield node, fragment, nil
-            fragment ||= node.text.include?("#")
-          else
-            label_dots = Matching.label_takes_dots?(
-              index, texts, literals, either_leader, either_literal
-            )
-            yield node, either_leader[index], label_dots
-            fragment ||= node.class.allows_reserved?
-            index += 1
-          end
+        texts = expression_texts
+        @nodes.grep(Machine::Expression).each_with_index do |expression, index|
+          expression.label_dots = Matching.label_takes_dots?(
+            index, texts, literals, either_leader, either_literal
+          )
         end
       end
 
-      # For each expression, the expression right after it, if no literal
-      # text comes between them, and whether the text after it could start
-      # with a comma. Expressions can match nothing, so that looks past any
-      # that can't start with one. Worked out from the end, in one pass.
-      def expression_followers
-        followers = {}.compare_by_identity
+      # Notes, for each expression, the expression right after it, if no
+      # literal text comes between them, and whether the text after it
+      # could start with a comma. Expressions can match nothing, so that
+      # looks past any that can't start with one.
+      def note_followers
         following = nil
         comma_follows = false
         @nodes.reverse_each do |node|
@@ -242,12 +236,12 @@ module Addressable
             following = nil
             comma_follows = node.text.start_with?(",")
           else
-            followers[node] = [following, comma_follows]
+            node.following = following
+            node.comma_follows = comma_follows
             following = node
             comma_follows ||= node.may_start_with_comma?
           end
         end
-        followers
       end
 
       # Each expression as the pattern writes it, in order.
@@ -264,15 +258,11 @@ module Addressable
       end
 
       # Joins each node as the block writes it, into a string in the given
-      # encoding. The block gets each node with its context, which is nil
-      # unless the nodes come from to_enum(:each_node_in_context); expand
-      # and partial_expand don't need it. A non-ASCII node in another
-      # encoding changes the string's encoding to its own.
-      def render(encoding, nodes = @nodes)
+      # encoding. A non-ASCII node in another encoding changes the string's
+      # encoding to its own.
+      def render(encoding)
         result = String.new.force_encoding(encoding)
-        nodes.each do |node, fragment, label_dots|
-          result << yield(node, fragment, label_dots)
-        end
+        @nodes.each { |node| result << yield(node) }
         result
       end
     end

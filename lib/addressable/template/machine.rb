@@ -20,6 +20,13 @@ class Addressable::Template
   # them. Each node can expand, add the steps that match it to a Matcher,
   # and write its part of Template#to_regexp.
   #
+  # Building the machine takes two steps. Lexer makes the nodes, which is
+  # all expansion needs. Then, before the first matcher or regexp is
+  # built, ParsedTemplate#place_nodes notes on each node what matching it
+  # depends on around it: whether a fragment may have started before it,
+  # and, for an expression, whether a label's value can contain ".", the
+  # expression right after it, and whether a comma could follow it.
+  #
   # @api private
   module Machine
     variable_char_class =
