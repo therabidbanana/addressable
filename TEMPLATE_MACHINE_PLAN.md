@@ -167,17 +167,6 @@ catch that kind of mistake now.
 The code grew piece by piece, and much of it mirrors `Template`'s
 regexp shapes. Some ways to make it smaller and easier to read:
 
-- **Drop the unreleased delegators.** `Template`'s private
-  `defined_value`, `prefix`, `utf8_value`, `encode_later_number_signs`,
-  `resolve_mapping`, `valid_utf8?`, `label_takes_dots?`,
-  `literal_regexp` and `capture_name` only forward to `Values` or
-  `Matching`, and no release has them, so the `:regexp` code can call
-  those directly. Keep `normalize_value` and `normalize_keys` until the
-  next major.
-- **One way for operators to supply their parts.** Value and member
-  shapes are class methods (`value_steps`, `value_source`), while the
-  regexp rewrites are instance methods (`group_source`,
-  `values_source`, `absorbs?`). Pick one.
 - **Work out a node's context in one pass.** `each_node_in_context`
   walks the nodes twice, and `expression_followers` once more.
 - **Remove what only served the build-up:** the profile task's

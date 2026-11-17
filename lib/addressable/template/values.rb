@@ -30,7 +30,9 @@ module Addressable
     # into its expression (leaders, separators, names) is Machine's.
     #
     # Its class methods normalize mappings and values for both engines.
-    # Template's private methods of the same names call them.
+    # Template calls them directly, except through normalize_value and
+    # normalize_keys, which 2.9.2 had as private methods and which
+    # subclasses may override.
     #
     # @api private
     class Values

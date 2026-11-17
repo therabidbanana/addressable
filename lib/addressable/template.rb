@@ -763,7 +763,7 @@ module Addressable
       end
       check_expressions
       result = self.pattern.dup
-      mapping = resolve_mapping(mapping, block)
+      mapping = normalize_keys(Values.mapping_or_block(mapping, block))
       result.gsub!( EXPRESSION ) do |capture|
         transform_partial_capture(mapping, capture, processor, normalize_values)
       end
@@ -865,14 +865,14 @@ module Addressable
           &block)
       end
       check_expressions
-      mapping = resolve_mapping(mapping, block)
+      mapping = normalize_keys(Values.mapping_or_block(mapping, block))
       result = map_literals(self.pattern) do |literal|
         Addressable::URI.encode_component(literal, LITERAL_ENCODE)
       end
       result.gsub!( EXPRESSION ) do |capture|
         transform_capture(mapping, capture, processor, normalize_values)
       end
-      return Addressable::URI.parse(encode_later_number_signs(result))
+      return Addressable::URI.parse(Values.encode_later_number_signs(result))
     end
 
     ##
@@ -1040,7 +1040,7 @@ module Addressable
       given = lambda { |varspec| mapping.key?(varspec[VARSPEC, 1]) }
       defined = lambda do |varspec|
         given.call(varspec) &&
-          !defined_value(mapping[varspec[VARSPEC, 1]]).nil?
+          !Values.defined_value(mapping[varspec[VARSPEC, 1]]).nil?
       end
 
       if vars.all?(&given)
@@ -1151,27 +1151,6 @@ module Addressable
       result << yield(scanner.rest, nil)
     end
 
-    # @see Values.encode_later_number_signs
-    def encode_later_number_signs(uri)
-      Values.encode_later_number_signs(uri)
-    end
-
-    # @see Matching.literal_units
-    # @see Matching.literal_source
-    def literal_regexp(literal, fragment = false)
-      Matching.literal_source(Matching.literal_units(literal, fragment))
-    end
-
-    # @see Values.prefix
-    def prefix(value, length, allow_reserved)
-      Values.prefix(value, length, allow_reserved)
-    end
-
-    # @see Values.defined_value
-    def defined_value(value)
-      Values.defined_value(value)
-    end
-
     ##
     # Transforms a mapped value so that values can be substituted into the
     # template.
@@ -1203,7 +1182,7 @@ module Addressable
       _, operator, varlist = *capture.match(EXPRESSION)
       return_value = varlist.split(',').inject([]) do |acc, varspec|
         _, name, modifier = *varspec.match(VARSPEC)
-        value = defined_value(mapping[name])
+        value = Values.defined_value(mapping[name])
         unless value.nil?
           allow_reserved = %w(+ #).include?(operator)
           # Common primitives where the .to_s output is well-defined
@@ -1238,7 +1217,7 @@ module Addressable
               transformed_value = value.map do |val|
                 if length
                   Addressable::URI.encode_component(
-                    prefix(val, length, allow_reserved), encode_map)
+                    Values.prefix(val, length, allow_reserved), encode_map)
                 else
                   Addressable::URI.encode_component(val, encode_map)
                 end
@@ -1268,7 +1247,7 @@ module Addressable
             else
               if length
                 transformed_value = Addressable::URI.encode_component(
-                  prefix(value, length, allow_reserved), encode_map)
+                  Values.prefix(value, length, allow_reserved), encode_map)
               else
                 transformed_value = Addressable::URI.encode_component(
                   value, encode_map)
@@ -1353,35 +1332,9 @@ module Addressable
       Values.normalize_value(value)
     end
 
-    # @see Values.utf8_value
-    def utf8_value(value)
-      Values.utf8_value(value)
-    end
-
-    # @see Matching.valid_utf8?
-    def valid_utf8?(uri)
-      Matching.valid_utf8?(uri)
-    end
-
-    ##
-    # Picks the mapping to expand with: the one passed, or the block.
-    #
-    # @param [Object] mapping The mapping argument
-    # @param [Proc, nil] block The block
-    #
-    # @return [Hash, MappingLookup] The normalized mapping
-    def resolve_mapping(mapping, block)
-      normalize_keys(Values.mapping_or_block(mapping, block))
-    end
-
     # @see Values.normalize_keys
     def normalize_keys(mapping)
       Values.normalize_keys(mapping)
-    end
-
-    # @see Matching.capture_name
-    def capture_name(name)
-      Matching.capture_name(name)
     end
 
     ##
@@ -1442,13 +1395,6 @@ module Addressable
         end
         [following, comma || escaped_pattern[position] == ',']
       end
-    end
-
-    # @see Matching.label_takes_dots?
-    def label_takes_dots?(index, expressions, literals, either_leader,
-                          either_literal)
-      Matching.label_takes_dots?(index, expressions, literals, either_leader,
-        either_literal)
     end
 
     ##
@@ -1517,7 +1463,8 @@ module Addressable
       escaped_pattern = map_literals(pattern) do |literal, expression|
         literals << literal
         either_literal << fragment
-        source = literal_regexp(literal, fragment)
+        source =
+          Matching.literal_source(Matching.literal_units(literal, fragment))
         fragment ||= literal.include?('#')
         if expression
           raw_expressions << expression
@@ -1527,7 +1474,7 @@ module Addressable
         source
       end
       dotted_labels = raw_expressions.each_index.map do |index|
-        label_takes_dots?(
+        Matching.label_takes_dots?(
           index, raw_expressions, literals, either_leader, either_literal
         )
       end
@@ -1565,7 +1512,7 @@ module Addressable
           "(?<![^\\x00-\\x7F])"
         combined = varspecs.each_with_index.map do |varspec, position|
           _, name, modifier = *varspec.match(VARSPEC)
-          name = capture_name(name)
+          name = Matching.capture_name(name)
 
           result = results[position]
           if result
@@ -1686,7 +1633,8 @@ module Addressable
           # Values were tried shortest first, and the next expression can
           # match any unreserved characters, so the value only needs to end
           # after a character that the next expression couldn't match.
-          combined = "(?<#{capture_name(varspecs.first[VARSPEC, 1])}>" \
+          combined =
+            "(?<#{Matching.capture_name(varspecs.first[VARSPEC, 1])}>" \
             "#{RESERVED}*?#{not_after_value})?"
         elsif plain && varspecs.size > 1 &&
             (operator == '+' || operator == '#') &&
@@ -1702,7 +1650,7 @@ module Addressable
           # a variable is the last one if its varspec is the same as the
           # last varspec.
           nested = varspecs[0...-1].reverse.inject("") do |inner, varspec|
-            "(?:(?<#{capture_name(varspec[VARSPEC, 1])}>" \
+            "(?:(?<#{Matching.capture_name(varspec[VARSPEC, 1])}>" \
               "#{RESERVED_NO_COMMA}*+)" \
               "#{joiner}?+#{inner}|(?=#{RESERVED_NO_COMMA}))"
           end

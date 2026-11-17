@@ -22,8 +22,7 @@ module Addressable
   class Template
     # What both engines' #match share: reading the URI, and turning the
     # values captured for each varspec into a MatchData. The engines differ
-    # only in how they split the URI between the varspecs. Template's private
-    # methods of the same names call these.
+    # only in how they split the URI between the varspecs.
     #
     # @api private
     class Matching
