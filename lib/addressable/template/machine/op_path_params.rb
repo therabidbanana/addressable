@@ -15,7 +15,7 @@ class Addressable::Template
       # --- Matching ---
 
       # A name, then an optional "=" and a value.
-      def value_steps(matcher, _label_dots)
+      def value_steps(matcher)
         matcher.greedy_run(:unreserved)
         matcher.optional { matcher.exact("=") }
         matcher.lazy_run(:unreserved)
@@ -25,7 +25,7 @@ class Addressable::Template
 
       # Template's regexp writes the name with "=" and the name alone as
       # two choices, which match the same strings in the same order.
-      def value_source(_label_dots)
+      def value_source
         "(?:#{UNRESERVED}*=#{UNRESERVED}*?|#{UNRESERVED}*)"
       end
 
@@ -34,7 +34,7 @@ class Addressable::Template
         "(?:#{UNRESERVED}|=)*"
       end
 
-      def group_source(variable, position, label_dots)
+      def group_source(variable, position)
         if exploded_before?(position)
           # Exploded values were tried longest first, so whatever this
           # variable could match after an exploded one, that one already
@@ -44,10 +44,10 @@ class Addressable::Template
           # Values were tried longest first, and splitting an earlier
           # variable's run of characters with this one never gave a
           # different result, so this one may only start after that run.
-          value = variable_source(variable, label_dots)
+          value = variable_source(variable)
           group(variable, "(?:#{NOT_AFTER_VALUE}#{value})?")
         else
-          optional_group(variable, label_dots)
+          optional_group(variable)
         end
       end
     end

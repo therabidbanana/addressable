@@ -15,7 +15,7 @@ class Addressable::Template
       # --- Matching ---
 
       # A name, "=", and a value.
-      def value_steps(matcher, _label_dots)
+      def value_steps(matcher)
         matcher.greedy_run(:unreserved)
         matcher.exact("=")
         matcher.lazy_run(:unreserved)
@@ -23,7 +23,7 @@ class Addressable::Template
 
       # --- Regexp ---
 
-      def value_source(_label_dots)
+      def value_source
         "#{UNRESERVED}*=#{UNRESERVED}*?"
       end
 
@@ -32,7 +32,7 @@ class Addressable::Template
         "#{UNRESERVED}*=(?:#{UNRESERVED}*=)*#{UNRESERVED}*?"
       end
 
-      def group_source(variable, position, label_dots)
+      def group_source(variable, position)
         if position > 0 && variables[position - 1].explode
           # Whatever this variable could match after an exploded one, that
           # one already tried matching itself, unless it couldn't: an
@@ -41,10 +41,10 @@ class Addressable::Template
           leader = Regexp.escape(self.class.leader)
           joiner = joiner_source
           after_empty = "(?<=#{leader}#{joiner}|#{joiner}#{joiner})"
-          value = variable_source(variable, label_dots)
+          value = variable_source(variable)
           "#{group(variable, after_empty + value)}?"
         else
-          optional_group(variable, label_dots)
+          optional_group(variable)
         end
       end
     end

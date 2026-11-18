@@ -45,6 +45,8 @@ class Addressable::Template
       # expansion encoded its "#" leader as "%23".
       attr_accessor :fragment
       # Whether a label's value can contain "." (Matching.label_takes_dots?).
+      # Only ever true for a . expression with one unexploded variable, so
+      # never for an exploded value's members.
       attr_accessor :label_dots
       # The expression right after this one, if no literal text comes
       # between them.
@@ -170,7 +172,7 @@ class Addressable::Template
             else
               matcher.optional do
                 matcher.capture do
-                  variable_steps(matcher, variable, label_dots)
+                  variable_steps(matcher, variable)
                 end
               end
             end
@@ -201,9 +203,9 @@ class Addressable::Template
           # anything it could match on its own, every other choice ends
           # where the empty one can also end, so the empty alternative
           # always gave the first match.
-          "(?:|(?!)#{leader}#{joined_groups(label_dots)})"
+          "(?:|(?!)#{leader}#{joined_groups})"
         else
-          "(?:|#{leader}#{values_source(label_dots, following, comma_follows)})"
+          "(?:|#{leader}#{values_source})"
         end
       end
 
@@ -288,7 +290,7 @@ class Addressable::Template
 
       # A variable's value: exploded, up to the next comma, or as its
       # operator takes a value.
-      def variable_steps(matcher, variable, label_dots)
+      def variable_steps(matcher, variable)
         if variable.explode
           matcher.repeat(self.class.joiner, self.class.joiner_required?) do
             member_steps(matcher)
@@ -298,18 +300,18 @@ class Addressable::Template
           # next comma.
           matcher.possessive_run(:reserved_no_comma)
         else
-          value_steps(matcher, label_dots)
+          value_steps(matcher)
         end
       end
 
       # A value: unreserved characters, as few as can be first.
-      def value_steps(matcher, _label_dots)
+      def value_steps(matcher)
         matcher.lazy_run(:unreserved)
       end
 
       # An exploded value's member.
       def member_steps(matcher)
-        value_steps(matcher, false)
+        value_steps(matcher)
       end
 
       # --- Regexp ---
@@ -317,14 +319,14 @@ class Addressable::Template
       # The variables' groups, as Template's builder writes them for what
       # follows the expression. A + or # expression writes them
       # differently before text that can't start with a comma.
-      def values_source(label_dots, _following, _comma_follows)
-        joined_groups(label_dots)
+      def values_source
+        joined_groups
       end
 
       # Each variable's group, with an optional joiner between them.
-      def joined_groups(label_dots)
+      def joined_groups
         groups = variables.each_with_index.map do |variable, position|
-          group_source(variable, position, label_dots)
+          group_source(variable, position)
         end
         groups.join("#{joiner_source}?")
       end
@@ -335,11 +337,9 @@ class Addressable::Template
       #
       # @param [Variable] variable The variable.
       # @param [Integer] position The variable's position in the expression.
-      # @param [TrueClass, FalseClass] label_dots
-      #   Whether a label's value can contain ".".
       #
       # @return [String] The regular expression source.
-      def group_source(variable, position, label_dots)
+      def group_source(variable, position)
         if variable.explode && exploded_after?(position)
           # Exploded values were tried shortest first, and a later exploded
           # variable can match whatever this one leaves, so once a split
@@ -352,16 +352,15 @@ class Addressable::Template
           # without a joiner went to a later variable. The only other value
           # that could change the result is the whole run up to the next
           # joiner.
-          value = value_source(label_dots)
-          group(variable, "(?:#{value}(?=#{joiner_source}))??")
+          group(variable, "(?:#{value_source}(?=#{joiner_source}))??")
         else
-          optional_group(variable, label_dots)
+          optional_group(variable)
         end
       end
 
       # A group for the variable's value, left out when the value is.
-      def optional_group(variable, label_dots)
-        "#{group(variable, variable_source(variable, label_dots))}?"
+      def optional_group(variable)
+        "#{group(variable, variable_source(variable))}?"
       end
 
       # A group named after the variable (Matching.capture_name).
@@ -370,12 +369,12 @@ class Addressable::Template
       end
 
       # A variable's value: exploded, or as its operator takes a value.
-      def variable_source(variable, label_dots)
+      def variable_source(variable)
         if variable.explode
           member = member_source
           "#{member}(?:#{joiner_source}#{member})*"
         else
-          value_source(label_dots)
+          value_source
         end
       end
 
@@ -395,13 +394,13 @@ class Addressable::Template
       end
 
       # A value: unreserved characters, as few as can be first.
-      def value_source(_label_dots)
+      def value_source
         "#{UNRESERVED}*?"
       end
 
       # An exploded value's member.
       def member_source
-        value_source(false)
+        value_source
       end
     end
   end

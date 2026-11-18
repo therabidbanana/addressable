@@ -15,7 +15,9 @@ class Addressable::Template
 
       # A label's value can't contain a ".", unless nothing after it could
       # continue it, when it takes every character up to the delimiter.
-      def value_steps(matcher, label_dots)
+      # label_dots is only true for a lone, unexploded variable, so a
+      # member, which uses this too, never takes dots.
+      def value_steps(matcher)
         if label_dots
           matcher.possessive_run(:unreserved)
         else
@@ -25,7 +27,7 @@ class Addressable::Template
 
       # --- Regexp ---
 
-      def value_source(label_dots)
+      def value_source
         if label_dots
           "#{UNRESERVED}*+"
         else

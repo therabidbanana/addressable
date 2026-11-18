@@ -24,7 +24,7 @@ class Addressable::Template
 
       # --- Matching ---
 
-      def value_steps(matcher, _label_dots)
+      def value_steps(matcher)
         matcher.lazy_run(:reserved)
       end
 
@@ -35,7 +35,7 @@ class Addressable::Template
 
       # --- Regexp ---
 
-      def value_source(_label_dots)
+      def value_source
         "#{RESERVED}*?"
       end
 
@@ -44,7 +44,7 @@ class Addressable::Template
         "#{RESERVED_NO_COMMA}*+"
       end
 
-      def values_source(label_dots, following, comma_follows)
+      def values_source
         if single_value? && following.is_a?(OpPlain) &&
             following.single_value?
           # Values were tried shortest first, and the next expression can
@@ -55,7 +55,7 @@ class Addressable::Template
         elsif variables.size > 1 && !comma_follows &&
             variables.none?(&:explode) &&
             variables[0...-1].none? { |variable| last?(variable) }
-          nested_values_source(label_dots)
+          nested_values_source
         else
           super
         end
@@ -67,16 +67,16 @@ class Addressable::Template
       # already been tried with. A variable after a skipped one is skipped
       # too. Stopping before a joiner is left out, so this is only used
       # when no joiner can follow the expression.
-      def nested_values_source(label_dots)
+      def nested_values_source
         last = variables.size - 1
         nested = variables[0...last].reverse.inject("") do |inner, variable|
           "(?:#{group(variable, "#{RESERVED_NO_COMMA}*+")}" \
             "#{joiner_source}?+#{inner}|(?=#{RESERVED_NO_COMMA}))"
         end
-        nested + group_source(variables.last, last, label_dots)
+        nested + group_source(variables.last, last)
       end
 
-      def group_source(variable, position, label_dots)
+      def group_source(variable, position)
         if exploded_before?(position)
           # Exploded values were tried longest first, so whatever this
           # variable could match after an exploded one, that one already
@@ -93,7 +93,7 @@ class Addressable::Template
           # comma, as variable_steps matches it.
           "#{group(variable, "#{RESERVED_NO_COMMA}*+")}?"
         else
-          optional_group(variable, label_dots)
+          optional_group(variable)
         end
       end
     end
