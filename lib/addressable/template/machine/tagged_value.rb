@@ -9,8 +9,7 @@ module Addressable
       class TaggedValue < Struct.new(:name, :value, :keypairs, :composite)
         # The value, or its members, for Expression#joined_values to join.
         # A processor's transform result can hold anything, so members are
-        # left for Array#join to flatten and convert, as Template's
-        # join_values leaves them.
+        # left for Array#join to flatten and convert.
         def parts
           if value.is_a?(Array)
             value
@@ -22,7 +21,7 @@ module Addressable
 
       # Path-style parameters (;). An empty member or pair value gets no
       # "=" (RFC 6570 appendix A), but a list or associative array whose
-      # members join to an empty string does, as in Template's join_values.
+      # members join to an empty string does.
       class PathParamTaggedValue < TaggedValue
         def parts
           if keypairs

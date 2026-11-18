@@ -21,7 +21,7 @@ module Addressable
     #
     # As it builds them, Parser notes on each node what matching it depends
     # on around it: whether a fragment may have started before it, the node
-    # right after it, and, for an expression, whether a label's value can
+    # right after it, and, for an expression, whether a {.var} value can
     # contain "." and whether a comma could start at it. Parser's comment
     # explains each, with examples.
     #
@@ -31,7 +31,7 @@ module Addressable
         Addressable::URI::CharacterClasses::ALPHA +
         Addressable::URI::CharacterClasses::DIGIT + '_'
 
-      # Atomic, as in Template, so a long name can't backtrack.
+      # Atomic, so a long name can't backtrack.
       var_char =
         "(?>(?:[#{variable_char_class}]|%[a-fA-F0-9][a-fA-F0-9])+)"
 

@@ -22,7 +22,7 @@ require "addressable/template/matcher/first_bytes"
 module Addressable
   class Template
     class Matcher
-      # The characters a variable's value can contain, as Template's regexp
+      # The characters a variable's value can contain, as 2.10.0's regexp
       # classes have them: some ASCII characters, any pct-encoded triplet,
       # and any non-ASCII character.
       class CharacterSet

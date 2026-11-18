@@ -69,7 +69,7 @@ module Addressable
       ##
       # Literal text, as units of [raw, encoded] (see Unit).
       #
-      # Template's regexp holds the raw characters, so it takes the encoding
+      # 2.10.0's regexp holds the raw characters, so it takes the encoding
       # of the non-ASCII ones, and raises Encoding::CompatibilityError where
       # they're in two encodings, or where a URI with non-ASCII text is in
       # another. The matcher raises the same errors at the same points.

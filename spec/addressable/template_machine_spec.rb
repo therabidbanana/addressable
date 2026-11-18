@@ -647,10 +647,17 @@ describe Addressable::Template::Values, "#key? and #defined_value?" do
   end
 end
 
-describe Addressable::Template::Machine::Variable, "#varspec" do
+describe Addressable::Template::Machine::Variable, "#pattern_text" do
   it "writes the varspec as the pattern had it" do
     expect(Addressable::Template::Parser.new.parse_nodes("{a,b*,c:12,d.e,%41}").
-      first.variables.map(&:varspec)).to eq(["a", "b*", "c:12", "d.e", "%41"])
+      first.variables.map(&:pattern_text)).to eq(["a", "b*", "c:12", "d.e", "%41"])
+  end
+end
+
+describe Addressable::Template::Machine::Expression, "#pattern_text" do
+  it "writes the expression as the pattern had it" do
+    expect(Addressable::Template::Parser.new.parse_nodes("{?a,b*,c:12}").
+      first.pattern_text).to eq("{?a,b*,c:12}")
   end
 end
 
@@ -660,7 +667,7 @@ describe Addressable::Template::Machine::Literal do
   end
 
   it "keeps its text as the pattern wrote it" do
-    expect(literal("é/%C3%A9").text).to eq("é/%C3%A9")
+    expect(literal("é/%C3%A9").pattern_text).to eq("é/%C3%A9")
   end
 
   it "expands to ASCII text as it is" do

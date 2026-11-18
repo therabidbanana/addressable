@@ -15,7 +15,7 @@ module Addressable
 
         # The varspec as the pattern wrote it. VARSPEC allows no leading
         # zero in a prefix, so the number reads back the same.
-        def varspec
+        def pattern_text
           if @prefix
             "#{name}:#{@prefix}"
           elsif @explode

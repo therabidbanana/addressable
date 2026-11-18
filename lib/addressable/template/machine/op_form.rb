@@ -53,7 +53,7 @@ module Addressable
       class OpForm < OpFormContinuation
         def self.operator; "?"; end
         def self.leader; "?"; end
-        def self.continuation; OpFormContinuation; end
+        def self.partial_continuation; OpFormContinuation; end
 
         private
 
@@ -61,14 +61,14 @@ module Addressable
 
         # The query's "?" goes before its first defined value, so that
         # variable moves to the front. The rest keep their places, so the
-        # final URI keeps the pattern's order wherever it can. As in
-        # Template, it also takes the place of any other varspec written the
-        # same way, so {?a,a} gives "?a=1" once.
+        # final URI keeps the pattern's order wherever it can. It also takes
+        # the place of any other varspec written the same way, so {?a,a}
+        # gives "?a=1" once.
         def partial_order(is_defined)
           first = variables.find(&is_defined)
           return variables unless first
           rest = variables.reject do |variable|
-            variable.varspec == first.varspec
+            variable.pattern_text == first.pattern_text
           end
           [first] + rest
         end

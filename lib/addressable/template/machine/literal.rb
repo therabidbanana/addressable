@@ -3,7 +3,7 @@ module Addressable
     module Machine
       # Literal text between expressions, as the pattern writes it.
       class Literal
-        attr_reader :text
+        attr_reader :pattern_text
         # Whether a fragment may have started before the literal, so that
         # expansion encoded a "#" in it as "%23". Set by Parser.
         attr_accessor :fragment
@@ -12,7 +12,7 @@ module Addressable
         attr_reader :following
 
         def initialize(text)
-          @text = text
+          @pattern_text = text
           # Parser sets these for a valid pattern.
           @fragment = false
           @following = nil
@@ -50,7 +50,7 @@ module Addressable
         # The text in a partially expanded pattern: as written, since expand
         # encodes it later.
         def partial_expand(_values)
-          @text
+          @pattern_text
         end
 
         ##
@@ -60,13 +60,15 @@ module Addressable
         # @param [Matcher] matcher The matcher.
         # @param [#match, nil] _processor Unused: a literal has no variables.
         def match_steps(matcher, _processor = nil)
-          matcher.literal(Matching.literal_units(@text, fragment))
+          matcher.literal(Matching.literal_units(@pattern_text, fragment))
         end
 
         # The literal's part of Template#to_regexp, matching it as
         # match_steps does.
         def regexp_source
-          Matching.literal_source(Matching.literal_units(@text, fragment))
+          Matching.literal_source(
+            Matching.literal_units(@pattern_text, fragment)
+          )
         end
 
         # Literal text matches only as written, so it can't take what the
@@ -77,7 +79,7 @@ module Addressable
 
         # Whether the text from the literal on starts with a comma.
         def comma_may_start_here?
-          text.start_with?(",")
+          pattern_text.start_with?(",")
         end
       end
     end

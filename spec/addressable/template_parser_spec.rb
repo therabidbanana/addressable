@@ -27,7 +27,9 @@ describe Addressable::Template::Parser do
   # prefix] for each variable].
   def nodes(pattern)
     described_class.new.parse_nodes(pattern).map do |node|
-      next node.text if node.is_a?(Addressable::Template::Machine::Literal)
+      if node.is_a?(Addressable::Template::Machine::Literal)
+        next node.pattern_text
+      end
       [node.class, node.variables.map { |v| [v.name, v.explode, v.prefix] }]
     end
   end

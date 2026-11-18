@@ -108,7 +108,7 @@ module Addressable
       class OpFragment < OpReserved
         def self.operator; "#"; end
         def self.leader; "#"; end
-        def self.continuation; OpReserved; end
+        def self.partial_continuation; OpReserved; end
 
         # --- Regexp ---
 

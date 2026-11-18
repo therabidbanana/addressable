@@ -10,7 +10,7 @@ module Addressable
       # class methods, and overrides the instance methods for the shapes of
       # its values. Its methods come in three parts: expansion, matching
       # (the steps it adds to a Matcher) and the regexp (its part of
-      # Template#to_regexp, as Template's builder writes it).
+      # Template#to_regexp, as 2.10.0 writes it).
       class Expression
         def self.operator; ""; end
         def self.leader; ""; end
@@ -29,19 +29,18 @@ module Addressable
           false
         end
 
-        # The operator that continues the expression once it has written a
-        # value, in a partially expanded pattern: a query continues with
-        # "&", and a fragment with "+", since its "#" is already written.
-        # They allow the same characters and join named values the same
-        # way, so the variables don't change. Every other operator continues
-        # as itself.
-        def self.continuation
+        # The operator for the rest of the expression once partial_expand
+        # has written a value: {?a,b} with only a given becomes ?a=1{&b},
+        # and {#a,b} becomes #1{+b}.
+        def self.partial_continuation
           self
         end
 
-        # In Template's regexp: a position that isn't right after a
-        # character a value can hold, so a value starting there can't be
-        # split from one that ended just before.
+        # A lookbehind for the regexp: not right after a character a value
+        # can hold (unreserved or non-ASCII). A value that starts here
+        # can't take the end of a run of such characters from the value
+        # before it. "{+a}{b}" matches "p/qr" with a = "p/" and b = "qr":
+        # a can't stop at "p/q", since b would then start right after "q".
         NOT_AFTER_VALUE =
           "(?<![#{Addressable::URI::CharacterClasses::UNRESERVED}])" \
           "(?<![^\\x00-\\x7F])"
@@ -53,10 +52,9 @@ module Addressable
         # Whether a fragment may have started before the expression, so that
         # expansion encoded its "#" leader as "%23".
         attr_accessor :fragment
-        # Whether a label's value can contain "."
-        # (Matching.label_takes_dots?). Only ever true for a . expression
-        # with one unexploded variable, so never for an exploded value's
-        # members.
+        # Whether a {.var} expression's value can contain "."
+        # (Matching.label_takes_dots?). Only ever true for one unexploded
+        # variable, so never for an exploded value's members.
         attr_accessor :label_dots
         # The node right after the expression: a Literal, another
         # expression, or nil at the end of the pattern.
@@ -86,8 +84,8 @@ module Addressable
         end
 
         # The expression as the pattern writes it.
-        def text
-          "{#{self.class.operator}#{variables.map(&:varspec).join(',')}}"
+        def pattern_text
+          "{#{self.class.operator}#{variables.map(&:pattern_text).join(',')}}"
         end
 
         # --- Expansion ---
@@ -108,21 +106,24 @@ module Addressable
         end
 
         ##
-        # The expression's text in a partially expanded pattern, as
-        # Template#partial_expand writes it. An expression whose variables
-        # are all given is expanded, and one with none given is kept.
-        # Otherwise its given variables are expanded and its missing ones
-        # kept, in runs, and a given variable that's undefined is dropped,
-        # so that it doesn't split the missing variables around it.
+        # The expression's text in a partially expanded pattern. An
+        # expression whose variables are all given is expanded, and one
+        # with none given is kept. Otherwise its given variables are
+        # expanded and its missing ones kept, in runs. A variable that's
+        # given but undefined (nil, or a list or associative array with no
+        # defined members) is dropped, so that it doesn't split the missing
+        # variables around it.
         #
         # @param [Values] values The expansion's values.
         #
         # @return [String] The expression's new text.
         def partial_expand(values)
           given = lambda { |variable| values.key?(variable.name) }
-          is_defined = lambda { |variable| values.defined_value?(variable.name) }
+          is_defined = lambda do |variable|
+            values.defined_value?(variable.name)
+          end
           return expand(values) if variables.all?(&given)
-          return text if variables.none?(&given)
+          return pattern_text if variables.none?(&given)
 
           vars = partial_order(is_defined).select do |variable|
             !given.call(variable) || is_defined.call(variable)
@@ -141,7 +142,7 @@ module Addressable
 
         ##
         # Adds the steps that match the expression to the matcher, in the
-        # order of Template's reference regexp (template_match_spec.rb):
+        # order of 2.10.0's reference regexp (template_match_spec.rb):
         # nothing first, then the leader and each variable's value, which
         # may be left out, with an optional joiner between them. Each value
         # is captured, for Matching.match_data.
@@ -151,7 +152,7 @@ module Addressable
         #   A processor whose match method may give a variable's value a
         #   pattern of its own, which then has to match.
         def match_steps(matcher, processor = nil)
-          # Asked for every variable before any steps, as Template asks.
+          # Asked for every variable before any steps, as 2.10.0 asks.
           patterns = variables.map do |variable|
             processor && processor.match(variable.name)
           end
@@ -184,10 +185,10 @@ module Addressable
         # --- Regexp ---
 
         ##
-        # The expression's part of Template#to_regexp, as Template's builder
-        # writes it: nothing, or the leader and each variable's value, which
-        # may be left out, with an optional joiner between them. Each value
-        # is a group named after its variable (Matching.capture_name).
+        # The expression's part of Template#to_regexp, as 2.10.0 writes it:
+        # nothing, or the leader and each variable's value, which may be
+        # left out, with an optional joiner between them. Each value is a
+        # group named after its variable (Matching.capture_name).
         #
         # @return [String] The regular expression source.
         def regexp_source
@@ -241,11 +242,10 @@ module Addressable
 
         private
 
-        # As in Template, a variable is the last one if its varspec is the
-        # same as the last varspec, so {+a,a} has no variable before the
-        # last.
+        # A variable is the last one if its varspec is the same as the last
+        # varspec, so {+a,a} has no variable before the last.
         def last?(variable)
-          variable.varspec == variables.last.varspec
+          variable.pattern_text == variables.last.pattern_text
         end
 
         # --- Expansion ---
@@ -259,8 +259,8 @@ module Addressable
         ##
         # Writes the runs of a partially expanded expression: each given run
         # expanded and each missing one kept, as an expression of their own.
-        # Once a value is written, the rest continue with the continuation
-        # operator. The comma operators override it.
+        # Once a value is written, the rest continue with the
+        # partial_continuation operator. The comma operators override it.
         #
         # @param [Values] values The expansion's values.
         # @param [Array<Array>] runs
@@ -272,19 +272,18 @@ module Addressable
           runs.each_with_object(String.new) do |(is_given, run), acc|
             if is_given
               acc << operator.new(run).expand(values)
-              operator = operator.continuation
+              operator = operator.partial_continuation
             else
-              acc << operator.new(run).text
+              acc << operator.new(run).pattern_text
             end
           end
         end
 
         # The runs of a simple, reserved or fragment expression, whose
-        # values are separated by commas, as Template's
-        # transform_partial_comma_runs writes them. A missing variable keeps
-        # its separator only if it ends up undefined. Once a value is
-        # written, a fragment's "#" is certain, so it comes first, and every
-        # run continues without it.
+        # values are separated by commas. A missing variable keeps its
+        # separator only if it ends up undefined. Once a value is written, a
+        # fragment's "#" is certain, so it comes first, and every run
+        # continues without it.
         def partial_comma_runs(values, runs)
           leader = self.class.leader
           leading = !leader.empty? && runs.any? { |is_given, _| is_given }
@@ -292,14 +291,18 @@ module Addressable
           result = leading ? String.new(leader) : String.new
           runs.each_with_object(result) do |(is_given, run), acc|
             operator =
-              started || leading ? self.class.continuation : self.class
+              if started || leading
+                self.class.partial_continuation
+              else
+                self.class
+              end
             if is_given
               # Even an empty string takes a separator.
               acc << "," if started
               started = true
               acc << operator.new(run).expand(values)
             else
-              acc << operator.new(run).text
+              acc << operator.new(run).pattern_text
             end
           end
         end
@@ -334,9 +337,9 @@ module Addressable
 
         # --- Regexp ---
 
-        # The variables' groups, as Template's builder writes them for what
-        # follows the expression. A + or # expression writes them
-        # differently before text that can't start with a comma.
+        # The variables' groups, as 2.10.0 writes them for what follows the
+        # expression. A + or # expression writes them differently before
+        # text that can't start with a comma.
         def values_source
           joined_groups
         end
@@ -350,9 +353,8 @@ module Addressable
         end
 
         ##
-        # A variable's group in the regexp, as Template's builder writes it
-        # for a default, / or . expression. The other operators override
-        # it.
+        # A variable's group in the regexp, as 2.10.0 writes it for a
+        # default, / or . expression. The other operators override it.
         #
         # @param [Variable] variable The variable.
         # @param [Integer] position

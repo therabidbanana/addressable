@@ -7,12 +7,12 @@ module Addressable
     # Turns a pattern into ParsedTemplate's nodes: a Machine::Literal for
     # each run of literal text, a Machine expression for each {...}, and a
     # Machine::Invalid for each token that isn't valid. It splits the
-    # pattern and checks each expression as Template#check_expressions does,
-    # and never raises for an invalid one.
+    # pattern and checks each expression as 2.10.0 does, and never raises
+    # for an invalid one.
     #
     # For a valid pattern, it also notes on each node what matching it, or
     # writing its part of the regexp, depends on around it, so that the
-    # machine splits a URI as Template's regexp does. Both engines give the
+    # machine splits a URI as 2.10.0's regexp does. Both engines give the
     # results in the examples.
     #
     # - fragment, on every node: whether a fragment may have started before
@@ -34,7 +34,7 @@ module Addressable
     #   it's noted once every node is added.
     # - following and comma_may_start_here, on every node: the node after
     #   it, and whether a comma could start there. They only shape
-    #   to_regexp, so it writes what Template's builder writes; matching
+    #   to_regexp, so it writes what 2.10.0 writes; matching
     #   splits the same way without them. In "{a}{b}", {b} can match
     #   anything {a} could, so {a} never takes a value ("xy" gives a = nil
     #   and b = "xy"), and the regexp writes {a}'s value after "(?!)".
@@ -56,7 +56,7 @@ module Addressable
         "+" => Machine::OpReserved
       }.freeze
 
-      # Template's tokens: literal text, an expression up to the next "}"
+      # 2.10.0's tokens: literal text, an expression up to the next "}"
       # (or the end, if there's no "}"), or a "}" that doesn't close an
       # expression.
       LITERAL = /[^{}]+/
@@ -123,7 +123,7 @@ module Addressable
               # RFC 6570 section 2.3 writes a non-ASCII name pct-encoded.
               position += scanner.pos - start
             else
-              # Go back and take Template's token for the error message.
+              # Go back and take 2.10.0's token for the error message.
               scanner.pos = start
               token = scanner.scan(EXPRESSION_TOKEN)
               node = invalid_token(token, position)
@@ -145,8 +145,8 @@ module Addressable
         return if @invalid
         node.fragment = @fragment
         if node.is_a?(Machine::Literal)
-          @literals[-1] += node.text
-          @fragment ||= node.text.include?("#")
+          @literals[-1] += node.pattern_text
+          @fragment ||= node.pattern_text.include?("#")
         else
           @either_leader << @fragment
           @fragment ||= node.class.allows_reserved?
@@ -168,7 +168,7 @@ module Addressable
         # Only a . expression's value can take dots.
         expressions = @nodes.grep(Machine::Expression)
         return unless expressions.any? { |node| node.is_a?(Machine::OpLabel) }
-        texts = expressions.map(&:text)
+        texts = expressions.map(&:pattern_text)
         expressions.each_with_index do |expression, index|
           next unless expression.is_a?(Machine::OpLabel)
           expression.label_dots = Matching.label_takes_dots?(
@@ -212,7 +212,7 @@ module Addressable
       end
 
       # The names Template#variables lists for an invalid token that ends
-      # in "}". Template scans the whole pattern for expressions, and that
+      # in "}". 2.10.0 scans the whole pattern for expressions, and that
       # scan finds at most one in such a token: the one from the leftmost
       # "{" that reads to the token's "}". Its names are left out if its
       # operator is reserved. A try stops at the next "{" at the latest, so

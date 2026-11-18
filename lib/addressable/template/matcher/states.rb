@@ -198,7 +198,7 @@ module Addressable
         def initialize(index, source)
           super(index)
           # Compiled now, so a pattern that isn't valid raises RegexpError
-          # before any matching, as it does from Template's regexp.
+          # before any matching, as it does in 2.10.0.
           @pattern = Regexp.new("\\G(?:#{source})")
         end
 

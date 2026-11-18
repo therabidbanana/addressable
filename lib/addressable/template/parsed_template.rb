@@ -44,7 +44,7 @@ module Addressable
       end
 
       # Expands the template into a URI. Literals are pct-encoded, and every
-      # "#" after the first is encoded. The text is UTF-8, as Template's is,
+      # "#" after the first is encoded. The text is UTF-8, as 2.10.0's is,
       # whatever the pattern's encoding: values are UTF-8 (RFC 6570 section
       # 3.2.1), and literals are pct-encoded ASCII.
       def expand(mapping, processor, normalize_values, &block)
@@ -116,23 +116,18 @@ module Addressable
       end
 
       # Maps each variable name to the positions of its varspecs, counting
-      # every varspec in the pattern from 1, as Template's regexp numbers its
+      # every varspec in the pattern from 1, as 2.10.0's regexp numbers its
       # groups: one per varspec, in order. Names are as the pattern writes
-      # them, not Template's group names.
+      # them, not the regexp's group names.
       def named_captures
         raise_if_invalid
-        captures = {}
-        position = 0
-        @nodes.grep(Machine::Expression).each do |expression|
-          expression.variables.each do |variable|
-            position += 1
-            (captures[variable.name] ||= []) << position
-          end
+        variables = @nodes.grep(Machine::Expression).flat_map(&:variables)
+        variables.each_with_index.with_object({}) do |(variable, i), captures|
+          (captures[variable.name] ||= []) << i + 1
         end
-        captures
       end
 
-      # The regexp Template's builder writes, from the nodes, built on first
+      # The regexp 2.10.0 writes, from the nodes, built on first
       # use or by freeze.
       def to_regexp
         raise_if_invalid
@@ -175,7 +170,7 @@ module Addressable
 
       # Each expression as the pattern writes it, in order.
       def expression_texts
-        @nodes.grep(Machine::Expression).map(&:text)
+        @nodes.grep(Machine::Expression).map(&:pattern_text)
       end
 
       # Raises the error for a pattern that isn't valid, then the values for
