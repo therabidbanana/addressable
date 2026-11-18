@@ -757,6 +757,17 @@ describe Addressable::Template, "with the :machine engine, literals" do
     expect_same('#{a}' + "#" * 100_000, "a" => "#" * 100_000)
   end
 
+  it "matches a long literal of runs and triplets in linear time" do
+    literal = "a%41" * 50_000
+    template = Addressable::Template.new(literal + "{a}", engine: :machine)
+    expect do
+      Timeout.timeout(10) do
+        expect(template.match(literal + "v").mapping).to eq("a" => "v")
+      end
+    end.not_to raise_error
+    expect(template.pattern).to eq(literal + "{a}")
+  end
+
   it "matches a non-ASCII literal written as it is" do
     template = Addressable::Template.new("é/{a}", engine: :machine)
     expect(template.match("é/v").mapping).to eq("a" => "v")
@@ -1170,12 +1181,16 @@ end
 
 describe Addressable::Template::Matching, ".literal_units" do
   {
-    ["a.b", false] => [["a", nil], [".", nil], ["b", nil]],
+    ["a.b", false] => [["a.b", nil]],
+    ["a\nb", false] => [["a\nb", nil]],
     ["#a#b", false] => [["#", nil], ["a", nil], ["#", "%23"], ["b", nil]],
     ["#a", true] => [["#", "%23"], ["a", nil]],
     ["é", false] => [["é", "%C3%A9"]],
+    ["aéb", false] => [["a", nil], ["é", "%C3%A9"], ["b", nil]],
     ["%C3%A9", false] => [["é", "%C3%A9"]],
     ["%41", false] => [["%41", nil]],
+    ["/a%41b", false] => [["/a", nil], ["%41", nil], ["b", nil]],
+    ["a%zz", false] => [["a", nil], ["%", nil], ["zz", nil]],
     ["%E9", false] => [[nil, "%E9"]],
     ["", false] => []
   }.each do |(text, fragment), units|
@@ -1185,9 +1200,9 @@ describe Addressable::Template::Matching, ".literal_units" do
   end
 end
 
-describe Addressable::Template::Matching, ".literal_source" do
+describe Addressable::Template::Matching, ".literal_regexp_source" do
   def source(text, fragment)
-    described_class.literal_source(
+    described_class.literal_regexp_source(
       described_class.literal_units(text, fragment)
     )
   end

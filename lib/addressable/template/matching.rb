@@ -85,7 +85,10 @@ module Addressable
             fragment = true
           elsif token =~ LITERAL_ENCODE
             token.each_char { |character| units << either_form(character) }
-          elsif token.length > 3 || token =~ /\A%[89A-Fa-f]/
+          elsif token =~ /\A%[89A-Fa-f]/
+            # Octets from %80 up, which LITERAL_TOKEN takes as one run: the
+            # UTF-8 bytes of non-ASCII characters, if they're valid. %00 to
+            # %7F are ASCII, and match only as written.
             decoded = Addressable::URI.unencode_component(token).dup
             decoded.force_encoding(Encoding::UTF_8)
             if decoded.valid_encoding?
@@ -106,7 +109,7 @@ module Addressable
       # @param [Array<Array>] units The units, from literal_units.
       #
       # @return [String] The regular expression source.
-      def self.literal_source(units)
+      def self.literal_regexp_source(units)
         units.map do |raw, encoded|
           if raw == '#' && encoded
             NUMBER_SIGN_EITHER_FORM

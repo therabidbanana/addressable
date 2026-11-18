@@ -27,7 +27,7 @@ module Addressable
 
         # --- Regexp ---
 
-        def value_source
+        def value_regexp_source
           if label_dots
             "#{UNRESERVED}*+"
           else

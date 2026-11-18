@@ -35,7 +35,7 @@ Decisions that shape the code:
   private method (`normalize_value`, `normalize_keys`), so overrides
   still apply to `:regexp`.
 - **The nodes describe each operation.** Literal and expression nodes
-  answer `expand`, `partial_expand`, `match_steps` and `regexp_source`.
+  answer `expand`, `partial_expand`, `add_match_steps` and `regexp_source`.
   Each operator's `Expression` subclass supplies its leader, joiner,
   value shapes and regexp rewrites. `ParsedTemplate#render` joins nodes
   for expansion and for the regexp.
@@ -165,6 +165,14 @@ each one needs payloads that get past it, so the profile can still show
 linear growth. A run cache that only helped forward searches once made
 `{;a,b}` quadratic; the linear-time checks in `template_machine_spec.rb`
 catch that kind of mistake now.
+
+### Expansion speed
+
+- **Single-variable expressions**, the most common kind outside query
+  strings: `Expression#expand` could expand the one variable and join it
+  directly, without the `map`, `compact!` and `flat_map` arrays. Likely
+  well under a microsecond per expression; measure with
+  `profile:template_machine` before adding a branch.
 
 ### Simplification
 

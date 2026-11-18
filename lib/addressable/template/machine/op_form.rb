@@ -23,25 +23,25 @@ module Addressable
 
         # --- Regexp ---
 
-        def value_source
+        def value_regexp_source
           "#{UNRESERVED}*=#{UNRESERVED}*?"
         end
 
         # A name, then the value, with as many "=" as it has.
-        def member_source
+        def member_regexp_source
           "#{UNRESERVED}*=(?:#{UNRESERVED}*=)*#{UNRESERVED}*?"
         end
 
-        def group_source(variable, position)
+        def group_regexp_source(variable, position)
           if position > 0 && variables[position - 1].explode
             # Whatever this variable could match after an exploded one,
             # that one already tried matching itself, unless it couldn't: an
             # exploded member can't be empty, so this variable may only
             # start right after an empty one.
             leader = Regexp.escape(self.class.leader)
-            joiner = joiner_source
+            joiner = joiner_regexp_source
             after_empty = "(?<=#{leader}#{joiner}|#{joiner}#{joiner})"
-            value = variable_source(variable)
+            value = variable_regexp_source(variable)
             "#{group(variable, after_empty + value)}?"
           else
             optional_group(variable)

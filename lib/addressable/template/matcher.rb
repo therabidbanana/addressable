@@ -85,11 +85,14 @@ module Addressable
           end
         end
         # Text that only matches as written is joined into one unit, so a
-        # literal is usually one comparison.
+        # literal is usually one comparison. Each joined unit starts as a
+        # copy, so appending to it leaves the pattern's text alone.
         joined = []
         units.each do |raw, encoded|
           if encoded.nil? && joined.last && joined.last.encoded.nil?
-            joined.last.raw += raw
+            joined.last.raw << raw
+          elsif encoded.nil?
+            joined << Unit.new(raw.dup, nil)
           else
             joined << Unit.new(raw, encoded)
           end

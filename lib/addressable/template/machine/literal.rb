@@ -59,14 +59,14 @@ module Addressable
         #
         # @param [Matcher] matcher The matcher.
         # @param [#match, nil] _processor Unused: a literal has no variables.
-        def match_steps(matcher, _processor = nil)
+        def add_match_steps(matcher, _processor = nil)
           matcher.literal(Matching.literal_units(@pattern_text, fragment))
         end
 
         # The literal's part of Template#to_regexp, matching it as
-        # match_steps does.
+        # add_match_steps does.
         def regexp_source
-          Matching.literal_source(
+          Matching.literal_regexp_source(
             Matching.literal_units(@pattern_text, fragment)
           )
         end

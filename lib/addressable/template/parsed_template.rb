@@ -164,7 +164,7 @@ module Addressable
       # patterns, if any.
       def build_matcher(processor = nil)
         matcher = Matcher.new(expression_texts)
-        @nodes.each { |node| node.match_steps(matcher, processor) }
+        @nodes.each { |node| node.add_match_steps(matcher, processor) }
         matcher.finish
       end
 

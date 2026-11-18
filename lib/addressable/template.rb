@@ -68,9 +68,11 @@ module Addressable
     # A "#" after the one that starts a fragment, as written or as expansion
     # encodes it.
     NUMBER_SIGN_EITHER_FORM = "(?:\\#|%23)"
-    # A literal's token: a run of non-ASCII pct-encoded octets, one triplet, or
-    # one character.
-    LITERAL_TOKEN = /(?:%[89A-Fa-f][0-9A-Fa-f])+|%[0-9A-Fa-f]{2}|./m
+    # A literal's token: a run of ASCII characters other than "%" and "#",
+    # which match only as written, a run of non-ASCII pct-encoded octets, one
+    # triplet, or one character.
+    LITERAL_TOKEN =
+      /[[:ascii:]&&[^%#]]+|(?:%[89A-Fa-f][0-9A-Fa-f])+|%[0-9A-Fa-f]{2}|./m
     variable =
       "(?:#{var_char}(?:\\.?#{var_char})*)"
     varspec =
@@ -1456,7 +1458,9 @@ module Addressable
         literals << literal
         either_literal << fragment
         source =
-          Matching.literal_source(Matching.literal_units(literal, fragment))
+          Matching.literal_regexp_source(
+            Matching.literal_units(literal, fragment)
+          )
         fragment ||= literal.include?('#')
         if expression
           raw_expressions << expression

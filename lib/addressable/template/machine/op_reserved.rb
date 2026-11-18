@@ -41,16 +41,16 @@ module Addressable
 
         # --- Regexp ---
 
-        def value_source
+        def value_regexp_source
           "#{RESERVED}*?"
         end
 
         # A member takes everything up to the next comma.
-        def member_source
+        def member_regexp_source
           "#{RESERVED_NO_COMMA}*+"
         end
 
-        def values_source
+        def values_regexp_source
           if single_value? && following.is_a?(OpPlain) &&
               following.single_value?
             # Values were tried shortest first, and the next expression can
@@ -61,7 +61,7 @@ module Addressable
           elsif variables.size > 1 && !comma_follows? &&
               variables.none?(&:explode) &&
               variables[0...-1].none? { |variable| last?(variable) }
-            nested_values_source
+            nested_values_regexp_source
           else
             super
           end
@@ -73,16 +73,16 @@ module Addressable
         # already been tried with. A variable after a skipped one is skipped
         # too. Stopping before a joiner is left out, so this is only used
         # when no joiner can follow the expression.
-        def nested_values_source
+        def nested_values_regexp_source
           last = variables.size - 1
           nested = variables[0...last].reverse.inject("") do |inner, variable|
             "(?:#{group(variable, "#{RESERVED_NO_COMMA}*+")}" \
-              "#{joiner_source}?+#{inner}|(?=#{RESERVED_NO_COMMA}))"
+              "#{joiner_regexp_source}?+#{inner}|(?=#{RESERVED_NO_COMMA}))"
           end
-          nested + group_source(variables.last, last)
+          nested + group_regexp_source(variables.last, last)
         end
 
-        def group_source(variable, position)
+        def group_regexp_source(variable, position)
           if exploded_before?(position)
             # Exploded values were tried longest first, so whatever this
             # variable could match after an exploded one, that one already

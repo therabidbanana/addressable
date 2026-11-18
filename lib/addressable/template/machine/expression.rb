@@ -43,7 +43,7 @@ module Addressable
         # a can't stop at "p/q", since b would then start right after "q".
         NOT_AFTER_VALUE =
           "(?<![#{Addressable::URI::CharacterClasses::UNRESERVED}])" \
-          "(?<![^\\x00-\\x7F])"
+          "(?<![^\\x00-\\x7F])".freeze
 
         attr_reader :variables
 
@@ -151,7 +151,7 @@ module Addressable
         # @param [#match, nil] processor
         #   A processor whose match method may give a variable's value a
         #   pattern of its own, which then has to match.
-        def match_steps(matcher, processor = nil)
+        def add_match_steps(matcher, processor = nil)
           # Asked for every variable before any steps, as 2.10.0 asks.
           patterns = variables.map do |variable|
             processor && processor.match(variable.name)
@@ -207,7 +207,7 @@ module Addressable
             # always gave the first match.
             "(?:|(?!)#{leader}#{joined_groups})"
           else
-            "(?:|#{leader}#{values_source})"
+            "(?:|#{leader}#{values_regexp_source})"
           end
         end
 
@@ -340,16 +340,16 @@ module Addressable
         # The variables' groups, as 2.10.0 writes them for what follows the
         # expression. A + or # expression writes them differently before
         # text that can't start with a comma.
-        def values_source
+        def values_regexp_source
           joined_groups
         end
 
         # Each variable's group, with an optional joiner between them.
         def joined_groups
           groups = variables.each_with_index.map do |variable, position|
-            group_source(variable, position)
+            group_regexp_source(variable, position)
           end
-          groups.join("#{joiner_source}?")
+          groups.join("#{joiner_regexp_source}?")
         end
 
         ##
@@ -361,20 +361,22 @@ module Addressable
         #   The variable's position in the expression.
         #
         # @return [String] The regular expression source.
-        def group_source(variable, position)
+        def group_regexp_source(variable, position)
           if variable.explode && exploded_after?(position)
             # Exploded values were tried shortest first, and a later
             # exploded variable can match whatever this one leaves, so once
             # a split fails, every split where this variable is longer fails
             # too. Of the values tried, only the leading joiners are shorter
             # than every value tried before them.
-            group(variable, "(?:#{joiner_source})*")
+            group(variable, "(?:#{joiner_regexp_source})*")
           elsif !variable.explode && position < variables.size - 1
             # Values were tried shortest first, so a run of characters
             # without a joiner went to a later variable. The only other
             # value that could change the result is the whole run up to the
             # next joiner.
-            group(variable, "(?:#{value_source}(?=#{joiner_source}))??")
+            value = value_regexp_source
+            joiner = joiner_regexp_source
+            group(variable, "(?:#{value}(?=#{joiner}))??")
           else
             optional_group(variable)
           end
@@ -382,7 +384,7 @@ module Addressable
 
         # A group for the variable's value, left out when the value is.
         def optional_group(variable)
-          "#{group(variable, variable_source(variable))}?"
+          "#{group(variable, variable_regexp_source(variable))}?"
         end
 
         # A group named after the variable (Matching.capture_name).
@@ -391,17 +393,17 @@ module Addressable
         end
 
         # A variable's value: exploded, or as its operator takes a value.
-        def variable_source(variable)
+        def variable_regexp_source(variable)
           if variable.explode
-            member = member_source
-            "#{member}(?:#{joiner_source}#{member})*"
+            member = member_regexp_source
+            "#{member}(?:#{joiner_regexp_source}#{member})*"
           else
-            value_source
+            value_regexp_source
           end
         end
 
         # The joiner, escaped for a regular expression.
-        def joiner_source
+        def joiner_regexp_source
           Regexp.escape(self.class.joiner)
         end
 
@@ -416,13 +418,13 @@ module Addressable
         end
 
         # A value: unreserved characters, as few as can be first.
-        def value_source
+        def value_regexp_source
           "#{UNRESERVED}*?"
         end
 
         # An exploded value's member.
-        def member_source
-          value_source
+        def member_regexp_source
+          value_regexp_source
         end
       end
     end

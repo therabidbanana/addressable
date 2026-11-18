@@ -25,16 +25,16 @@ module Addressable
 
         # 2.10.0's regexp writes the name with "=" and the name alone as
         # two choices, which match the same strings in the same order.
-        def value_source
+        def value_regexp_source
           "(?:#{UNRESERVED}*=#{UNRESERVED}*?|#{UNRESERVED}*)"
         end
 
         # Name and value characters and "=", in any order.
-        def member_source
+        def member_regexp_source
           "(?:#{UNRESERVED}|=)*"
         end
 
-        def group_source(variable, position)
+        def group_regexp_source(variable, position)
           if exploded_before?(position)
             # Exploded values were tried longest first, so whatever this
             # variable could match after an exploded one, that one already
@@ -44,7 +44,7 @@ module Addressable
             # Values were tried longest first, and splitting an earlier
             # variable's run of characters with this one never gave a
             # different result, so this one may only start after that run.
-            value = variable_source(variable)
+            value = variable_regexp_source(variable)
             group(variable, "(?:#{NOT_AFTER_VALUE}#{value})?")
           else
             optional_group(variable)
