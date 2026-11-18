@@ -22,6 +22,12 @@ class Addressable::Template
 
       private
 
+      # --- Expansion ---
+
+      def partial_runs(values, runs)
+        partial_comma_runs(values, runs)
+      end
+
       # --- Matching ---
 
       def value_steps(matcher)
@@ -102,6 +108,7 @@ class Addressable::Template
     class OpFragment < OpReserved
       def self.operator; "#"; end
       def self.leader; "#"; end
+      def self.continuation; OpReserved; end
 
       # --- Regexp ---
 

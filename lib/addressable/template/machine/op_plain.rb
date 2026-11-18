@@ -28,6 +28,14 @@ class Addressable::Template
       def may_start_with_comma?
         !single_value?
       end
+
+      private
+
+      # --- Expansion ---
+
+      def partial_runs(values, runs)
+        partial_comma_runs(values, runs)
+      end
     end
   end
 end

@@ -29,6 +29,16 @@ class Addressable::Template
         false
       end
 
+      # The operator that continues the expression once it has written a
+      # value, in a partially expanded pattern: a query continues with "&",
+      # and a fragment with "+", since its "#" is already written. They
+      # allow the same characters and join named values the same way, so
+      # the variables don't change. Every other operator continues as
+      # itself.
+      def self.continuation
+        self
+      end
+
       # In Template's regexp: a position that isn't right after a character
       # a value can hold, so a value starting there can't be split from one
       # that ended just before.
@@ -58,13 +68,9 @@ class Addressable::Template
         @variables = variables
       end
 
-      def tagged_value
-        self.class.tagged_value
-      end
-
       # The expression as the pattern writes it.
       def text
-        source(self.class.operator, variables)
+        "{#{self.class.operator}#{variables.map(&:varspec).join(',')}}"
       end
 
       # --- Expansion ---
@@ -97,39 +103,17 @@ class Addressable::Template
       # @return [String] The expression's new text.
       def partial_expand(values)
         given = lambda { |variable| values.key?(variable.name) }
-        defined = lambda { |variable| values.defined_value?(variable.name) }
-        operator = self.class.operator
+        is_defined = lambda { |variable| values.defined_value?(variable.name) }
         return expand(values) if variables.all?(&given)
-        return source(operator, variables) if variables.none?(&given)
+        return text if variables.none?(&given)
 
-        vars = variables
-        if operator == "?"
-          # The first defined variable starts the query, so it goes first.
-          first = vars.find(&defined)
-          if first
-            vars = [first] +
-              vars.reject { |variable| variable.varspec == first.varspec }
-          end
-        end
-        vars = vars.select do |variable|
-          !given.call(variable) || defined.call(variable)
+        vars = partial_order(is_defined).select do |variable|
+          !given.call(variable) || is_defined.call(variable)
         end
         # Consecutive variables that are all given, or all missing, stay in
-        # one expression, so that their separator is kept.
-        runs = vars.chunk(&given).to_a
-        if operator == "" || operator == "+" || operator == "#"
-          return partial_comma_runs(values, runs, defined)
-        end
-        runs.inject(String.new) do |acc, (is_given, run)|
-          if is_given
-            value = run_expansion(operator, run, values)
-            # After a value, the rest of a query continues with "&".
-            operator = "&" if operator == "?" && !value.empty?
-            acc << value
-          else
-            acc << source(operator, run)
-          end
-        end
+        # one expression, so that their separator is kept. Every given run
+        # has a value, since undefined variables were dropped.
+        partial_runs(values, vars.chunk(&given).to_a)
       end
 
       def joined_values(list)
@@ -235,55 +219,58 @@ class Addressable::Template
         variable.varspec == variables.last.varspec
       end
 
-      # An expression's text for a run of variables.
-      def source(operator, run)
-        "{#{operator}#{run.map(&:varspec).join(',')}}"
-      end
-
       # --- Expansion ---
 
-      # Partially expands the runs of a simple, reserved or fragment
-      # expression, whose values are separated by commas, as Template's
-      # transform_partial_comma_runs does. A missing variable keeps its
-      # separator only if it ends up undefined. After the first value, a
-      # fragment expression's runs use reserved expansion, which adds no
-      # second "#".
-      def partial_comma_runs(values, runs, defined)
-        operator = self.class.operator
-        started = false
-        # Once a given variable is defined, a fragment expression's "#" is
-        # certain, so it comes first, and every run uses reserved expansion.
-        fragment = operator == "#" &&
-          runs.any? { |is_given, run| is_given && run.any?(&defined) }
-        result = fragment ? String.new("#") : String.new
-        runs.inject(result) do |acc, (is_given, run)|
-          run_operator =
-            (started || fragment) && operator == "#" ? "+" : operator
+      # The variables in the order partial_expand writes them: as the
+      # pattern writes them. A query overrides it.
+      def partial_order(_is_defined)
+        variables
+      end
+
+      ##
+      # Writes the runs of a partially expanded expression: each given run
+      # expanded and each missing one kept, as an expression of their own.
+      # Once a value is written, the rest continue with the continuation
+      # operator. The comma operators override it.
+      #
+      # @param [Values] values The expansion's values.
+      # @param [Array<Array>] runs
+      #   Each run of given or missing variables, as [given, variables].
+      #
+      # @return [String] The runs' text.
+      def partial_runs(values, runs)
+        operator = self.class
+        runs.each_with_object(String.new) do |(is_given, run), acc|
           if is_given
-            # An empty string is defined, so it still takes a separator.
-            if run.any?(&defined)
-              acc << "," if started
-              started = true
-            end
-            acc << run_expansion(run_operator, run, values)
+            acc << operator.new(run).expand(values)
+            operator = operator.continuation
           else
-            acc << source(run_operator, run)
+            acc << operator.new(run).text
           end
         end
       end
 
-      # Expands a run of variables with an operator: this expression's, or
-      # the "&" that continues a query, or the "+" that continues a
-      # fragment. Those allow the same characters and join named values
-      # the same way as "?" and "#", so the variables don't change.
-      def run_expansion(operator, run, values)
-        expression_class =
-          case operator
-          when "&" then OpFormContinuation
-          when "+" then OpReserved
-          else self.class
+      # The runs of a simple, reserved or fragment expression, whose values
+      # are separated by commas, as Template's transform_partial_comma_runs
+      # writes them. A missing variable keeps its separator only if it ends
+      # up undefined. Once a value is written, a fragment's "#" is certain,
+      # so it comes first, and every run continues without it.
+      def partial_comma_runs(values, runs)
+        leader = self.class.leader
+        leading = !leader.empty? && runs.any? { |is_given, _| is_given }
+        started = false
+        result = leading ? String.new(leader) : String.new
+        runs.each_with_object(result) do |(is_given, run), acc|
+          operator = started || leading ? self.class.continuation : self.class
+          if is_given
+            # Even an empty string takes a separator.
+            acc << "," if started
+            started = true
+            acc << operator.new(run).expand(values)
+          else
+            acc << operator.new(run).text
           end
-        expression_class.new(run).expand(values)
+        end
       end
 
       # --- Matching ---
