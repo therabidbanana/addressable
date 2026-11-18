@@ -109,44 +109,33 @@ module Addressable
     ENGINES = [:regexp, :machine].freeze
     private_constant :ENGINES
 
-    @engine = :regexp
+    # A class variable, so that subclasses share it with Template.
+    @@engine = :regexp
 
-    class << self
-      ##
-      # The engine that templates use unless they were given one with
-      # <tt>engine:</tt>: <tt>:regexp</tt> (the default) or
-      # <tt>:machine</tt>. The setting is process-wide, shared with
-      # subclasses, and meant to be set once at boot. A template picks its
-      # engine the first time it needs one, so changing the setting affects
-      # templates that haven't picked one yet, not ones that have.
-      #
-      # @return [Symbol] The default engine.
-      def engine
-        equal?(Template) ? @engine : Template.engine
+    ##
+    # The engine that templates use unless they were given one with
+    # <tt>engine:</tt>: <tt>:regexp</tt> (the default) or
+    # <tt>:machine</tt>. The setting is process-wide, shared with
+    # subclasses, and meant to be set once at boot. A template picks its
+    # engine the first time it needs one, so changing the setting affects
+    # templates that haven't picked one yet, not ones that have.
+    #
+    # @return [Symbol] The default engine.
+    def self.engine
+      @@engine
+    end
+
+    ##
+    # Sets the default engine.
+    #
+    # @param [Symbol] engine <tt>:regexp</tt> or <tt>:machine</tt>.
+    #
+    # @raise [ArgumentError] If the engine isn't one of those.
+    def self.engine=(engine)
+      unless ENGINES.include?(engine)
+        raise ArgumentError, "unknown template engine: #{engine.inspect}"
       end
-
-      ##
-      # Sets the default engine.
-      #
-      # @param [Symbol] engine <tt>:regexp</tt> or <tt>:machine</tt>.
-      #
-      # @raise [ArgumentError] If the engine isn't one of those.
-      def engine=(engine)
-        if equal?(Template)
-          @engine = check_engine(engine)
-        else
-          Template.engine = engine
-        end
-      end
-
-      private
-
-      def check_engine(engine)
-        unless ENGINES.include?(engine)
-          raise ArgumentError, "unknown template engine: #{engine.inspect}"
-        end
-        engine
-      end
+      @@engine = engine
     end
 
     # Looks up variables in a mapping that isn't enumerable, such as a lambda,
@@ -391,8 +380,11 @@ module Addressable
         raise TypeError, "Can't convert #{pattern.class} into String."
       end
       @pattern = pattern.to_str.dup.freeze
+      unless engine.nil? || ENGINES.include?(engine)
+        raise ArgumentError, "unknown template engine: #{engine.inspect}"
+      end
       # Set in the same order for every template, so they share one shape.
-      @engine = engine.nil? ? nil : Template.send(:check_engine, engine)
+      @engine = engine
       @parsed_template = nil
     end
 
