@@ -167,15 +167,13 @@ catch that kind of mistake now.
 The code grew piece by piece, and much of it mirrors `Template`'s
 regexp shapes. Some ways to make it smaller and easier to read:
 
-- **Remove what only served the build-up:** the profile task's
-  `NotImplementedError` rescue and "missing" outcome, and any specs that
-  only checked an operation wasn't implemented yet.
 - **Code that exists only to copy a `Template` bug** (`variables` reading
   invalid expressions: `Lexer#names_in_invalid_token`,
   `Machine::Invalid#names`) goes once `Template` fixes the bug.
-- **`Matching.match_data`** is about 90 lines of post-processing with
-  quirks that the specs pin. Both engines share it, so it can be
-  restructured, without changing results, once `:regexp` is gone.
+- **`Matching.match_data`'s quirks**, which the specs pin (an
+  unexploded `;`, `?` or `&` value goes under the name the URI gives,
+  and a name's first non-nil value wins). Both engines share it, so its
+  results can only change once `:regexp` is gone.
 - **Don't mirror the regexp in the matcher.** Its shape (nothing first,
   optional joiners, the empty-member rule) is the reference regexp's. A
   matcher that splits at the template level could be simpler, but every

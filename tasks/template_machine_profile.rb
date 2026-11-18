@@ -122,9 +122,9 @@ module TemplateMachineProfile
       end
     end
     puts
-    puts "output: same = both give the same result; differs = :machine's " \
-      "result is wrong, so its numbers don't count; missing = :machine " \
-      "raises (e.g. NotImplementedError), so it isn't timed."
+    puts "output: same = both give the same result, or raise the same " \
+      "error; differs = :machine's result is wrong, so its numbers don't " \
+      "count. An engine that raises isn't timed."
   end
 
   def compare_operation(c, op_name, op, mode, iterations)
@@ -167,10 +167,10 @@ module TemplateMachineProfile
   end
 
   # The result of a call, made comparable across the engines, and the
-  # exception it raised, if any. NotImplementedError isn't a StandardError.
+  # exception it raised, if any.
   def attempt
     [comparable(yield), nil]
-  rescue StandardError, NotImplementedError => e
+  rescue StandardError => e
     [nil, e]
   end
 
@@ -192,14 +192,14 @@ module TemplateMachineProfile
   def status(template, machine)
     template_result, template_error = template
     machine_result, machine_error = machine
-    if machine_error && !template_error
-      "missing"
-    elsif machine_error || template_error
-      # Both should raise the same error.
-      error_name(machine_error) == error_name(template_error) ? "same" : "differs"
-    else
-      machine_result == template_result ? "same" : "differs"
-    end
+    same =
+      if machine_error || template_error
+        # Both should raise the same error.
+        error_name(machine_error) == error_name(template_error)
+      else
+        machine_result == template_result
+      end
+    same ? "same" : "differs"
   end
 
   def error_name(error)
@@ -316,7 +316,7 @@ module TemplateMachineProfile
     best * 1000
   rescue Timeout::Error
     ">#{ADVERSARIAL_TIMEOUT}s"
-  rescue StandardError, NotImplementedError => e
+  rescue StandardError => e
     e.class.name.split("::").last
   end
 
