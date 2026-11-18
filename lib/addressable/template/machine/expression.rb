@@ -48,8 +48,7 @@ class Addressable::Template
 
       attr_reader :variables
 
-      # What matching the expression depends on around it, set by
-      # ParsedTemplate#place_nodes.
+      # What matching the expression depends on around it, set by Parser.
 
       # Whether a fragment may have started before the expression, so that
       # expansion encoded its "#" leader as "%23".
@@ -58,14 +57,31 @@ class Addressable::Template
       # Only ever true for a . expression with one unexploded variable, so
       # never for an exploded value's members.
       attr_accessor :label_dots
-      # The expression right after this one, if no literal text comes
-      # between them.
-      attr_accessor :following
-      # Whether the text after the expression could start with a comma.
-      attr_accessor :comma_follows
+      # The node right after the expression: a Literal, another expression,
+      # or nil at the end of the pattern.
+      attr_reader :following
 
       def initialize(variables)
         @variables = variables
+        # Parser sets these for a valid pattern.
+        @fragment = false
+        @label_dots = false
+        @following = nil
+        @comma_may_start_here = false
+      end
+
+      ##
+      # Notes the node right after the expression, and whether the text
+      # from the expression on could start with a comma: its own match, or,
+      # since it can match nothing, whatever follows it. Parser calls it
+      # going back from the end of the pattern, so the node after it already
+      # knows.
+      #
+      # @param [Literal, Expression, nil] following
+      #   The node after the expression, or nil at the end.
+      def place_before(following)
+        @following = following
+        @comma_may_start_here = may_start_with_comma? || comma_follows?
       end
 
       # The expression as the pattern writes it.
@@ -204,6 +220,17 @@ class Addressable::Template
       # comma. Only a default or + expression, which has no leader, can.
       def may_start_with_comma?
         false
+      end
+
+      # Whether the text from the expression on could start with a comma.
+      # Set by #place_before.
+      def comma_may_start_here?
+        @comma_may_start_here
+      end
+
+      # Whether the text after the expression could start with a comma.
+      def comma_follows?
+        following ? following.comma_may_start_here? : false
       end
 
       # Whether the expression is one variable that isn't exploded.

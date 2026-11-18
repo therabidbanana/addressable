@@ -20,7 +20,7 @@ require "spec_helper"
 require "timeout"
 require "addressable/template"
 
-describe Addressable::Template::Lexer do
+describe Addressable::Template::Parser do
   machine = Addressable::Template::Machine
 
   # Each node as a literal's text, or [operator class, [name, explode,
@@ -181,8 +181,51 @@ describe Addressable::Template::Lexer do
     expect(non_ascii_time).to be < (ascii_time * 4) + 0.05
   end
 
-  it "lexes long patterns in linear time" do
+  describe "placing the nodes" do
+    def parse(pattern)
+      described_class.new.parse_nodes(pattern)
+    end
+
+    it "links each node to the one after it" do
+      first, second, third = parse("{a}x{b}")
+      expect(first.following).to equal(second)
+      expect(second.following).to equal(third)
+      expect(third.following).to be_nil
+    end
+
+    it "notes whether a fragment may have started before each node" do
+      expect(parse('a{b}#c{#d}').map(&:fragment)).
+        to eq([false, false, false, true])
+      expect(parse('{+a}#{#b}').map(&:fragment)).to eq([false, true, true])
+    end
+
+    # The next node's answer comes from the nodes after it, which the
+    # parser hasn't read when it adds the node.
+    it "notes whether a comma may start at each expression" do
+      reserved, label, _comma = parse("{+a,b}{.x},")
+      expect(label.comma_may_start_here?).to be true
+      expect(reserved.comma_follows?).to be true
+      reserved, label, _x = parse("{+a,b}{.x}x")
+      expect(label.comma_may_start_here?).to be false
+      expect(reserved.comma_follows?).to be false
+      expect(parse("{+a,b}").first.comma_follows?).to be false
+    end
+
+    it "notes whether a label's value can contain \".\"" do
+      expect(parse("/{.d}/")[1].label_dots).to be true
+      expect(parse("/{.d}{e}")[1].label_dots).to be false
+    end
+
+    # Nothing walks an invalid pattern's nodes, so they aren't linked.
+    it "doesn't link the nodes of a pattern with an invalid token" do
+      expect(parse("{a}{!b}").first.following).to be_nil
+    end
+  end
+
+  it "parses long patterns in linear time" do
     [
+      ("{#a,b}" * 30_000),
+      "/{.a}" + ("{/b}" * 30_000),
       "{" * 100_000,
       "}" * 100_000,
       "{a" * 50_000,

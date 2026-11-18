@@ -18,29 +18,28 @@
 #++
 
 require "addressable/uri"
-require "addressable/template/lexer"
+require "addressable/template/parser"
 require "addressable/template/matcher"
 require "addressable/template/matching"
 
 module Addressable
   class Template
     # The :machine engine. A Template whose engine is :machine hands its
-    # operations to its own ParsedTemplate, which parses the pattern once
-    # into literal and expression nodes (see Lexer and Machine), then
-    # expands and matches by walking those nodes instead of building a
-    # regular expression. Only Template#to_regexp and #source build one,
-    # with Template's builder, when they're called.
+    # operations to its own ParsedTemplate, which holds the literal and
+    # expression nodes that Parser parses the pattern into (see Machine).
+    # It expands, matches and writes the regexp by walking those nodes.
     #
     # @api private
     class ParsedTemplate
-      # Parses the template's pattern. Like Template.new, this never raises
+      # Keeps the nodes Parser parses the pattern into. This never raises
       # for a pattern that isn't valid: the first invalid token's error is
       # raised by the first operation that needs a valid pattern.
-      def initialize(template)
-        @template = template
-        @nodes = Lexer.new.parse_nodes(template.pattern)
+      #
+      # @param [String] pattern The template's pattern.
+      def initialize(pattern)
+        @pattern = pattern
+        @nodes = Parser.new.parse_nodes(pattern)
         @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
-        @placed = false
         @matcher = nil
       end
 
@@ -55,47 +54,41 @@ module Addressable
       end
 
       # Expands the expressions whose variables the mapping gives, and keeps
-      # the rest, into a new template with the same engine. Literals are
-      # kept as the pattern writes them; expand encodes them later.
-      # Template#partial_expand edits a copy of the pattern, so the new one
-      # keeps the pattern's encoding.
+      # the rest, into a new template. Literals are kept as the pattern
+      # writes them, and the new pattern keeps the pattern's encoding;
+      # expand encodes literals later.
       def partial_expand(mapping, processor, normalize_values, &block)
         values = values_for(mapping, processor, normalize_values, block)
-        result = render(@template.pattern.encoding) do |node|
+        result = render(@pattern.encoding) do |node|
           node.partial_expand(values)
         end
-        Addressable::Template.new(result, engine: @template.engine)
+        Addressable::Template.new(result, engine: :machine)
       end
 
-      # Matches the URI as Template#match does: the nodes' steps split it
-      # between the varspecs as Template's regexp would, and
-      # Matching.match_data turns what each varspec captured into the
-      # mapping.
+      # Matches the URI against the nodes' steps, which split it between
+      # the varspecs, and Matching.match_data turns what each varspec
+      # captured into the template's MatchData.
       #
-      # A processor's match method can give a variable's value a pattern of
-      # its own, and is asked on every call, so a matcher with its patterns
-      # is built for the call, as Template builds its regexp. A processor
-      # that only restores values uses the template's matcher.
-      def match(uri, processor)
-        nodes
+      # @param [Addressable::Template] template The template, for its
+      #   MatchData.
+      # @param [Addressable::URI, #to_str] uri The URI.
+      # @param [#match, #restore, nil] processor
+      #   The processor, if any, with #match, #restore or both.
+      def match(template, uri, processor)
+        raise_if_invalid
         uri = Matching.parse_uri(uri)
         return nil if uri == false
-        search =
-          if processor.respond_to?(:match)
-            build_matcher(processor)
-          else
-            matcher
-          end
-        # A nil URI raises NoMethodError here, as it does in Template.
+        search = matcher_for(processor)
+        # A nil URI raises NoMethodError here.
         captures = search.match(uri.to_str)
         return nil unless captures
-        Matching.match_data(@template, uri, search.expansions, captures,
+        Matching.match_data(template, uri, search.expansions, captures,
           processor)
       end
 
-      # Builds the matcher and the regexp, as Template#freeze builds its
-      # regexp, so a frozen template can still give them. A pattern that
-      # isn't valid has neither, and freezing it doesn't raise.
+      # Builds the matcher and the regexp, so a frozen template can still
+      # give them. A pattern that isn't valid has neither, and freezing it
+      # doesn't raise; every operation that would use them raises first.
       def freeze
         unless @invalid
           @matcher ||= build_matcher
@@ -104,9 +97,9 @@ module Addressable
         super
       end
 
-      # Like Template#variables, this doesn't raise for a pattern that isn't
-      # valid: it lists the names of the expressions Template's scan finds,
-      # in order, once each.
+      # The variables' names, in the order the pattern first writes them,
+      # once each. This doesn't raise for a pattern that isn't valid: an
+      # invalid token gives the names Parser found in it.
       def variables
         @nodes.flat_map do |node|
           if node.is_a?(Machine::Invalid)
@@ -127,9 +120,10 @@ module Addressable
       # groups: one per varspec, in order. Names are as the pattern writes
       # them, not Template's group names.
       def named_captures
+        raise_if_invalid
         captures = {}
         position = 0
-        nodes.grep(Machine::Expression).each do |expression|
+        @nodes.grep(Machine::Expression).each do |expression|
           expression.variables.each do |variable|
             position += 1
             (captures[variable.name] ||= []) << position
@@ -141,7 +135,7 @@ module Addressable
       # The regexp Template's builder writes, from the nodes, built on first
       # use or by freeze.
       def to_regexp
-        nodes
+        raise_if_invalid
         @regexp ||= build_regexp
       end
 
@@ -151,99 +145,32 @@ module Addressable
       # the builder's does, and takes the encoding of the pattern's
       # non-ASCII literals.
       def build_regexp
-        place_nodes
         result = render(Encoding::UTF_8, &:regexp_source)
         Regexp.new("\\A#{result}\\z")
       end
 
-      # The pattern's literals and expressions, or Template's error for its
-      # first invalid token.
-      def nodes
+      # Raises Template's error for the pattern's first invalid token, if
+      # it has one.
+      def raise_if_invalid
         raise @invalid.error_class, @invalid.message if @invalid
-        @nodes
       end
 
-      # The matcher for the pattern, built on first use.
-      def matcher
-        @matcher || (frozen? ? build_matcher : @matcher = build_matcher)
+      # The matcher for a match with the processor. A processor's match
+      # method can give a variable's value a pattern of its own, and is
+      # asked on every call, so the matcher with its patterns is built for
+      # the call. Otherwise the pattern's matcher is built on first use, or
+      # by freeze, and kept.
+      def matcher_for(processor)
+        return build_matcher(processor) if processor.respond_to?(:match)
+        @matcher ||= build_matcher
       end
 
       # Adds each node's steps to a new matcher, with the processor's
       # patterns, if any.
       def build_matcher(processor = nil)
-        place_nodes
         matcher = Matcher.new(expression_texts)
         @nodes.each { |node| node.match_steps(matcher, processor) }
         matcher.finish
-      end
-
-      # The second step of building the machine, after Lexer makes the
-      # nodes: notes on each node what matching it, or writing its part of
-      # the regexp, depends on around it. Done once, before the first
-      # matcher or regexp is built, since expansion doesn't need it; freeze
-      # builds both, so a frozen template's nodes are already placed.
-      # Whether a fragment may have started is worked out going forward,
-      # and what follows each expression going back from the end.
-      def place_nodes
-        return if @placed
-        note_fragments_and_label_dots
-        note_followers
-        @placed = true
-      end
-
-      # Notes whether a fragment may have started before each node, and,
-      # for each expression, whether a label's value can contain "."
-      # (Matching.label_takes_dots?, which Template uses too). A fragment
-      # may start at a "#" in a literal or at a + or # expression, and from
-      # then on expansion encodes a later "#", so later literals and
-      # fragment leaders match it either way, as in Template's regexp.
-      def note_fragments_and_label_dots
-        # The literal text before each expression and after the last, and
-        # whether a fragment may have started before each, and before each
-        # expression, as Matching.label_takes_dots? takes them.
-        literals = [""]
-        either_literal = [false]
-        either_leader = []
-        fragment = false
-        @nodes.each do |node|
-          node.fragment = fragment
-          if node.is_a?(Machine::Literal)
-            literals[-1] += node.text
-            fragment ||= node.text.include?("#")
-          else
-            either_leader << fragment
-            fragment ||= node.class.allows_reserved?
-            literals << ""
-            either_literal << fragment
-          end
-        end
-
-        texts = expression_texts
-        @nodes.grep(Machine::Expression).each_with_index do |expression, index|
-          expression.label_dots = Matching.label_takes_dots?(
-            index, texts, literals, either_leader, either_literal
-          )
-        end
-      end
-
-      # Notes, for each expression, the expression right after it, if no
-      # literal text comes between them, and whether the text after it
-      # could start with a comma. Expressions can match nothing, so that
-      # looks past any that can't start with one.
-      def note_followers
-        following = nil
-        comma_follows = false
-        @nodes.reverse_each do |node|
-          if node.is_a?(Machine::Literal)
-            following = nil
-            comma_follows = node.text.start_with?(",")
-          else
-            node.following = following
-            node.comma_follows = comma_follows
-            following = node
-            comma_follows ||= node.may_start_with_comma?
-          end
-        end
       end
 
       # Each expression as the pattern writes it, in order.
@@ -254,7 +181,7 @@ module Addressable
       # Raises the error for a pattern that isn't valid, then the values for
       # one expansion, from the mapping or the block.
       def values_for(mapping, processor, normalize_values, block)
-        nodes
+        raise_if_invalid
         Values.new(Values.mapping_or_block(mapping, block), normalize_values,
           processor)
       end

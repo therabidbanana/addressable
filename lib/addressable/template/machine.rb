@@ -16,16 +16,15 @@ require "addressable/template/machine/op_form"
 class Addressable::Template
   # The :machine engine's nodes: a Literal for literal text, a Variable for
   # each varspec, and an Expression subclass for each operator, each in
-  # its own file in machine/. Lexer builds them and ParsedTemplate walks
+  # its own file in machine/. Parser builds them and ParsedTemplate walks
   # them. Each node can expand, add the steps that match it to a Matcher,
   # and write its part of Template#to_regexp.
   #
-  # Building the machine takes two steps. Lexer makes the nodes, which is
-  # all expansion needs. Then, before the first matcher or regexp is
-  # built, ParsedTemplate#place_nodes notes on each node what matching it
-  # depends on around it: whether a fragment may have started before it,
-  # and, for an expression, whether a label's value can contain ".", the
-  # expression right after it, and whether a comma could follow it.
+  # As it builds them, Parser notes on each node what matching it depends
+  # on around it: whether a fragment may have started before it, the node
+  # right after it, and, for an expression, whether a label's value can
+  # contain "." and whether a comma could start at it. Parser's comment
+  # explains each, with examples.
   #
   # @api private
   module Machine

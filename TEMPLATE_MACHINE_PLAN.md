@@ -20,8 +20,8 @@ and hands each operation to one of them with an `if engine ==
 :machine` guard:
 
 - `:regexp`: today's code, left where it is.
-- `:machine`: `Template::ParsedTemplate`, which lexes the pattern once
-  into nodes (`Template::Lexer`, `Template::Machine`) and walks them.
+- `:machine`: `Template::ParsedTemplate`, which parses the pattern once
+  into nodes (`Template::Parser`, `Template::Machine`) and walks them.
 
 Pick the engine for the whole app with `Template.engine = :machine`, or
 for one template with `Template.new(pattern, engine: :machine)`.
@@ -75,6 +75,10 @@ Machine mode passes every `Template` spec (Ruby 3.3.1).
 Performance (Ruby 3.3.1, compared with `:regexp`):
 
 - `expand`: 0.5–0.9× the time, with fewer objects.
+- A new template expanded once: about 0.9×. `Parser` notes each node's
+  context while it parses, which adds about 2–8 µs to every template,
+  even one that's only expanded (it was about 0.8× when that waited for
+  the first match).
 - `partial_expand`: 0.4–1.0× the time.
 - `match` and `extract`: 1.2–2.0× on new templates and the simple one,
   but 2.2–2.8× on reused templates with query, exploded and reserved
@@ -168,7 +172,7 @@ The code grew piece by piece, and much of it mirrors `Template`'s
 regexp shapes. Some ways to make it smaller and easier to read:
 
 - **Code that exists only to copy a `Template` bug** (`variables` reading
-  invalid expressions: `Lexer#names_in_invalid_token`,
+  invalid expressions: `Parser#names_in_invalid_token`,
   `Machine::Invalid#names`) goes once `Template` fixes the bug.
 - **`Matching.match_data`'s quirks**, which the specs pin (an
   unexploded `;`, `?` or `&` value goes under the name the URI gives,
@@ -227,7 +231,7 @@ ITERATIONS=5000 bundle exec rake profile:template_machine
 
 - Machine specs: `spec/addressable/template_machine_spec.rb` (they
   compare each operation with `:regexp`), `template_engine_spec.rb` and
-  `template_lexer_spec.rb`.
+  `template_parser_spec.rb`.
 - Follow `CLAUDE.md`: specs first, Ruby 2.2-compatible code, both IDNA
   modes. Any warning fails the suite.
 - Work one piece at a time, and wait for review before committing.

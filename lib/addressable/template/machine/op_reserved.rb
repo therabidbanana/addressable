@@ -58,7 +58,7 @@ class Addressable::Template
           # end after a character that the next expression couldn't
           # match.
           group(variables.first, "#{RESERVED}*?#{NOT_AFTER_VALUE}") + "?"
-        elsif variables.size > 1 && !comma_follows &&
+        elsif variables.size > 1 && !comma_follows? &&
             variables.none?(&:explode) &&
             variables[0...-1].none? { |variable| last?(variable) }
           nested_values_source

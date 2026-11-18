@@ -5,12 +5,16 @@ class Addressable::Template
     class Literal
       attr_reader :text
       # Whether a fragment may have started before the literal, so that
-      # expansion encoded a "#" in it as "%23". Set by
-      # ParsedTemplate#place_nodes.
+      # expansion encoded a "#" in it as "%23". Set by Parser.
       attr_accessor :fragment
+      # The node right after the literal, or nil at the end of the pattern.
+      attr_reader :following
 
       def initialize(text)
         @text = text
+        # Parser sets these for a valid pattern.
+        @fragment = false
+        @following = nil
         # Expansion pct-encodes non-ASCII literals (RFC 6570 section 3.1),
         # and they don't change between calls, so they're encoded once.
         @expansion =
@@ -23,6 +27,15 @@ class Addressable::Template
 
       def variables
         []
+      end
+
+      # Notes the node right after the literal. Parser calls it going back
+      # from the end of the pattern.
+      #
+      # @param [Literal, Expression, nil] following
+      #   The node after the literal, or nil at the end.
+      def place_before(following)
+        @following = following
       end
 
       # The text in an expanded URI, with non-ASCII characters pct-encoded.
@@ -51,6 +64,17 @@ class Addressable::Template
       # match_steps does.
       def regexp_source
         Matching.literal_source(Matching.literal_units(@text, fragment))
+      end
+
+      # Literal text matches only as written, so it can't take what the
+      # expression before it could match.
+      def absorbs?(_previous)
+        false
+      end
+
+      # Whether the text from the literal on starts with a comma.
+      def comma_may_start_here?
+        text.start_with?(",")
       end
     end
   end

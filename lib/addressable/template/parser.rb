@@ -1,5 +1,6 @@
 require "strscan"
 require "addressable/template/machine"
+require "addressable/template/matching"
 
 # Written as Addressable::Template, not nested, so the body keeps its
 # indentation from before the move.
@@ -10,8 +11,42 @@ class Addressable::Template
   # and checks each expression as Template#check_expressions does, and never
   # raises for an invalid one.
   #
+  # For a valid pattern, it also notes on each node what matching it, or
+  # writing its part of the regexp, depends on around it, so that the
+  # machine splits a URI as Template's regexp does. Both engines give the
+  # results in the examples.
+  #
+  # - fragment, on every node: whether a fragment may have started before
+  #   it. A fragment can't contain "#" (RFC 3986 section 3.5), so expansion
+  #   encodes every "#" after the first as "%23", and a later "#" in a
+  #   literal or a # leader matches either way. "{+a}#x" matches "p#q%23x"
+  #   and "p#q#x", both with a = "p#q", and "{#a}x{#b}" matches "#px%23q"
+  #   and "#px#q", both with a = "p" and b = "q". Turning "%23" back into
+  #   "#" before matching wouldn't do the same: a value's own "#" is
+  #   encoded as "%23" too, so "#{a}" matches "#b%23c", with a = "b#c", but
+  #   not "#b#c". It depends on the nodes before, so it's noted as each node
+  #   is added.
+  # - label_dots, on a . expression: whether its value can contain ".",
+  #   which is also its leader. It can only where the text on both sides
+  #   can't continue the value (Matching.label_takes_dots?): "/{.d}/"
+  #   matches "/.example.com/" with d = "example.com", but in "/{.d}{e}" it
+  #   can't, and "/.example.comz" gives d = nil and e = ".example.comz". It
+  #   needs the literal text on both sides, so it's noted once every node
+  #   is added.
+  # - following and comma_may_start_here, on every node: the node after
+  #   it, and whether a comma could start there. They only shape
+  #   to_regexp, so it writes what Template's builder writes; matching
+  #   splits the same way without them. In "{a}{b}", {b} can match anything
+  #   {a} could, so {a} never takes a value ("xy" gives a = nil and
+  #   b = "xy"), and the regexp writes {a}'s value after "(?!)". "{+a,b}"
+  #   matches "p,q,r" with a = "p" and b = "q,r", and the regexp writes a
+  #   nested, possessive form for it, which it can only use when no comma
+  #   can follow, unlike in "{+a,b}," or "{+a,b}{.x},", which split "p,q,r,"
+  #   the same way. They depend on the nodes after, so they're noted going
+  #   back from the end, once every node is added.
+  #
   # @api private
-  class Lexer
+  class Parser
     OPERATORS = {
       "/" => Machine::OpPath,
       "?" => Machine::OpForm,
@@ -35,8 +70,34 @@ class Addressable::Template
     # Written out because template.rb loads this file before defining it.
     RESERVED_OPERATOR = /[=,!@|]/
 
+    def initialize
+      @nodes = []
+      @invalid = false
+      # Whether a fragment may have started (see #add).
+      @fragment = false
+      # The literal text before each expression and after the last, and
+      # whether a fragment may have started before each, and before each
+      # expression, as Matching.label_takes_dots? takes them.
+      @literals = [""]
+      @either_literal = [false]
+      @either_leader = []
+    end
+
+    # Parses the pattern. A Parser parses one pattern.
+    #
+    # @param [String] pattern The pattern.
+    #
+    # @return [Array] The nodes.
     def parse_nodes(pattern)
-      nodes = []
+      scan(pattern)
+      place_from_end unless @invalid
+      @nodes
+    end
+
+    private
+
+    # Splits the pattern into tokens, and adds a node for each.
+    def scan(pattern)
       scanner = StringScanner.new(pattern)
       # Template counts positions in characters. Adding up token lengths
       # keeps that linear; StringScanner#charpos counts from the start of
@@ -44,13 +105,13 @@ class Addressable::Template
       position = 0
       until scanner.eos?
         if (literal = scanner.scan(LITERAL))
-          nodes << Machine::Literal.new(literal)
+          add(Machine::Literal.new(literal))
           position += literal.length
         elsif scanner.skip(CLOSE_BRACE)
-          nodes << Machine::Invalid.new(
+          add(Machine::Invalid.new(
             InvalidTemplateError, "Unmatched \"}\" at position #{position}",
             []
-          )
+          ))
           position += 1
         else
           start = scanner.pos
@@ -68,13 +129,52 @@ class Addressable::Template
             node = invalid_token(token, position)
             position += token.length
           end
-          nodes << node
+          add(node)
         end
       end
-      nodes
     end
 
-    private
+    # Adds the node, noting whether a fragment may have started before it,
+    # which it may at a "#" in a literal or at a + or # expression, and
+    # what label_dots needs from it. Nothing walks the nodes of a pattern
+    # with an invalid token, so nothing is noted from the first one on.
+    def add(node)
+      @nodes << node
+      @invalid ||= node.is_a?(Machine::Invalid)
+      return if @invalid
+      node.fragment = @fragment
+      if node.is_a?(Machine::Literal)
+        @literals[-1] += node.text
+        @fragment ||= node.text.include?("#")
+      else
+        @either_leader << @fragment
+        @fragment ||= node.class.allows_reserved?
+        @literals << ""
+        @either_literal << @fragment
+      end
+    end
+
+    # Once every node is added: following and comma_may_start_here, going
+    # back from the end, so the node after each one is already placed (see
+    # #place_before on the nodes), then label_dots.
+    def place_from_end
+      following = nil
+      @nodes.reverse_each do |node|
+        node.place_before(following)
+        following = node
+      end
+
+      # Only a . expression's value can take dots.
+      expressions = @nodes.grep(Machine::Expression)
+      return unless expressions.any? { |node| node.is_a?(Machine::OpLabel) }
+      texts = expressions.map(&:text)
+      expressions.each_with_index do |expression, index|
+        next unless expression.is_a?(Machine::OpLabel)
+        expression.label_dots = Matching.label_takes_dots?(
+          index, texts, @literals, @either_leader, @either_literal
+        )
+      end
+    end
 
     # Reads a valid expression at the scanner's "{", or returns nil, leaving
     # the scanner wherever it stopped.

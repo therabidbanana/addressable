@@ -649,7 +649,7 @@ module Addressable
     #   match.captures
     #   #=> ["a", ["b", "c"]]
     def match(uri, processor=nil)
-      return parsed_template.match(uri, processor) if engine == :machine
+      return parsed_template.match(self, uri, processor) if engine == :machine
       check_expressions
       uri = Matching.parse_uri(uri)
       return nil if uri == false
@@ -962,7 +962,7 @@ module Addressable
   private
     # This template's ParsedTemplate, made the first time it's needed.
     def parsed_template
-      @parsed_template ||= ParsedTemplate.new(self)
+      @parsed_template ||= ParsedTemplate.new(pattern)
     end
 
     ##

@@ -649,7 +649,7 @@ end
 
 describe Addressable::Template::Machine::Variable, "#varspec" do
   it "writes the varspec as the pattern had it" do
-    expect(Addressable::Template::Lexer.new.parse_nodes("{a,b*,c:12,d.e,%41}").
+    expect(Addressable::Template::Parser.new.parse_nodes("{a,b*,c:12,d.e,%41}").
       first.variables.map(&:varspec)).to eq(["a", "b*", "c:12", "d.e", "%41"])
   end
 end
@@ -1236,7 +1236,7 @@ describe Addressable::Template::ParsedTemplate, "#to_regexp" do
     template = Addressable::Template.new(pattern, engine: engine)
     regexp =
       if engine == :machine
-        described_class.new(template).to_regexp
+        described_class.new(template.pattern).to_regexp
       else
         template.to_regexp
       end
