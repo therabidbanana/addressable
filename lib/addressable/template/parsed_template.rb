@@ -78,16 +78,16 @@ module Addressable
         nodes
         uri = Matching.parse_uri(uri)
         return nil if uri == false
-        matcher =
+        search =
           if processor.respond_to?(:match)
             build_matcher(processor)
           else
-            self.matcher
+            matcher
           end
         # A nil URI raises NoMethodError here, as it does in Template.
-        captures = matcher.match(uri.to_str)
+        captures = search.match(uri.to_str)
         return nil unless captures
-        Matching.match_data(@template, uri, matcher.expansions, captures,
+        Matching.match_data(@template, uri, search.expansions, captures,
           processor)
       end
 
