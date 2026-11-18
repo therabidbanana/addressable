@@ -885,12 +885,13 @@ describe Addressable::Template, "with the :machine engine, #match" do
   end
 
   # Each Ruby words Encoding::CompatibilityError its own way, so only its
-  # class is compared.
+  # class is compared. Ruby 3.1 adds the line that raised to a
+  # NoMethodError's message, so only the first line is compared.
   def error_outcome(error)
     if error.is_a?(Encoding::CompatibilityError)
       [error.class]
     else
-      [error.class, error.message]
+      [error.class, error.message.lines.first]
     end
   end
 
