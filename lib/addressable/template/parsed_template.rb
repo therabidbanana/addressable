@@ -40,6 +40,8 @@ module Addressable
         @template = template
         @nodes = Lexer.new.parse_nodes(template.pattern)
         @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
+        @placed = false
+        @matcher = nil
       end
 
       # Expands the template into a URI. Literals are pct-encoded, and every
