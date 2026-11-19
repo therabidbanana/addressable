@@ -1045,6 +1045,24 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # An exploded value's members, empty ones and doubled joiners included,
+  # for each operator whose members need the joiner between them.
+  {
+    "{/a*}" => ["/x/y", "//x", "/x//", "/x/", "//", "/"],
+    "{/a*}/z" => ["/x//z", "/x/z", "//z"],
+    "{/a*,b}" => ["/x//y", "/x/y/z", "//"],
+    "{.a*}" => [".x.y", ".x..y", "..", ".x."],
+    "{.a*}/" => [".x..y/", "./"],
+    "{+a*}" => ["x,y", "x,,y", ",x", "x,", "x/y,z"],
+    "{+a*,b}" => ["x,,y", "x,y,z"],
+    "{#a*}" => ["#x,y", "#x,,y", "#,"],
+    "{a*}" => ["x,y", "x,,y", ","]
+  }.each do |pattern, uris|
+    it "matches exploded members in #{pattern} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
   # Literal text outside every optional part and repeat has to occur in the
   # URI, in order, and a literal that ends the template has to end the URI.
   # Text that also matches pct-encoded doesn't have to occur as written.

@@ -42,9 +42,14 @@ module Addressable
           TaggedValue
         end
 
-        # Whether an exploded value's members need the joiner between them.
+        # Whether an exploded value's members need the joiner between them,
+        # as :regexp's regexp writes them (variable_regexp_source). Then a
+        # member can only end where a joiner or what follows the value
+        # starts, so its run can skip to the end of its characters rather
+        # than stopping at each one. The ;, ? and & operators write their
+        # members differently, and keep the joiner optional.
         def self.joiner_required?
-          false
+          true
         end
 
         # The operator for the rest of the expression once partial_expand

@@ -139,10 +139,22 @@ cover the shapes in 3 and 4. What's left, in order:
      saves 10–30% on adversarial payloads (`{a}`×12`!` ending `?!`,
      n=2,000: 111 → 77 ms) and changes the reused-template ratios
      little.
-   - Use the regexp's pruning in `add_match_steps` too (`absorbs?`,
-     the `group_regexp_source` rules). The biggest change, and the
-     likeliest to bring reused templates under 2×; it also stops each
-     operator's shape being described twice.
+   - Use the regexp's shapes in `add_match_steps`. The pruning rules
+     (`absorbs?`, the `group_regexp_source` rules) don't touch any of
+     the slow profile cases, which cost 7–8.5 states a byte; what does
+     is where the matcher's shape is looser than the regexp's.
+     - Done (3a): exploded `/`, `.`, `+` and `#` values require the
+       joiner between members, as the regexp writes them. Long path
+       went from 13× to 2.1–2.5× (10.6k → 2.0k objects per call), and
+       "exploded" from 2.0× to 1.4–1.8×.
+     - 3b: the regexp's member shapes for `;`, `?` and `&`, so they can
+       require the joiner too (with it required and the matcher's
+       member shapes, 53 specs fail).
+     - 3c: look one run ahead, for long query (still about 13×). In
+       `{?a,b,c}` the regexp lets `b`'s name start after any character
+       of `a`'s value, as the joiner is optional, but `b`'s name can
+       only start where its run is followed by `=`.
+     - Then the pruning rules, if adversarial shapes still need them.
    - Then the smaller ones in 5: an Array for `FirstBytes`, fewer
      allocations per step, runs that jump rather than step.
 2. **Decisions for the maintainer (7, 9):** changelog entries now or

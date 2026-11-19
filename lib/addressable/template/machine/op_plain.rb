@@ -23,8 +23,6 @@ module Addressable
     module Machine
       # Simple string expansion ({var}).
       class OpPlain < Expression
-        def self.joiner_required?; true; end
-
         # --- Regexp ---
 
         # An exploded last variable matches any unreserved characters and

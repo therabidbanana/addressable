@@ -27,6 +27,7 @@ module Addressable
         def self.leader; "&"; end
         def self.joiner; "&"; end
         def self.tagged_value; NamedTaggedValue; end
+        def self.joiner_required?; false; end
 
         private
 
