@@ -26,7 +26,7 @@ module Addressable
     # and normalized to NFC unless normalize_values is false. A variable used
     # more than once, as in {a}{+a}, is looked up and prepared once. #expand
     # expands it for one varspec, calling the processor each time, once for
-    # each occurrence of a variable, as 2.10.0 calls it. Joining a value
+    # each occurrence of a variable, as :regexp calls it. Joining a value
     # into its expression (leaders, separators, names) is Machine's.
     #
     # Its class methods normalize mappings and values for both engines.
@@ -81,7 +81,7 @@ module Addressable
 
       # Whether the mapping gives the variable a defined value: not nil, and
       # not a list or hash with no members once nil members are dropped. As
-      # in 2.10.0's partial_expand, the value isn't type-checked or prepared
+      # in :regexp's partial_expand, the value isn't type-checked or prepared
       # here, so errors come when it's expanded.
       #
       # @param [String] name The variable's name.
@@ -366,7 +366,7 @@ module Addressable
       end
 
       # A processor's transform result, which isn't pct-encoded. As in
-      # 2.10.0, an array whose first member has an "=" is joined as
+      # :regexp, an array whose first member has an "=" is joined as
       # key=value pairs, and whether it's composite comes from the value
       # before it was transformed.
       def transformed(variable, value, result)

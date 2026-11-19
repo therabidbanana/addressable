@@ -208,7 +208,7 @@ module Addressable
         def initialize(index, source)
           super(index)
           # Compiled now, so a pattern that isn't valid raises RegexpError
-          # before any matching, as it does in 2.10.0.
+          # before any matching, as it does in :regexp.
           @first_choice = Regexp.new("\\A(?:#{source})")
           @whole_value = Regexp.new("\\A(?:#{source})\\z")
         end

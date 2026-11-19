@@ -28,7 +28,7 @@ module Addressable
       # class methods, and overrides the instance methods for the shapes of
       # its values. Its methods come in three parts: expansion, matching
       # (the steps it adds to a Matcher) and the regexp (its part of
-      # Template#to_regexp, as 2.10.0 writes it).
+      # Template#to_regexp, as :regexp writes it).
       class Expression
         def self.operator; ""; end
         def self.leader; ""; end
@@ -160,7 +160,7 @@ module Addressable
 
         ##
         # Adds the steps that match the expression to the matcher, in the
-        # order of 2.10.0's reference regexp (template_match_spec.rb):
+        # order of :regexp's reference regexp (template_match_spec.rb):
         # nothing first, then the leader and each variable's value, which
         # may be left out, with an optional joiner between them. Each value
         # is captured, for Matching.match_data.
@@ -170,7 +170,7 @@ module Addressable
         #   A processor whose match method may give a variable's value a
         #   pattern of its own, which then has to match.
         def add_match_steps(matcher, processor = nil)
-          # Asked for every variable before any steps, as 2.10.0 asks.
+          # Asked for every variable before any steps, as :regexp asks.
           patterns = variables.map do |variable|
             processor && processor.match(variable.name)
           end
@@ -203,7 +203,7 @@ module Addressable
         # --- Regexp ---
 
         ##
-        # The expression's part of Template#to_regexp, as 2.10.0 writes it:
+        # The expression's part of Template#to_regexp, as :regexp writes it:
         # nothing, or the leader and each variable's value, which may be
         # left out, with an optional joiner between them. Each value is a
         # group named after its variable (Matching.capture_name).
@@ -355,7 +355,7 @@ module Addressable
 
         # --- Regexp ---
 
-        # The variables' groups, as 2.10.0 writes them for what follows the
+        # The variables' groups, as :regexp writes them for what follows the
         # expression. A + or # expression writes them differently before
         # text that can't start with a comma.
         def values_regexp_source
@@ -371,7 +371,7 @@ module Addressable
         end
 
         ##
-        # A variable's group in the regexp, as 2.10.0 writes it for a
+        # A variable's group in the regexp, as :regexp writes it for a
         # default, / or . expression. The other operators override it.
         #
         # @param [Variable] variable The variable.

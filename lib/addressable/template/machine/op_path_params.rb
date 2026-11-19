@@ -41,7 +41,7 @@ module Addressable
 
         # --- Regexp ---
 
-        # 2.10.0's regexp writes the name with "=" and the name alone as
+        # :regexp's regexp writes the name with "=" and the name alone as
         # two choices, which match the same strings in the same order.
         def value_regexp_source
           "(?:#{UNRESERVED}*=#{UNRESERVED}*?|#{UNRESERVED}*)"

@@ -22,9 +22,9 @@ require "addressable/template/matcher/first_bytes"
 module Addressable
   class Template
     class Matcher
-      # The characters a variable's value can contain, as 2.10.0's regexp
-      # classes have them: some ASCII characters, any pct-encoded triplet,
-      # and any non-ASCII character.
+      # The characters a variable's value can contain, as the :regexp
+      # engine's classes have them: some ASCII characters, any pct-encoded
+      # triplet, and any non-ASCII character.
       class CharacterSet
         # The bytes a character of the set can start with: an ASCII
         # character in the set, "%", or any non-ASCII byte.

@@ -45,7 +45,7 @@ module Addressable
       end
 
       # Expands the template into a URI. Literals are pct-encoded, and every
-      # "#" after the first is encoded. The text is UTF-8, as 2.10.0's is,
+      # "#" after the first is encoded. The text is UTF-8, as :regexp's is,
       # whatever the pattern's encoding: values are UTF-8 (RFC 6570 section
       # 3.2.1), and literals are pct-encoded ASCII.
       def expand(mapping, processor, normalize_values, &block)
@@ -117,7 +117,7 @@ module Addressable
       end
 
       # Maps each variable name to the positions of its varspecs, counting
-      # every varspec in the pattern from 1, as 2.10.0's regexp numbers its
+      # every varspec in the pattern from 1, as :regexp's regexp numbers its
       # groups: one per varspec, in order. Names are as the pattern writes
       # them, not the regexp's group names.
       def named_captures
@@ -128,8 +128,8 @@ module Addressable
         end
       end
 
-      # The regexp 2.10.0 writes, from the nodes, built on first
-      # use or by freeze.
+      # The regexp the :regexp engine writes, from the nodes, built on
+      # first use or by freeze.
       def to_regexp
         raise_if_invalid
         @regexp ||= build_regexp

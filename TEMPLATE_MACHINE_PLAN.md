@@ -265,9 +265,9 @@ several expressions like those in 3.
   `Template.engine=`, `Template#engine`, `Template.new(pattern,
   engine:)`). This plan holds entries back until release N, but
   `CLAUDE.md` asks for one with the change; decide which.
-- About 32 comments say "as 2.10.0 does" or "2.10.0's regexp". 2.10.0
-  is unreleased and would ship this code; they mean the `:regexp`
-  engine.
+- Resolved: 23 comments in `lib` said "as 2.10.0 does" or "2.10.0's
+  regexp", though 2.10.0 is unreleased and would ship this code. They
+  now name the `:regexp` engine.
 - This plan is committed at the repository's root.
 
 #### 8. Minor
