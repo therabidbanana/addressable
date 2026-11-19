@@ -1137,14 +1137,59 @@ describe Addressable::Template, "with the :machine engine, #match" do
       ["/{a*}", {"a" => "[a-z,]*"}] => ["/x,y", "/"],
       ["{?q,lang}", {"q" => "[^&]*"}] => ["?q=a&lang=b", "?q=a"],
       ["{;a,b}", {"a" => "a=[0-9]+"}] => [";a=1;b=2", ";a=x"],
-      ["{a}.{b}", {"a" => "\\w+(?=\\.)"}] => ["x.y", "x.y.z"],
-      ["{a}{b}", {"b" => "(?<=x)y"}] => ["xy", "y"],
+      ["{a}{b}", {"b" => "(?<=x)y"}] => ["y"],
       ["{a}/{b}", {"a" => "café"}] => ["café/v", "caf%C3%A9/v"],
       ["{a}", {"a" => ""}] => ["", "x"]
     }.each do |(pattern, patterns), uris|
       it "matches #{pattern} with #{patterns.inspect} like the :regexp engine" do
         uris.each { |uri| expect_same_with(pattern, uri, patterns) }
       end
+    end
+
+    # Where it differs from :regexp: a pattern is checked against the value
+    # alone, so lookarounds don't see past it.
+    it "doesn't let a pattern's lookahead see past the value" do
+      template = Addressable::Template.new("{a}.{b}", engine: :machine)
+      expect(template.match("x.y", processor("a" => "\\w+(?=\\.)"))).
+        to be_nil
+    end
+
+    it "doesn't let a pattern's lookbehind see before the value" do
+      template = Addressable::Template.new("{a}{b}", engine: :machine)
+      result = template.match("xy", processor("b" => "(?<=x)y"))
+      expect(result.mapping).to eq("a" => "xy", "b" => nil)
+    end
+
+    it "matches a long URI with a pattern quickly" do
+      template = Addressable::Template.new(
+        "http://example.com/search/{query}/", engine: :machine
+      )
+      uri = "http://example.com/search/#{"a" * 50_000}/"
+      result = Timeout.timeout(5) do
+        template.match(uri, processor("query" => "[^/]+"))
+      end
+      expect(result.mapping).to eq("query" => "a" * 50_000)
+    end
+
+    it "matches like :regexp where a later end is over 100,000 characters " \
+      "from the end of the URI" do
+      expect_same_with("{a}/{b}", "x/" + "y" * 100_010, "a" => "x/?")
+    end
+
+    it "matches a long URI that needs many of a pattern's ends quickly" do
+      template = Addressable::Template.new("/{a}/{b}", engine: :machine)
+      uri = "/#{"a" * 50_000}/#{"b" * 50_000}"
+      patterns = {"a" => ".*?", "b" => ".*"}
+      result = Timeout.timeout(5) { template.match(uri, processor(patterns)) }
+      expect(result.mapping).to eq("a" => "a" * 50_000, "b" => "b" * 50_000)
+    end
+
+    it "rejects a long URI that doesn't match quickly" do
+      template = Addressable::Template.new("{a}/{b}", engine: :machine)
+      result = Timeout.timeout(5) do
+        template.match("a" * 50_000, processor("a" => ".*"))
+      end
+      expect(result).to be_nil
     end
 
     it "raises RegexpError for a pattern that isn't valid, like :regexp" do

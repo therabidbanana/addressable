@@ -189,17 +189,28 @@ module Addressable
         end
       end
 
-      # A value matched by a processor's pattern: a regexp the caller gives,
-      # which Template puts in its own regexp as it is. Its ends are tried
-      # in the order Ruby's regexp engine prefers them (Search#pattern_ends).
-      # The pattern can backtrack however it was written, so with one,
-      # matching is only as fast as the pattern, as it is with Template.
+      # A value matched by a processor's pattern: a regexp the caller gives.
+      # The pattern's own first choice is tried first, then the other ends
+      # nearest it, shorter first where two are as near: a greedy pattern
+      # gives back characters and a lazy one takes more, as they would in
+      # a regexp. An end is tried if what follows can start there and the
+      # pattern matches the whole value up to it.
+      #
+      # This is where the machine differs from Template, which puts the
+      # pattern in its regexp and tries every end in the order the pattern
+      # prefers. Where a URI can be split more than one way, the split can
+      # differ, and the pattern only sees the rest of the URI, then only the
+      # value, so a lookbehind stops at the value's start and a lookahead at
+      # its end. In return, nothing backtracks across the template: each
+      # check reads one value, and only the pattern itself can backtrack,
+      # however it was written.
       class ProcessorPattern < State
         def initialize(index, source)
           super(index)
           # Compiled now, so a pattern that isn't valid raises RegexpError
           # before any matching, as it does in 2.10.0.
-          @pattern = Regexp.new("\\G(?:#{source})")
+          @first_choice = Regexp.new("\\A(?:#{source})")
+          @whole_value = Regexp.new("\\A(?:#{source})\\z")
         end
 
         def possible_first_bytes
@@ -207,9 +218,21 @@ module Addressable
         end
 
         def follow(attempt, search)
-          search.pattern_ends(@pattern, attempt.position).map do |finish|
-            attempt.move(@next, finish)
+          start = attempt.position
+          rest = search.text.byteslice(start, search.size - start)
+          # Without a first choice, the pattern can't match here at all.
+          return [] unless @first_choice =~ rest
+          preferred = start + $~[0].bytesize
+          ends = search.character_ends(start).sort_by do |finish|
+            [(finish - preferred).abs, finish]
           end
+          attempts = []
+          ends.each do |finish|
+            next unless @next.first_bytes.allow?(search, finish)
+            value = search.text.byteslice(start, finish - start)
+            attempts << attempt.move(@next, finish) if @whole_value =~ value
+          end
+          attempts
         end
       end
 

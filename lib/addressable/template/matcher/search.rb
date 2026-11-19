@@ -78,33 +78,14 @@ module Addressable
           ends[position]
         end
 
-        ##
-        # Where a processor's pattern can end, starting at the position, in
-        # the order Ruby's regexp engine prefers them. The engine only gives
-        # its first choice, so each later one comes from matching again with
-        # every end found so far ruled out, as template_match_spec.rb's
-        # end_positions does. Regexp offsets count characters, and the
-        # search's count bytes.
-        #
-        # @param [Regexp] pattern The pattern, starting with \G.
-        # @param [Integer] position A byte offset.
-        #
-        # @return [Array<Integer>] Byte offsets.
-        def pattern_ends(pattern, position)
-          start = @text.byteslice(0, position).length
-          characters = @text.length
-          ends = []
-          while true
-            ruled_out = ends.map do |finish|
-              "(?m:.{#{characters - finish}})\\z"
-            end
-            source = pattern.source
-            source += "(?!#{ruled_out.join("|")})" unless ruled_out.empty?
-            found = Regexp.new(source).match(@text, start)
-            break unless found
-            ends << found.end(0)
+        # The position, then the end of each character after it, as byte
+        # offsets: every place a value starting there can end.
+        def character_ends(position)
+          ends = [position]
+          @text.byteslice(position, @size - position).each_char do |character|
+            ends << ends.last + character.bytesize
           end
-          ends.map { |finish| @text[0, finish].bytesize }
+          ends
         end
       end
 
