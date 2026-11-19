@@ -46,6 +46,27 @@ module TemplateMachineProfile
         "lang" => "fr",
         "section" => "results"
       }
+    },
+    # Longer URIs, where the matcher's cost per character shows.
+    {
+      name: "API path and query",
+      pattern: "/repos/{owner}/{repo}/issues{/number}" \
+        "{?state,labels,page,per_page}",
+      values: {
+        "owner" => "example", "repo" => "project", "number" => "512",
+        "state" => "open", "labels" => "bug", "page" => "2",
+        "per_page" => "100"
+      }
+    },
+    {
+      name: "long query",
+      pattern: "/q{?a,b,c}",
+      values: { "a" => "x" * 300, "b" => "y" * 300, "c" => "z" * 300 }
+    },
+    {
+      name: "long path",
+      pattern: "/files{/path*}",
+      values: { "path" => Array.new(60) { "segment" } }
     }
   ].map do |c|
     first = c[:values].keys.first
@@ -72,7 +93,12 @@ module TemplateMachineProfile
     "{?foo*,bar*}" => lambda { |n| "?" + ("a=1&" * n) + " " },
     "{;foo*,bar*,baz*}" => lambda { |n| ";" + ("a=1;" * n) + "!" },
     "{a}{b}{c}" => lambda { |n| ("a" * n) + "!" },
-    "{+v1,v2,v3,v4,v5,v6,v7,v8,v9,v10}" => lambda { |n| ("a," * n) + " " }
+    "{+v1,v2,v3,v4,v5,v6,v7,v8,v9,v10}" => lambda { |n| ("a," * n) + " " },
+    # The shapes in template_machine_spec.rb's linear-time checks with
+    # the most states to try at each position.
+    "{a}" * 12 + "!" => lambda { |n| "a" * n },
+    "{/a*,b*,c*}!" => lambda { |n| "/" * n },
+    "{;a*}{;b*}{;c}!" => lambda { |n| ";a=1" * n }
   }.freeze
   ADVERSARIAL_SIZES = [500, 2000].freeze
   ADVERSARIAL_TIMEOUT = 10

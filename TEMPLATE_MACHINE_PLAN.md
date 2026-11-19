@@ -122,6 +122,33 @@ machine ships.
 
 ## What's left
 
+### Where to start next
+
+As of 2026-11-18, findings 1, 2 and 8 below are resolved, the small
+parts of 6 and 7 are done, and the profile and the linear-time specs
+cover the shapes in 3 and 4. What's left, in order:
+
+1. **Matcher speed (3, 4, 5).** This is what keeps `:machine` from
+   being the default. Measure each change with
+   `profile:template_machine` (twice), and keep only what stays easy to
+   read. Suggested order:
+   - Whole-URI rejects: a trailing literal must end the URI, and each
+     required literal must occur in it. Cheap, and it rejects every
+     `…!` adversarial case at once.
+   - Memoize only `Choice` and the runs.
+   - Use the regexp's pruning in `add_match_steps` too (`absorbs?`,
+     the `group_regexp_source` rules). The biggest change, and the
+     likeliest to bring reused templates under 2×; it also stops each
+     operator's shape being described twice.
+   - Then the smaller ones in 5: an Array for `FirstBytes`, fewer
+     allocations per step, runs that jump rather than step.
+2. **Decisions for the maintainer (7, 9):** changelog entries now or
+   at release N; where this plan lives; subclass overrides of
+   `Template`'s private methods once `:machine` is the default.
+3. **Other runtimes:** read the non-blocking CI job's results for Ruby
+   2.3, 3.1, JRuby and TruffleRuby, including the processor pattern
+   check.
+
 ### Review findings to fix
 
 From a review of the branch (2026-11-18), on Ruby 3.3.1 only: nothing
@@ -201,6 +228,13 @@ entries) for one 16 KB URI. Linear, but a practical CPU and memory
 regression on MRI 3.2+. The "10–600×" under "Matcher speed" understates
 it.
 
+These three shapes are now in `template_machine_spec.rb`'s linear-time
+checks (16 KB within 5 s) and in the profile's adversarial table. In
+one profile run (Ruby 3.3.1), going from n=500 to 2,000 grew
+`{;a*}{;b*}{;c}!` 5.0× (42 → 212 ms) and `{/a*,b*,c*}!` 4.6×, against
+4× for linear. Separate timings at 4k, 8k and 16k bytes doubled
+cleanly, so this is likely noise or GC, but check it again.
+
 #### 4. The 2× target only holds for short URIs
 
 The ratio grows with the values' length, and the profile's cases in
@@ -216,7 +250,13 @@ The ratio grows with the values' length, and the profile's cases in
 For the 82-character URI the matcher alone takes 159 µs against 1.9 µs
 for the raw regexp; the whole `#match` ratio looks modest only because
 both engines share about 50 µs of `Matching.match_data` and URI
-handling. Add longer URIs to the profile.
+handling.
+
+The profile now has these as "API path and query", "long query" and
+"long path". One run at `ITERATIONS=300` (Ruby 3.3.1) gave, for
+`match` on a reused template: 2.9×, 14.4× and 17.4×, with the machine
+allocating about 55× the objects on the long ones (14k against 259 per
+call for the long query). The shorter cases were 1.4–2.5×.
 
 #### 5. Where the matcher's time goes
 
@@ -254,10 +294,11 @@ Besides the ideas under "Matcher speed":
 `.github/workflows/test.yml` and `template_match_spec.rb`. The "matches
 like the :regexp engine" examples only run with `TEMPLATE_MODE=machine`,
 in a job that's `continue-on-error: true` and covers four spec files.
-Its comment ("Most of them fail until the machine is finished") is
-stale: they all pass. The linear-time specs in
-`template_machine_spec.rb` use only `Timeout`, and have no shapes with
-several expressions like those in 3.
+Its comment ("Most of them fail until the machine is finished") was
+stale (now fixed). The linear-time specs in `template_machine_spec.rb`
+use only `Timeout`; the shapes with several expressions from 3 are now
+among them. Still open: making the job blocking (see "Before release
+N").
 
 #### 7. Changelog and docs
 

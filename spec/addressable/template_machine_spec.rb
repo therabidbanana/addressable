@@ -1098,6 +1098,21 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # Several expressions in a row, each of which can take what the one
+  # before it leaves, ahead of a literal that never comes. These are the
+  # shapes with the most states to try at each position.
+  {
+    "{a}" * 12 + "!" => "a" * 16_000,
+    "{/a*,b*,c*}!" => "/" * 16_000,
+    "{;a*}{;b*}{;c}!" => ";a=1" * 4_000
+  }.each do |pattern, uri|
+    it "rejects a URI that doesn't match #{pattern} in linear time" do
+      template = Addressable::Template.new(pattern, engine: :machine)
+      result = Timeout.timeout(5) { template.match(uri) }
+      expect(result).to be_nil
+    end
+  end
+
   context "with a processor" do
     # A processor whose match gives patterns for some names, and records
     # each call.
