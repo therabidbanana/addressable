@@ -41,6 +41,7 @@ module Addressable
         @nodes = Parser.new.parse_nodes(pattern)
         @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
         @matcher = nil
+        @regexp = nil
       end
 
       # Expands the template into a URI. Literals are pct-encoded, and every

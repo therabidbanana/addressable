@@ -155,70 +155,6 @@ module Addressable
         @normalize_values ? Values.normalize_value(result) : result
       end
 
-      private
-
-      # A value pct-encoded for its varspec. Reserved and fragment expansion
-      # keep pct-encoded triplets (RFC 6570 section 3.2.3). An exploded
-      # hash's members are key=value pairs.
-      def encoded(variable, value)
-        encode_map =
-          variable.allows_reserved? ? RESERVED_ENCODE : UNRESERVED_ENCODE
-        explode = variable.explode
-        if value.kind_of?(Array)
-          members = value.map do |member|
-            Addressable::URI.encode_component(member, encode_map)
-          end
-          variable.tag(explode ? members : members.join(','), nil, true)
-        elsif value.kind_of?(Hash)
-          separator = explode ? "=" : ","
-          pairs = value.map do |key, member|
-            "#{Addressable::URI.encode_component(key, encode_map)}" \
-              "#{separator}" \
-              "#{Addressable::URI.encode_component(member, encode_map)}"
-          end
-          if explode
-            variable.tag(pairs, true, true)
-          else
-            variable.tag(pairs.join(','), nil, true)
-          end
-        else
-          if variable.prefix
-            value = Values.prefix(value, variable.prefix,
-              variable.allows_reserved?)
-          end
-          variable.tag(
-            Addressable::URI.encode_component(value, encode_map), nil, false
-          )
-        end
-      end
-
-      # A processor's transform result, which isn't pct-encoded. As in
-      # 2.10.0, an array whose first member has an "=" is joined as
-      # key=value pairs, and whether it's composite comes from the value
-      # before it was transformed.
-      def transformed(variable, value, result)
-        keypairs = result.is_a?(Array) && result.first.is_a?(String) &&
-          result.first.include?("=")
-        variable.tag(result, keypairs, Array === value || Hash === value)
-      end
-
-      def prepare(value)
-        value = Values.defined_value(value)
-        return if value.nil?
-        # Common primitives where the .to_s output is well-defined
-        if Numeric === value || Symbol === value ||
-            value == true || value == false
-          value = value.to_s
-        end
-        unless (Hash === value) ||
-            value.respond_to?(:to_ary) || value.respond_to?(:to_str)
-          raise TypeError,
-            "Can't convert #{value.class} into String or Array."
-        end
-        value = Values.normalize_value(value) if @normalize_values
-        value
-      end
-
       ##
       # Picks the mapping to expand with: the one passed, or the block.
       #
@@ -390,6 +326,70 @@ module Addressable
           accu[name] = value
           accu
         end
+      end
+
+      private
+
+      # A value pct-encoded for its varspec. Reserved and fragment expansion
+      # keep pct-encoded triplets (RFC 6570 section 3.2.3). An exploded
+      # hash's members are key=value pairs.
+      def encoded(variable, value)
+        encode_map =
+          variable.allows_reserved? ? RESERVED_ENCODE : UNRESERVED_ENCODE
+        explode = variable.explode
+        if value.kind_of?(Array)
+          members = value.map do |member|
+            Addressable::URI.encode_component(member, encode_map)
+          end
+          variable.tag(explode ? members : members.join(','), nil, true)
+        elsif value.kind_of?(Hash)
+          separator = explode ? "=" : ","
+          pairs = value.map do |key, member|
+            "#{Addressable::URI.encode_component(key, encode_map)}" \
+              "#{separator}" \
+              "#{Addressable::URI.encode_component(member, encode_map)}"
+          end
+          if explode
+            variable.tag(pairs, true, true)
+          else
+            variable.tag(pairs.join(','), nil, true)
+          end
+        else
+          if variable.prefix
+            value = Values.prefix(value, variable.prefix,
+              variable.allows_reserved?)
+          end
+          variable.tag(
+            Addressable::URI.encode_component(value, encode_map), nil, false
+          )
+        end
+      end
+
+      # A processor's transform result, which isn't pct-encoded. As in
+      # 2.10.0, an array whose first member has an "=" is joined as
+      # key=value pairs, and whether it's composite comes from the value
+      # before it was transformed.
+      def transformed(variable, value, result)
+        keypairs = result.is_a?(Array) && result.first.is_a?(String) &&
+          result.first.include?("=")
+        variable.tag(result, keypairs, Array === value || Hash === value)
+      end
+
+      def prepare(value)
+        value = Values.defined_value(value)
+        return if value.nil?
+        # Common primitives where the .to_s output is well-defined
+        if Numeric === value || Symbol === value ||
+            value == true || value == false
+          value = value.to_s
+        end
+        unless (Hash === value) ||
+            value.respond_to?(:to_ary) || value.respond_to?(:to_str)
+          raise TypeError,
+            "Can't convert #{value.class} into String or Array."
+        end
+        value = Values.normalize_value(value) if @normalize_values
+        value
       end
     end
   end

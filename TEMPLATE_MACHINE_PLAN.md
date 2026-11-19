@@ -281,17 +281,16 @@ several expressions like those in 3.
 - A `Marshal` or YAML dump of a used machine template holds the private
   node and matcher graph (2630 bytes against 436). They round-trip, and
   a dump from master loads. See "Dumps" under "Before release N".
-- `ParsedTemplate#initialize` sets `@matcher = nil` but not `@regexp`,
-  against the "same shape" intent of "Set the template machine's cached
-  state when it's created".
-- `machine.rb`, `machine/*.rb` and `parser.rb` lack the
-  `# frozen_string_literal: true` line and licence header the other
-  files have.
-- `Parser::RESERVED_OPERATOR` copies `RESERVED_OPERATORS` "because of
-  load order", yet `parser.rb` uses `RESERVED_OPERATORS` at call time.
-  `Machine::VARSPEC` likewise copies `Template`'s grammar.
-- In `values.rb`, `private` sits above `def self.` methods, which it
-  doesn't affect, so they read as private.
+- Resolved: `ParsedTemplate#initialize` set `@matcher = nil` but not
+  `@regexp`; `machine.rb`, `machine/*.rb` and `parser.rb` lacked the
+  `# frozen_string_literal: true` line and licence header; and in
+  `values.rb`, `private` sat above `def self.` methods it doesn't
+  affect.
+- Resolved: `Parser::RESERVED_OPERATOR` copied `RESERVED_OPERATORS`;
+  the parser now reads `RESERVED_OPERATORS` when it lexes. The review
+  also called `Machine::VARSPEC` a copy of `Template`'s grammar, but it
+  isn't one: `Template`'s is anchored and doesn't capture a prefix's
+  length, and the parser needs both.
 
 #### 9. Not reproduced
 
