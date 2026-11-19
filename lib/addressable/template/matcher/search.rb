@@ -35,8 +35,13 @@ module Addressable
       # attempt adds one without copying the others.
       CaptureList = Struct.new(:slot, :position, :rest)
 
+      # Where a piece of literal text occurs in the URI: the places found
+      # so far, in order, and where to look for the next one, or nil once
+      # there are no more.
+      Occurrences = Struct.new(:places, :from)
+
       # What the search keeps for one URI: the text, the attempts tried,
-      # and where runs of each set end.
+      # where runs of each set end, and where literal text occurs.
       class Search
         attr_reader :text, :size
 
@@ -45,6 +50,8 @@ module Addressable
           @size = text.bytesize
           @tried = {}
           @run_ends = {}
+          @occurrences = {}
+          @bytes = nil
           @scanner = nil
         end
 
@@ -75,10 +82,37 @@ module Addressable
           ends[position]
         end
 
+        ##
+        # The first place at or after the position where the text occurs,
+        # as a byte offset, or nil if it doesn't. The URI is searched
+        # forward from the start, one place at a time, only as far as the
+        # questions have reached, so each byte is read once per text,
+        # whatever order the questions come in.
+        #
+        # @param [String] piece ASCII text.
+        # @param [Integer] position A byte offset.
+        #
+        # @return [Integer, NilClass]
+        def next_occurrence(piece, position)
+          found = (@occurrences[piece] ||= Occurrences.new([], 0))
+          while found.from && (found.places.empty? || found.places.last < position)
+            place = bytes.index(piece, found.from)
+            found.places << place if place
+            found.from = place && place + 1
+          end
+          found.places.bsearch { |place| place >= position }
+        end
+
         # A scanner on the URI's bytes, so its positions are byte offsets
         # like the search's. Made on first use.
         def scanner
-          @scanner ||= StringScanner.new(@text.b)
+          @scanner ||= StringScanner.new(bytes)
+        end
+
+        # The URI as bytes, where String#index counts bytes. Made on first
+        # use.
+        def bytes
+          @bytes ||= @text.b
         end
 
         # The position, then the end of each character after it, as byte

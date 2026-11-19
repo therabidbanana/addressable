@@ -50,7 +50,9 @@ module Addressable
     # start with the byte at its position. A lazy or greedy run also knows
     # when what follows it can only start inside a run of its characters
     # if a certain byte comes after that run (State#bytes_after_run), and
-    # otherwise only stops at the run's end.
+    # otherwise only stops at the run's end. Where what follows starts
+    # with literal text the run could hold, it only stops where that text
+    # occurs (State#leading_text).
     #
     # The rest is in matcher/:
     #

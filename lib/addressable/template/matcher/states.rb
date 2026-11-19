@@ -120,6 +120,13 @@ module Addressable
         def bytes_after_taking_run(_set)
           nil
         end
+
+        # ASCII text that every match from here starts with, as written,
+        # so that a run before it can find where it's worth stopping with
+        # Search#next_occurrence. Nil if there's none, or it isn't known.
+        def leading_text
+          nil
+        end
       end
 
       # Text that has to come next.
@@ -134,6 +141,15 @@ module Addressable
 
         def possible_first_bytes
           @text_first_bytes
+        end
+
+        # The first unit's text, if it only matches as written. Not if it
+        # starts with a hex digit, since that can also be found inside a
+        # pct-encoded triplet, where a run can't stop.
+        def leading_text
+          raw = @units.first.raw
+          return nil unless @units.first.encoded.nil? && raw.ascii_only?
+          raw unless raw =~ /\A[0-9A-Fa-f]/
         end
 
         def follow(attempt, search)
@@ -175,9 +191,11 @@ module Addressable
       # A run as short as possible first: stop here, or take one more
       # character and ask again.
       class LazyRun < Run
-        # Asked once the first bytes are known. See State#bytes_after_run.
+        # Asked once the first bytes are known. See State#bytes_after_run
+        # and State#leading_text.
         def prepare
           @bytes_after_run_end = @next.bytes_after_run(@set)
+          @text_after = @next.leading_text
         end
 
         def branches?
@@ -192,6 +210,14 @@ module Addressable
             # otherwise the run only stops at its end.
             run_end = search.run_end(@set, position)
             position = run_end unless @bytes_after_run_end.allow?(search, run_end)
+          elsif @text_after
+            # What follows starts with this text, so the run can only stop
+            # where it occurs. It skips to the next place, or gives up if
+            # that isn't in the run.
+            run_end = search.run_end(@set, position)
+            place = search.next_occurrence(@text_after, position)
+            return [] unless place && place <= run_end
+            position = place
           end
           attempts = []
           # Stopping here only helps if what follows can start here.
@@ -323,6 +349,10 @@ module Addressable
         # It takes nothing, so what follows it decides.
         def bytes_after_taking_run(set)
           @next.bytes_after_run(set)
+        end
+
+        def leading_text
+          @next.leading_text
         end
 
         def follow(attempt, _search)

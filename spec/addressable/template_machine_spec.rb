@@ -975,6 +975,30 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # A value whose characters include the first one of the literal after
+  # it can only stop where the literal occurs: before the first place,
+  # later ones, or none that's still in the value. A literal that starts
+  # with a hex digit can also occur inside a pct-encoded triplet, where
+  # the value can't stop.
+  {
+    "{+a}/search" => [
+      "x/search", "x/y/search", "/search/search", "x/searchx/search",
+      "x/sear", "x?/search", "x /search", "/search", "x/search/"
+    ],
+    "{+a}/{b}" => ["x/y/z", "x/y/", "/", "x%2F/y", "x/é"],
+    "{a}.json" => ["x.json", "x.y.json", "x.json.json", "x.jso", "é.json"],
+    "{+a}1x" => ["%41x", "%411x", "%41x1x", "11x"],
+    "{a}a{b}" => ["%61a", "xay", "%41ay"],
+    "{+a}%41" => ["x%41", "x%41%41", "xA", "x%4"],
+    "{;a}x" => [";a=1x", ";a=xx", ";axx"],
+    "{#a}/b" => ["#x/b", "#x/b/b", "#/b"]
+  }.each do |pattern, uris|
+    it "matches values followed by a literal they could hold in " \
+      "#{pattern} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
   # A non-ASCII literal matches as it is or pct-encoded in either case, and
   # an ASCII one only as written.
   {

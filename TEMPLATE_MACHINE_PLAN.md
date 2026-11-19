@@ -171,12 +171,37 @@ cover the shapes in 3 and 4. What's left, in order:
        on `{;a,b,c}`, since greedy runs ask in decreasing order). Long
        path went to 1.85–1.93×, long query to 0.5×, the other reused
        cases to 1.3–1.7×. Still over 2×: reserved, fragment (2.6×).
-     - Next: find the literal after a run. In `{+base}/search` the run
-       can only stop where `/search` occurs.
-     - Then, measured one at a time: literal comparisons with the
+     - Done: find the literal after a run (`State#leading_text`,
+       `Search#next_occurrence`). A run followed by text it could hold
+       jumps to the text's next occurrence. `{+base}/search{?q}` with
+       a 180-character base went from 2.5× to 1.3×, `{a}.json` with a
+       200-character value from 4.0× to 1.2×; `{+a}/{b}` over 50
+       directories is still 2.9×, as the value can stop at every `/`.
+       Reserved, fragment stays at 2.2–2.5×: its query value steps
+       through every character, since `{#section}`'s `#` can be written
+       `%23`, which a query value can hold. Making `bytes_after_run`
+       carry texts too ("followed by `=`, or where `%23` occurs") would
+       fix it, at the cost of a harder idea to explain.
+     - Next, measured one at a time: literal comparisons with the
        scanner rather than a `byteslice` each, a run's next character
        with a one-unit pattern, and the pruning rules, if adversarial
        shapes still need them.
+   - **Memory on adversarial input.** Finding 3 measured a 33 MB memo
+     hash (608k entries, 1.5M objects) for `{/a*,b*,c*}!` on 16 KB.
+     Remeasure it for every adversarial shape now that only branching
+     states are remembered and runs skip, and add memory to the
+     profile's adversarial table. If it's still large, two ways to
+     shrink it: a bit-packed memo (one bit per branching state and
+     position, in a String), or a thread list (a Pike VM, as RE2 and
+     Rust's regex use for captures): walk the URI a byte at a time
+     with every live thread, in priority order, keeping only the first
+     thread to reach each state, which gives the backtracking search's
+     split without a memo, in memory proportional to the template.
+     The thread list reads every byte in Ruby, which the run skips
+     avoid, so it would likely be slower on typical URIs; it needs
+     processor patterns handled apart; and it's a second matcher core.
+     Prototype it in a scratch file against the profile before
+     deciding.
    - Then the smaller ones in 5: an Array for `FirstBytes`, fewer
      allocations per step, runs that jump rather than step.
 2. **Decisions for the maintainer (7, 9):** changelog entries now or
