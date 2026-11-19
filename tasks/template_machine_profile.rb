@@ -105,7 +105,10 @@ module TemplateMachineProfile
     ["{/a*,b*,c*}!", lambda { |n| "/" * n }],
     ["{/a*,b*,c*}!", lambda { |n| ("/" * n) + "?!" }],
     ["{;a*}{;b*}{;c}!", lambda { |n| ";a=1" * n }],
-    ["{;a*}{;b*}{;c}!", lambda { |n| (";a=1" * n) + "?!" }]
+    ["{;a*}{;b*}{;c}!", lambda { |n| (";a=1" * n) + "?!" }],
+    # a's value is followed by "=", which b's name needs next, so it
+    # can't skip to the end of its run.
+    ["{?a,b,c}!", lambda { |n| "?a=" + ("x" * n) + "=?!" }]
   ].freeze
   ADVERSARIAL_SIZES = [500, 2000].freeze
   ADVERSARIAL_TIMEOUT = 10

@@ -1076,6 +1076,25 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # A value whose run of characters a later variable could take over,
+  # since the joiner between them is optional. Where the run ends just
+  # before what the later variable needs next ("=" for a name), the value
+  # can stop anywhere in it; elsewhere it can only stop at its end.
+  {
+    "{?a,b}" => ["?a=x&b=2", "?a=xb=2", "?a=1b=2&", "?a=xx", "?a=x%41b=2",
+      "?a=é&b=2", "?a=éb=2", "?a=x&&b=2"],
+    "{?a,b,c}" => ["?a=x&b=y&c=z", "?a=xc=z", "?a=x=y=z", "?a=xb=yc=z"],
+    "{&a,b}x" => ["&a=1&b=2x", "&a=1b=2x", "&a=1x"],
+    "{;a,b}" => [";a=x;b=2", ";a=xb=2", ";a=xb", ";ab", ";a=x;b"],
+    "{?a}{b}" => ["?a=xy", "?a=x=y"],
+    "{?a,b}/" => ["?a=x&b=y/", "?a=xb=y/", "?a=x/"]
+  }.each do |pattern, uris|
+    it "matches values a later name could take over in #{pattern} like " \
+      "the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
   # Literal text outside every optional part and repeat has to occur in the
   # URI, in order, and a literal that ends the template has to end the URI.
   # Text that also matches pct-encoded doesn't have to occur as written.
@@ -1159,7 +1178,10 @@ describe Addressable::Template, "with the :machine engine, #match" do
     ["{/a*,b*,c*}!", "/" * 16_000],
     ["{/a*,b*,c*}!", "/" * 16_000 + "?!"],
     ["{;a*}{;b*}{;c}!", ";a=1" * 4_000],
-    ["{;a*}{;b*}{;c}!", ";a=1" * 4_000 + "?!"]
+    ["{;a*}{;b*}{;c}!", ";a=1" * 4_000 + "?!"],
+    # a's value is followed by "=", which b's name needs next, so it has
+    # to try stopping at each of its characters.
+    ["{?a,b,c}!", "?a=" + "x" * 16_000 + "=?!"]
   ].each do |pattern, uri|
     it "rejects a URI ending in #{uri[-2, 2].inspect} that doesn't match " \
       "#{pattern} in linear time" do

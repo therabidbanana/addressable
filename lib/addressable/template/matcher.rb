@@ -47,7 +47,10 @@ module Addressable
     #
     # To try less, each state also knows which bytes a match from it can
     # start with (FirstBytes), and the search skips a state that can't
-    # start with the byte at its position.
+    # start with the byte at its position. A lazy or greedy run also knows
+    # when what follows it can only start inside a run of its characters
+    # if a certain byte comes after that run (State#bytes_after_run), and
+    # otherwise only stops at the run's end.
     #
     # The rest is in matcher/:
     #

@@ -62,6 +62,7 @@ module Addressable
         def initialize(index)
           @index = index
           @first_bytes = NOTHING
+          @bytes_after_run = {}
         end
 
         # Points the state at the states it moves on to, once all of them
@@ -86,6 +87,38 @@ module Addressable
         # answer changes.
         def possible_first_bytes
           @next.first_bytes
+        end
+
+        ##
+        # Where a run of the set just before this state is worth stopping,
+        # for LazyRun#prepare. Often a match from here can only start with
+        # one of the set's characters by taking the rest of their run: in
+        # {?a,b}, b's name takes a's whole value, then needs "=". Then the
+        # run before can only stop inside a run of its characters if the
+        # run is followed by one of the bytes this returns. It's NOTHING if
+        # no match from here starts with one of the set's characters, and
+        # nil if one can without taking the whole run, or that isn't known.
+        # Asked once the first bytes are known.
+        #
+        # @param [CharacterSet] set The run's set.
+        #
+        # @return [FirstBytes, NilClass]
+        def bytes_after_run(set)
+          unless @bytes_after_run.key?(set)
+            @bytes_after_run[set] =
+              if set.first_bytes.disjoint?(first_bytes)
+                NOTHING
+              else
+                bytes_after_taking_run(set)
+              end
+          end
+          @bytes_after_run[set]
+        end
+
+        # bytes_after_run for a state that can start with one of the set's
+        # characters. Unknown, unless the state's class knows.
+        def bytes_after_taking_run(_set)
+          nil
         end
       end
 
@@ -124,16 +157,27 @@ module Addressable
         def possible_first_bytes
           @set.first_bytes | @next.first_bytes
         end
+
+        # A run of the same set that always takes the rest of the run is
+        # followed by what follows it.
+        def bytes_after_taking_run(set)
+          @next.first_bytes if set.equal?(@set) && takes_whole_run?
+        end
+
+        # Whether the run always takes every character of the set that
+        # follows: it can't stop sooner when what follows it can't start
+        # with one of them.
+        def takes_whole_run?
+          @set.first_bytes.disjoint?(@next.first_bytes)
+        end
       end
 
       # A run as short as possible first: stop here, or take one more
       # character and ask again.
       class LazyRun < Run
-        # If what follows can't start with any character of the set, the
-        # run can only stop where the set stops. Asked once the first bytes
-        # are known.
+        # Asked once the first bytes are known. See State#bytes_after_run.
         def prepare
-          @stops_where_set_stops = @set.first_bytes.disjoint?(@next.first_bytes)
+          @bytes_after_run_end = @next.bytes_after_run(@set)
         end
 
         def branches?
@@ -142,8 +186,12 @@ module Addressable
 
         def follow(attempt, search)
           position = attempt.position
-          if @stops_where_set_stops
-            return [attempt.move(@next, search.run_end(@set, position))]
+          if @bytes_after_run_end
+            # What follows can only start inside this run of the set's
+            # characters if one of these bytes comes after the run, so
+            # otherwise the run only stops at its end.
+            run_end = search.run_end(@set, position)
+            position = run_end unless @bytes_after_run_end.allow?(search, run_end)
           end
           attempts = []
           # Stopping here only helps if what follows can start here.
@@ -166,6 +214,10 @@ module Addressable
 
       # Every character of the set that follows, with no other choice.
       class PossessiveRun < Run
+        def takes_whole_run?
+          true
+        end
+
         def follow(attempt, search)
           [attempt.move(@next, search.run_end(@set, attempt.position))]
         end
@@ -188,6 +240,13 @@ module Addressable
 
         def branches?
           true
+        end
+
+        # Either way on can be taken, so both have to know.
+        def bytes_after_taking_run(set)
+          first = @first_state.bytes_after_run(set)
+          second = @second_state.bytes_after_run(set)
+          first | second if first && second
         end
 
         def follow(attempt, search)
@@ -261,6 +320,11 @@ module Addressable
           @slot = slot
         end
 
+        # It takes nothing, so what follows it decides.
+        def bytes_after_taking_run(set)
+          @next.bytes_after_run(set)
+        end
+
         def follow(attempt, _search)
           captures = CaptureList.new(@slot, attempt.position, attempt.captures)
           [Attempt.new(@next, attempt.position, captures)]
@@ -276,6 +340,11 @@ module Addressable
 
         def link(states)
           @next = states[@target]
+        end
+
+        # It takes nothing, so the state it goes back to decides.
+        def bytes_after_taking_run(set)
+          @next.bytes_after_run(set)
         end
 
         def follow(attempt, _search)

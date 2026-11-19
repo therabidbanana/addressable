@@ -154,10 +154,16 @@ cover the shapes in 3 and 4. What's left, in order:
        `Matcher#zero_or_more` loops. `{;foo*,bar*,baz*}` at n=2,000
        went from 260 to 83 ms and `{;a*}{;b*}{;c}!` (`?!`) from 160 to
        31 ms; the reused-template ratios didn't move.
-     - 3c: look one run ahead, for long query (still about 13×). In
+     - Done (3c): look one run ahead (`State#bytes_after_run`). In
        `{?a,b,c}` the regexp lets `b`'s name start after any character
-       of `a`'s value, as the joiner is optional, but `b`'s name can
-       only start where its run is followed by `=`.
+       of `a`'s value, as the joiner is optional, but `b`'s name takes
+       the rest of the run and then needs `=`, so `a`'s value skips to
+       its run's end unless `=` follows it. Long query went from 13× to
+       about 1.0× (6,628 → 28 matcher steps, 15.9k → 335 objects), API
+       path and query to 1.8×, and path, query, prefix to 1.5×. Still
+       over 2×: reserved, fragment (2.3–2.5×; `{+base}/search` stops
+       at every character, since `/` is reserved) and long path
+       (2.2–2.5×).
      - Then the pruning rules, if adversarial shapes still need them.
    - Then the smaller ones in 5: an Array for `FirstBytes`, fewer
      allocations per step, runs that jump rather than step.
