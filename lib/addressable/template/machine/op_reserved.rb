@@ -57,7 +57,8 @@ module Addressable
             # match any unreserved characters, so the value only needs to
             # end after a character that the next expression couldn't
             # match.
-            group(variables.first, "#{RESERVED}*?#{NOT_AFTER_VALUE}") + "?"
+            value = "#{RESERVED}*?#{NOT_AFTER_VALUE}"
+            "#{named_group_regexp_source(variables.first, value)}?"
           elsif variables.size > 1 && !comma_follows? &&
               variables.none?(&:explode) &&
               variables[0...-1].none? { |variable| last?(variable) }
@@ -76,7 +77,8 @@ module Addressable
         def nested_values_regexp_source
           last = variables.size - 1
           nested = variables[0...last].reverse.inject("") do |inner, variable|
-            "(?:#{group(variable, "#{RESERVED_NO_COMMA}*+")}" \
+            value = "#{RESERVED_NO_COMMA}*+"
+            "(?:#{named_group_regexp_source(variable, value)}" \
               "#{joiner_regexp_source}?+#{inner}|(?=#{RESERVED_NO_COMMA}))"
           end
           nested + group_regexp_source(variables.last, last)
@@ -89,17 +91,20 @@ module Addressable
             # tried matching itself. Only the last unexploded variable can
             # stop inside a member, where an exploded variable can't.
             if !variable.explode && last?(variable)
-              "#{group(variable, "#{RESERVED_NO_COMMA}*?")}?"
+              value = "#{RESERVED_NO_COMMA}*?"
+              "#{named_group_regexp_source(variable, value)}?"
             else
               # 2.9.0 skipped the variable when it couldn't be empty.
-              "(?:#{group(variable, '')}(?!#{RESERVED_NO_COMMA}))?"
+              "(?:#{named_group_regexp_source(variable, '')}" \
+                "(?!#{RESERVED_NO_COMMA}))?"
             end
           elsif !variable.explode && !last?(variable)
             # A variable before the last takes its value up to the next
             # comma, as variable_steps matches it.
-            "#{group(variable, "#{RESERVED_NO_COMMA}*+")}?"
+            value = "#{RESERVED_NO_COMMA}*+"
+            "#{named_group_regexp_source(variable, value)}?"
           else
-            optional_group(variable)
+            optional_group_regexp_source(variable)
           end
         end
       end

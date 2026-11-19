@@ -205,7 +205,7 @@ module Addressable
             # anything it could match on its own, every other choice ends
             # where the empty one can also end, so the empty alternative
             # always gave the first match.
-            "(?:|(?!)#{leader}#{joined_groups})"
+            "(?:|(?!)#{leader}#{joined_groups_regexp_source})"
           else
             "(?:|#{leader}#{values_regexp_source})"
           end
@@ -341,11 +341,11 @@ module Addressable
         # expression. A + or # expression writes them differently before
         # text that can't start with a comma.
         def values_regexp_source
-          joined_groups
+          joined_groups_regexp_source
         end
 
         # Each variable's group, with an optional joiner between them.
-        def joined_groups
+        def joined_groups_regexp_source
           groups = variables.each_with_index.map do |variable, position|
             group_regexp_source(variable, position)
           end
@@ -368,7 +368,9 @@ module Addressable
             # a split fails, every split where this variable is longer fails
             # too. Of the values tried, only the leading joiners are shorter
             # than every value tried before them.
-            group(variable, "(?:#{joiner_regexp_source})*")
+            named_group_regexp_source(
+              variable, "(?:#{joiner_regexp_source})*"
+            )
           elsif !variable.explode && position < variables.size - 1
             # Values were tried shortest first, so a run of characters
             # without a joiner went to a later variable. The only other
@@ -376,19 +378,20 @@ module Addressable
             # next joiner.
             value = value_regexp_source
             joiner = joiner_regexp_source
-            group(variable, "(?:#{value}(?=#{joiner}))??")
+            named_group_regexp_source(variable, "(?:#{value}(?=#{joiner}))??")
           else
-            optional_group(variable)
+            optional_group_regexp_source(variable)
           end
         end
 
         # A group for the variable's value, left out when the value is.
-        def optional_group(variable)
-          "#{group(variable, variable_regexp_source(variable))}?"
+        def optional_group_regexp_source(variable)
+          value = variable_regexp_source(variable)
+          "#{named_group_regexp_source(variable, value)}?"
         end
 
         # A group named after the variable (Matching.capture_name).
-        def group(variable, source)
+        def named_group_regexp_source(variable, source)
           "(?<#{Matching.capture_name(variable.name)}>#{source})"
         end
 

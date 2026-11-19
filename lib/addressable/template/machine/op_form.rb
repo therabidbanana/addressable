@@ -42,9 +42,9 @@ module Addressable
             joiner = joiner_regexp_source
             after_empty = "(?<=#{leader}#{joiner}|#{joiner}#{joiner})"
             value = variable_regexp_source(variable)
-            "#{group(variable, after_empty + value)}?"
+            "#{named_group_regexp_source(variable, after_empty + value)}?"
           else
-            optional_group(variable)
+            optional_group_regexp_source(variable)
           end
         end
       end

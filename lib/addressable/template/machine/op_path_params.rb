@@ -39,15 +39,17 @@ module Addressable
             # Exploded values were tried longest first, so whatever this
             # variable could match after an exploded one, that one already
             # tried matching itself, and it's always empty.
-            group(variable, "")
+            named_group_regexp_source(variable, "")
           elsif position > 0
             # Values were tried longest first, and splitting an earlier
             # variable's run of characters with this one never gave a
             # different result, so this one may only start after that run.
             value = variable_regexp_source(variable)
-            group(variable, "(?:#{NOT_AFTER_VALUE}#{value})?")
+            named_group_regexp_source(
+              variable, "(?:#{NOT_AFTER_VALUE}#{value})?"
+            )
           else
-            optional_group(variable)
+            optional_group_regexp_source(variable)
           end
         end
       end
