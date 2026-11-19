@@ -155,10 +155,54 @@ machine-only difference documented in "Where the machine differs from
 - **The `nil => ""` key.** That `{;a*,b}` match also maps `nil` to
   `""`: `b`'s empty capture has no name to go under. A bug in any case,
   so a `Template` fix the machine follows.
+- **A value given twice.** `{?a,b}` on `?a=1&a=2` gives
+  `{"a" => "1", "b" => nil}`, dropping `a=2` silently. Checking names
+  (above) would reject it.
+- **Prefix lengths aren't checked.** `{a:3}` matches `abcdef` as
+  `{"a" => "abcdef"}`, though expanding `{a:3}` never writes more than
+  three characters. Taking at most three would reject it, and bound
+  every prefixed value's run.
+- **A variable written twice isn't compared.** `{a}/{a}` matches `x/y`
+  as `{"a" => "x"}` (the first non-nil value wins, in
+  `match_data`), and `{?a,a}` matches `?a=1&a=2` as `{"a" => "1"}`.
+  Requiring the values to be equal would reject both.
+- **The earlier of two variables gets nothing.** Values are tried
+  shortest first, so where two variables can take the same text the
+  first is left empty: `{a}{b}` on `xyz` gives
+  `{"a" => nil, "b" => "xyz"}`, `{a,b}` on `x` gives
+  `{"a" => "", "b" => "x"}`, `{/a*}{/b*}` on `/x/y` gives `b` both
+  segments, and `{#a}{#b}` on `#x#y` gives `{"a" => nil, "b" => "x#y"}`.
+  Expanding `a` = `"x"` and nothing for `b` writes the same URI, so
+  matching doesn't give back what was expanded. Preferring the earlier
+  variable (longest first) would, but it changes the split of every
+  ambiguous URI, so it's the widest change here. `{a}{b}` and
+  `{a,b}` are ambiguous whichever way they split, so they could also
+  be documented as such.
+- **An empty member out of nowhere.** `{a*}{b}` on `x,y` gives
+  `{"a" => ["x", ""], "b" => "y"}`: `a` keeps the empty member before
+  the comma that `b` started after. Expanding that `a` writes `x,`.
+- **Exploded associative arrays outside `;`, `?` and `&`.** Expanding
+  `{a*}` with `{"k" => "v", "j" => "w"}` writes `k=v,j=w`, but matching
+  `{a*}` against it gives `nil`, since the value's characters don't
+  include `=`. Matching it as a hash would be a new result where there
+  was none, which a patch release allows, but `{a*}` on `x,y` would
+  then need a rule for when members are pairs.
+
+Several of these look like bugs with no good fix in one regexp, and the
+machine changes that. Comparing a variable written twice needs a
+backreference, which is where regexps backtrack catastrophically; the
+machine can compare two captures. A prefix length is a bounded repeat,
+awkward with pct-encoded and multibyte characters, and more for a
+regexp to backtrack through; in the machine it's a counted run. Names
+and which variable comes first could be written in either engine, and
+are only a question of compatibility. So some fixes may only be
+practical in the machine, which argues for making them when it becomes
+the default (release N+1), documented as differences from `:regexp`.
 
 To decide: look for code and issues that rely on today's results
-(GitHub issues, dependants' specs), and whether to change both engines
-at release N+1 or let the machine differ.
+(GitHub issues, dependants' specs), sort the candidates into fixes for
+both engines (the `nil` key, the empty member) and fixes for the
+machine only, and choose the release for each.
 
 ## What's left
 
