@@ -147,9 +147,13 @@ cover the shapes in 3 and 4. What's left, in order:
        joiner between members, as the regexp writes them. Long path
        went from 13× to 2.1–2.5× (10.6k → 2.0k objects per call), and
        "exploded" from 2.0× to 1.4–1.8×.
-     - 3b: the regexp's member shapes for `;`, `?` and `&`, so they can
-       require the joiner too (with it required and the matcher's
-       member shapes, 53 specs fail).
+     - Done (3b): `;`, `?` and `&` members take the regexp's shapes, so
+       every exploded value requires the joiner. No member after the
+       first can then be empty, so the empty-member rule
+       (`MemberStart`, `MemberEnd`, `Attempt#empty`) is gone, and
+       `Matcher#zero_or_more` loops. `{;foo*,bar*,baz*}` at n=2,000
+       went from 260 to 83 ms and `{;a*}{;b*}{;c}!` (`?!`) from 160 to
+       31 ms; the reused-template ratios didn't move.
      - 3c: look one run ahead, for long query (still about 13×). In
        `{?a,b,c}` the regexp lets `b`'s name start after any character
        of `a`'s value, as the joiner is optional, but `b`'s name can

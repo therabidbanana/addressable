@@ -27,7 +27,6 @@ module Addressable
         def self.leader; ";"; end
         def self.joiner; ";"; end
         def self.tagged_value; PathParamTaggedValue; end
-        def self.joiner_required?; false; end
 
         private
 
@@ -38,6 +37,12 @@ module Addressable
           matcher.greedy_run(:unreserved)
           matcher.optional { matcher.exact("=") }
           matcher.lazy_run(:unreserved)
+        end
+
+        # A member: name and value characters and "=", in any order, as
+        # many as can be first, as member_regexp_source writes it.
+        def member_steps(matcher)
+          matcher.greedy_run(:unreserved_or_equals)
         end
 
         # --- Regexp ---

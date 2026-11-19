@@ -263,35 +263,23 @@ module Addressable
 
         def follow(attempt, _search)
           captures = CaptureList.new(@slot, attempt.position, attempt.captures)
-          [Attempt.new(@next, attempt.position, captures, attempt.empty)]
+          [Attempt.new(@next, attempt.position, captures)]
         end
       end
 
-      # The start of an exploded value's next member: nothing taken yet.
-      class MemberStart < State
-        def follow(attempt, _search)
-          [Attempt.new(@next, attempt.position, attempt.captures, true)]
+      # Goes back to an earlier state, the start of a loop.
+      class Jump < State
+        def initialize(index, target)
+          super(index)
+          @target = target
         end
-      end
-
-      # The end of an exploded value's member. Another member follows, as
-      # in Ruby's regular expressions, unless this one matched nothing,
-      # which ends the value.
-      class MemberEnd < State
-        attr_accessor :again, :after
 
         def link(states)
-          @again_state = states[again]
-          @after_state = states[after]
-        end
-
-        def possible_first_bytes
-          @again_state.first_bytes | @after_state.first_bytes
+          @next = states[@target]
         end
 
         def follow(attempt, _search)
-          state = attempt.empty ? @after_state : @again_state
-          [Attempt.new(state, attempt.position, attempt.captures, false)]
+          [attempt.move(@next, attempt.position)]
         end
       end
 

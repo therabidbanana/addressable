@@ -27,7 +27,6 @@ module Addressable
         def self.leader; "&"; end
         def self.joiner; "&"; end
         def self.tagged_value; NamedTaggedValue; end
-        def self.joiner_required?; false; end
 
         private
 
@@ -37,6 +36,19 @@ module Addressable
         def value_steps(matcher)
           matcher.greedy_run(:unreserved)
           matcher.exact("=")
+          matcher.lazy_run(:unreserved)
+        end
+
+        # A member, as member_regexp_source writes it: a name and "=", as
+        # many more runs that end in "=" as can be first, then the value,
+        # as short as can be first.
+        def member_steps(matcher)
+          matcher.greedy_run(:unreserved)
+          matcher.exact("=")
+          matcher.zero_or_more do
+            matcher.greedy_run(:unreserved)
+            matcher.exact("=")
+          end
           matcher.lazy_run(:unreserved)
         end
 

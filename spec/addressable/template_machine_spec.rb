@@ -1045,9 +1045,22 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
-  # An exploded value's members, empty ones and doubled joiners included,
-  # for each operator whose members need the joiner between them.
+  # An exploded value's members, empty ones and doubled joiners included.
+  # A ;, ? or & member can hold more than one "=", and what follows the
+  # value can take some of it, so it depends on the order the ends are
+  # tried.
   {
+    "{;a*}" => [";x=1;y", ";x=1=2", ";x;;y", ";;", ";=", ";x=;", ";x;"],
+    "{;a*}{b}" => [";x=1=2", ";x=1;y=2z"],
+    "{;a*}=z" => [";x=1=z", ";x=z", ";x;y=z"],
+    "{;a*,b}" => [";x=1;b=2", ";x;;b"],
+    "{?a*}" => ["?x=1&y=2", "?x=1=2", "?x=1&&y=2", "?x==", "?=1", "?x=1&",
+      "?x"],
+    "{?a*}{b}" => ["?x=1=2", "?x=1&y=2z", "?x=1=2=3"],
+    "{?a*}=z" => ["?x=1=z", "?x=1=2=z", "?x==z"],
+    "{?a*,b}" => ["?x=1&b=2", "?x=1&&b=2", "?x=1=2&b="],
+    "{&a*}{&b}" => ["&x=1=2&b=3", "&x=1&&b=3"],
+    "{?a,b*}" => ["?a=1&x=2=3", "?a=1&&x=2"],
     "{/a*}" => ["/x/y", "//x", "/x//", "/x/", "//", "/"],
     "{/a*}/z" => ["/x//z", "/x/z", "//z"],
     "{/a*,b}" => ["/x//y", "/x/y/z", "//"],

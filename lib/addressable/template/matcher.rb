@@ -163,26 +163,25 @@ module Addressable
         add(Capture, slot + 1)
       end
 
+      # The block's states as many times over as they match, as many as can
+      # be first, then what follows. The block has to take at least one
+      # character each time.
+      def zero_or_more
+        again = add(Choice)
+        again.first = @states.size
+        inside_optional { yield }
+        add(Jump, again.index)
+        again.second = @states.size
+      end
+
       # One or more members, as the block's states, with the joiner between
-      # them, as many as can be first. An optional joiner can leave a member
-      # empty, and an empty member ends the value.
-      def repeat(joiner, joiner_required)
+      # them, as many as can be first.
+      def repeat(joiner)
         yield
-        another = add(Choice)
-        another.first = @states.size
-        add(MemberStart)
-        inside_optional do
-          if joiner_required
-            exact(joiner)
-          else
-            optional { exact(joiner) }
-          end
+        zero_or_more do
+          exact(joiner)
           yield
         end
-        member_end = add(MemberEnd)
-        member_end.again = another.index
-        member_end.after = @states.size
-        another.second = @states.size
       end
 
       # Ends the template, links the states, and works out their first
@@ -223,7 +222,7 @@ module Addressable
         end
         return nil unless holds_required_text?(text)
         search = Search.new(text)
-        to_try = [Attempt.new(@states.first, 0, nil, false)]
+        to_try = [Attempt.new(@states.first, 0, nil)]
         until to_try.empty?
           attempt = to_try.pop
           # The same state at the same position always ends the same way,

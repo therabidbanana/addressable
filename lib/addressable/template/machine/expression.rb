@@ -42,16 +42,6 @@ module Addressable
           TaggedValue
         end
 
-        # Whether an exploded value's members need the joiner between them,
-        # as :regexp's regexp writes them (variable_regexp_source). Then a
-        # member can only end where a joiner or what follows the value
-        # starts, so its run can skip to the end of its characters rather
-        # than stopping at each one. The ;, ? and & operators write their
-        # members differently, and keep the joiner optional.
-        def self.joiner_required?
-          true
-        end
-
         # The operator for the rest of the expression once partial_expand
         # has written a value: {?a,b} with only a given becomes ?a=1{&b},
         # and {#a,b} becomes #1{+b}.
@@ -333,10 +323,14 @@ module Addressable
         # --- Matching ---
 
         # A variable's value: exploded, up to the next comma, or as its
-        # operator takes a value.
+        # operator takes a value. An exploded value's members have the
+        # joiner between them, as :regexp's regexp writes them
+        # (variable_regexp_source), so a member can only end where a joiner
+        # or what follows the value starts, and its run can skip to the end
+        # of its characters rather than stopping at each one.
         def variable_steps(matcher, variable)
           if variable.explode
-            matcher.repeat(self.class.joiner, self.class.joiner_required?) do
+            matcher.repeat(self.class.joiner) do
               member_steps(matcher)
             end
           elsif self.class.allows_reserved? && !last?(variable)

@@ -73,6 +73,8 @@ module Addressable
       reserved = Addressable::URI::CharacterClasses::RESERVED + unreserved
       SETS = {
         unreserved: CharacterSet.new(unreserved),
+        # A ; member: name and value characters and "=", in any order.
+        unreserved_or_equals: CharacterSet.new(unreserved + "="),
         # A label's value, which can't contain "." unless it's delimited.
         unreserved_no_dot: CharacterSet.new(unreserved.gsub("\\.", "")),
         reserved: CharacterSet.new(reserved),

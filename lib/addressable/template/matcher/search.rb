@@ -19,15 +19,13 @@
 module Addressable
   class Template
     class Matcher
-      # One place the search can be: a state, a position in the URI, the
-      # captures so far, and whether the current member of an exploded
-      # value hasn't matched anything yet.
-      Attempt = Struct.new(:state, :position, :captures, :empty) do
+      # One place the search can be: a state, a position in the URI, and
+      # the captures so far.
+      Attempt = Struct.new(:state, :position, :captures) do
         # The attempt at another state and position, with the same
-        # captures. Taking any text means the member isn't empty any more.
+        # captures.
         def move(state, position)
-          Attempt.new(state, position, captures,
-            empty && position == self.position)
+          Attempt.new(state, position, captures)
         end
       end
 
@@ -48,11 +46,10 @@ module Addressable
         end
 
         # Whether this is the first time the search reaches the attempt's
-        # state and position (with the member's emptiness). The captures
-        # don't change whether the rest can match, so they're left out.
+        # state and position. The captures don't change whether the rest
+        # can match, so they're left out.
         def first_time?(attempt)
-          key = ((attempt.state.index * (@size + 1) + attempt.position) * 2) +
-            (attempt.empty ? 1 : 0)
+          key = attempt.state.index * (@size + 1) + attempt.position
           return false if @tried[key]
           @tried[key] = true
         end
