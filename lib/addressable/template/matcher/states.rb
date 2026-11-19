@@ -16,6 +16,7 @@
 #    limitations under the License.
 #++
 
+require "addressable/template/matching"
 require "addressable/template/matcher/first_bytes"
 require "addressable/template/matcher/search"
 
@@ -26,18 +27,6 @@ module Addressable
       # one, is the pct-encoded form of a non-ASCII character, whose hex
       # digits match in either case. Either can be nil.
       Unit = Struct.new(:raw, :encoded) do
-        # Where the unit ends if it's at the position, or nil. casecmp
-        # folds ASCII letters only, and compares bytes even where the slice
-        # splits a character.
-        def match_end(text, position)
-          if raw && text.byteslice(position, raw.bytesize) == raw
-            position + raw.bytesize
-          elsif encoded &&
-              text.byteslice(position, encoded.bytesize).casecmp(encoded) == 0
-            position + encoded.bytesize
-          end
-        end
-
         # The bytes the unit can start with: raw's first, and encoded's
         # first in either case.
         def first_bytes
@@ -131,12 +120,46 @@ module Addressable
 
       # Text that has to come next.
       class Literal < State
+        ##
+        # The units as one pattern, matched against the URI's bytes
+        # (Search#skip): each one's raw text as it is, or its encoded form
+        # with ASCII letters in either case. The two forms of a unit start
+        # with different bytes, so the pattern never tries both.
+        #
+        # @param [Array<Unit>] units The units.
+        #
+        # @return [Regexp]
+        def self.pattern(units)
+          source = Matching.literal_regexp_source(
+            units.map { |unit| [unit.raw, unit.encoded] }
+          ).b
+          common_patterns[source] || Regexp.new(source, Regexp::NOENCODING)
+        end
+
+        # The patterns for the text every operator adds (leaders, joiners,
+        # "=", and a "#" that may be written "%23"), compiled once, so that
+        # building a matcher only compiles the pattern's own literals. It's
+        # made on first use, not as a constant when this file loads:
+        # template.rb loads the engines' files before it defines the
+        # constants literal_regexp_source uses. Two threads can both make
+        # it, which does no harm.
+        def self.common_patterns
+          @common_patterns ||= (
+            %w(/ , . ; & ? = #).map { |text| [[text, nil]] } +
+              [[["#", "%23"]]]
+          ).map do |units|
+            source = Matching.literal_regexp_source(units).b
+            [source, Regexp.new(source, Regexp::NOENCODING)]
+          end.to_h.freeze
+        end
+
         def initialize(index, units)
           super(index)
           @units = units
           # A literal doesn't depend on what follows it, so its first bytes
           # are known now.
           @text_first_bytes = units.first.first_bytes
+          @pattern = Literal.pattern(units)
         end
 
         def possible_first_bytes
@@ -153,11 +176,8 @@ module Addressable
         end
 
         def follow(search, position, captures)
-          @units.each do |unit|
-            position = unit.match_end(search.text, position)
-            return unless position
-          end
-          search.try(@next, position, captures)
+          length = search.skip(@pattern, position)
+          search.try(@next, position + length, captures) if length
         end
       end
 

@@ -1177,9 +1177,12 @@ describe Addressable::Template, "with the :machine engine, #match" do
     expect_same("{a}{!b}", "x")
   end
 
-  it "doesn't build a regexp" do
+  # The matcher compiles small fixed patterns for the template's literals,
+  # but never the template's own regexp.
+  it "doesn't build the template's regexp" do
     template = Addressable::Template.new("{/a*}{?b}", engine: :machine)
-    expect(Regexp).not_to receive(:new)
+    expect_any_instance_of(Addressable::Template::ParsedTemplate).
+      not_to receive(:build_regexp)
     expect(template.match("/x/y?b=1").mapping).to eq(
       "a" => ["x", "y"], "b" => "1"
     )

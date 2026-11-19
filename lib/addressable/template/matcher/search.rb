@@ -114,6 +114,13 @@ module Addressable
           found.places.bsearch { |place| place >= position }
         end
 
+        # How many bytes the pattern matches at the position, or nil if it
+        # doesn't match there.
+        def skip(pattern, position)
+          scanner.pos = position
+          scanner.skip(pattern)
+        end
+
         # A scanner on the URI's bytes, so its positions are byte offsets
         # like the search's. Made on first use.
         def scanner

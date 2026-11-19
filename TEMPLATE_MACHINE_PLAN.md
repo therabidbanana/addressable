@@ -50,9 +50,11 @@ Decisions that shape the code:
   which keeps it linear. Its splits follow `Template`'s regexp, and
   `Template::Matching.match_data` turns captures into the same
   `MatchData` for both engines.
-- **The machine builds a regexp only for `to_regexp` and `source`**, from
-  its nodes, byte-for-byte what `Template`'s builder writes. It builds
-  it once, on first use or in `freeze`.
+- **The machine builds the template's regexp only for `to_regexp` and
+  `source`**, from its nodes, byte-for-byte what `Template`'s builder
+  writes. It builds it once, on first use or in `freeze`. The matcher
+  uses only small fixed patterns that can't backtrack across the
+  template: a possessive run per character set, and one per literal.
 - **The machine matches `Template` exactly, bugs included.** Fixing one is
   a `Template` change with its own changelog entry, and the machine
   follows it. The one exception is processor patterns; see "Where the
@@ -274,10 +276,17 @@ cover the shapes in 3 and 4. What's left, in order:
        objects, 3–7% slower). Every reused `match` case is now at or
        under 2× (reserved, fragment 1.93–2.00×, `extract` 2.07–2.22×),
        and the machine allocates within 2–10% of `:regexp`'s objects.
-     - Next, measured one at a time: literal comparisons with the
-       scanner rather than a `byteslice` each, a run's next character
-       with a one-unit pattern, and the pruning rules, if adversarial
-       shapes still need them.
+     - Done: literal patterns. Each `Literal` matches with one byte
+       pattern through `Search#skip`, rather than a `byteslice` per
+       unit; the patterns for leaders, joiners, `=` and `#` are compiled
+       once (`Literal.common_patterns`). Reused-template time is about
+       the same, objects per match fall further (long path 74 → 13,
+       reserved, fragment 62 → 48), and new-template matching is 0–5%
+       slower from compiling the pattern's own literals.
+     - Next, measured one at a time: a run's next character with a
+       one-unit pattern, and the pruning rules, if adversarial shapes
+       still need them. Reserved, fragment `extract` is still about
+       2.1×.
    - **Memory on adversarial input.** Finding 3 measured a 33 MB memo
      hash (608k entries, 1.5M objects) for `{/a*,b*,c*}!` on 16 KB.
      Remeasure it for every adversarial shape now that only branching
