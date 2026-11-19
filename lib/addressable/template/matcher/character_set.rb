@@ -29,12 +29,21 @@ module Addressable
         # The bytes a character of the set can start with: an ASCII
         # character in the set, "%", or any non-ASCII byte.
         attr_reader :first_bytes
+        # A run of the set's characters, for StringScanner#skip on the
+        # URI's bytes (Search#run_end). It's possessive, so it takes every
+        # character it can and never gives one back: it reads each byte
+        # once, on every runtime.
+        attr_reader :run
 
         def initialize(characters)
           pattern = Regexp.new("[#{characters}]")
           @ascii = Array.new(128) { |byte| pattern =~ byte.chr ? true : false }
           ascii = (0...128).select { |byte| @ascii[byte] }
           @first_bytes = FirstBytes.bytes(37, *ascii, *(0x80..0xFF))
+          @run = Regexp.new(
+            "(?:[#{characters}]|%[0-9A-Fa-f]{2}|[\\x80-\\xFF])*+",
+            Regexp::NOENCODING
+          )
         end
 
         ##

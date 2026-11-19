@@ -16,6 +16,8 @@
 #    limitations under the License.
 #++
 
+require "strscan"
+
 module Addressable
   class Template
     class Matcher
@@ -43,6 +45,7 @@ module Addressable
           @size = text.bytesize
           @tried = {}
           @run_ends = {}
+          @scanner = nil
         end
 
         # Whether this is the first time the search reaches the attempt's
@@ -55,24 +58,27 @@ module Addressable
         end
 
         # Where the longest run of the set starting at the position ends.
-        # Every position in a run ends at the same place, so the whole run
-        # is filled in once, and each later question about it is answered
-        # without reading it again.
+        # The URI is read from the start, a run at a time with the set's
+        # run pattern, only as far as the questions have reached, and each
+        # position read notes where its run ends. So each byte is read
+        # once, whatever order the questions come in. The byte after a run
+        # is one that isn't in the set, an ASCII byte or a "%" without two
+        # hex digits, so the next run starts one byte later.
         def run_end(set, position)
-          ends = (@run_ends[set] ||= {})
-          walked = []
-          at = position
-          until ends.key?(at)
-            following = set.character_end(@text, at)
-            unless following
-              ends[at] = at
-              break
-            end
-            walked << at
-            at = following
+          ends = (@run_ends[set] ||= [])
+          while ends.size <= position
+            start = ends.size
+            scanner.pos = start
+            finish = start + scanner.skip(set.run)
+            ends.fill(finish, start, finish - start + 1)
           end
-          walked.each { |start| ends[start] = ends[at] }
           ends[position]
+        end
+
+        # A scanner on the URI's bytes, so its positions are byte offsets
+        # like the search's. Made on first use.
+        def scanner
+          @scanner ||= StringScanner.new(@text.b)
         end
 
         # The position, then the end of each character after it, as byte

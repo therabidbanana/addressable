@@ -164,7 +164,19 @@ cover the shapes in 3 and 4. What's left, in order:
        over 2×: reserved, fragment (2.3–2.5×; `{+base}/search` stops
        at every character, since `/` is reserved) and long path
        (2.2–2.5×).
-     - Then the pruning rules, if adversarial shapes still need them.
+     - Done: runs found in C. Each `CharacterSet` has a possessive byte
+       regexp, and `Search#run_end` reads the URI forward with
+       `StringScanner#skip`, a run at a time, only as far as it's been
+       asked (scanning from each asked position instead went quadratic
+       on `{;a,b,c}`, since greedy runs ask in decreasing order). Long
+       path went to 1.85–1.93×, long query to 0.5×, the other reused
+       cases to 1.3–1.7×. Still over 2×: reserved, fragment (2.6×).
+     - Next: find the literal after a run. In `{+base}/search` the run
+       can only stop where `/search` occurs.
+     - Then, measured one at a time: literal comparisons with the
+       scanner rather than a `byteslice` each, a run's next character
+       with a one-unit pattern, and the pruning rules, if adversarial
+       shapes still need them.
    - Then the smaller ones in 5: an Array for `FirstBytes`, fewer
      allocations per step, runs that jump rather than step.
 2. **Decisions for the maintainer (7, 9):** changelog entries now or

@@ -960,6 +960,21 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # A run of a value's characters ends where one isn't in its set: a "%"
+  # without two hex digits after it, or a character the set doesn't hold.
+  # Multibyte and pct-encoded characters count as one.
+  {
+    "{a}.json" => ["%41.json", "x%4.json", "x%.json", "€.json", "x%41%zz.json"],
+    "{+a}/{b}" => ["x%2/y", "x%/y", "x%2F/y", "é/y", "x\u{1F642}/y", "%E9/y"],
+    "{/a*}" => ["/%41/%", "/é/%zz", "/x%4/y", "/\u{1F642}%41é"],
+    "{?a,b}" => ["?a=%41&b=é", "?a=x%4&b=y", "?a=é%E9b=2"]
+  }.each do |pattern, uris|
+    it "matches runs that end at a character outside the set in " \
+      "#{pattern} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
   # A non-ASCII literal matches as it is or pct-encoded in either case, and
   # an ASCII one only as written.
   {
