@@ -88,18 +88,25 @@ module TemplateMachineProfile
 
   # Patterns and payloads modelled on the "with adversarial input" specs in
   # spec/addressable/template_match_spec.rb. None of the payloads match.
-  ADVERSARIAL = {
-    "{/foo*}" => lambda { |n| "/" + ("a/" * n) + "!" },
-    "{?foo*,bar*}" => lambda { |n| "?" + ("a=1&" * n) + " " },
-    "{;foo*,bar*,baz*}" => lambda { |n| ";" + ("a=1;" * n) + "!" },
-    "{a}{b}{c}" => lambda { |n| ("a" * n) + "!" },
-    "{+v1,v2,v3,v4,v5,v6,v7,v8,v9,v10}" => lambda { |n| ("a," * n) + " " },
+  # The report shows how each payload ends.
+  ADVERSARIAL = [
+    ["{/foo*}", lambda { |n| "/" + ("a/" * n) + "!" }],
+    ["{?foo*,bar*}", lambda { |n| "?" + ("a=1&" * n) + " " }],
+    ["{;foo*,bar*,baz*}", lambda { |n| ";" + ("a=1;" * n) + "!" }],
+    ["{a}{b}{c}", lambda { |n| ("a" * n) + "!" }],
+    ["{+v1,v2,v3,v4,v5,v6,v7,v8,v9,v10}", lambda { |n| ("a," * n) + " " }],
     # The shapes in template_machine_spec.rb's linear-time checks with
-    # the most states to try at each position.
-    "{a}" * 12 + "!" => lambda { |n| "a" * n },
-    "{/a*,b*,c*}!" => lambda { |n| "/" * n },
-    "{;a*}{;b*}{;c}!" => lambda { |n| ";a=1" * n }
-  }.freeze
+    # the most states to try at each position, first without the literal
+    # the template ends with, then ending with it, so that a check that
+    # the URI holds the template's literals can't reject it before the
+    # search.
+    ["{a}" * 12 + "!", lambda { |n| "a" * n }],
+    ["{a}" * 12 + "!", lambda { |n| ("a" * n) + "?!" }],
+    ["{/a*,b*,c*}!", lambda { |n| "/" * n }],
+    ["{/a*,b*,c*}!", lambda { |n| ("/" * n) + "?!" }],
+    ["{;a*}{;b*}{;c}!", lambda { |n| ";a=1" * n }],
+    ["{;a*}{;b*}{;c}!", lambda { |n| (";a=1" * n) + "?!" }]
+  ].freeze
   ADVERSARIAL_SIZES = [500, 2000].freeze
   ADVERSARIAL_TIMEOUT = 10
 
@@ -253,10 +260,11 @@ module TemplateMachineProfile
       "x#{sizes.last / sizes.first} input should take about " \
       "x#{sizes.last / sizes.first} time if it's linear."
     puts format(
-      "%-36s %-12s %10s %10s %7s",
-      "pattern", "", *sizes.map { |n| "n=#{n}" }, "growth"
+      "%-36s %-6s %-12s %10s %10s %7s",
+      "pattern", "ends", "", *sizes.map { |n| "n=#{n}" }, "growth"
     )
     ADVERSARIAL.each do |pattern, payload|
+      ending = payload.call(2)[-2, 2].inspect
       ENGINES.each do |engine|
         times = sizes.map do |n|
           adversarial_time(engine, pattern, payload.call(n))
@@ -268,9 +276,9 @@ module TemplateMachineProfile
             ""
           end
         puts format(
-          "%-36s %-12s %10s %10s %7s",
-          pattern, engine, *times.map { |t| t.is_a?(Float) ? number(t) : t },
-          growth
+          "%-36s %-6s %-12s %10s %10s %7s",
+          pattern, ending, engine,
+          *times.map { |t| t.is_a?(Float) ? number(t) : t }, growth
         )
       end
     end

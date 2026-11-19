@@ -1045,6 +1045,26 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # Literal text outside every optional part and repeat has to occur in the
+  # URI, in order, and a literal that ends the template has to end the URI.
+  # Text that also matches pct-encoded doesn't have to occur as written.
+  {
+    "/a/{x}/b/{y}.json" => [
+      "/a/1/b/2.json", "/a/1/b/2.jsonx", "/a/1/2.json", "/b/1/a/2.json",
+      "/a//b/.json", "/a/b.json"
+    ],
+    "x{a}x" => ["xyx", "xx", "x", "xyxx"],
+    "{a}!{b}!" => ["x!y!", "x!y", "!!", "!", "x!y!z"],
+    "{?a}x" => ["?a=1x", "x", "?a=1"],
+    "{/a*}/end" => ["/x/y/end", "/end", "/x/y/en", "/x/end/y"],
+    "caf%C3%A9/{a}" => ["caf%C3%A9/v", "café/v", "caf/v", "cafe/v"],
+    "{a}é" => ["xé", "x%C3%A9", "x"]
+  }.each do |pattern, uris|
+    it "matches required literals in #{pattern} like the :regexp engine" do
+      uris.each { |uri| expect_same(pattern, uri) }
+    end
+  end
+
   it "matches an Addressable::URI like the :regexp engine" do
     expect_same("http://example.com/{a}",
       Addressable::URI.parse("http://example.com/x"))
@@ -1100,13 +1120,18 @@ describe Addressable::Template, "with the :machine engine, #match" do
 
   # Several expressions in a row, each of which can take what the one
   # before it leaves, ahead of a literal that never comes. These are the
-  # shapes with the most states to try at each position.
-  {
-    "{a}" * 12 + "!" => "a" * 16_000,
-    "{/a*,b*,c*}!" => "/" * 16_000,
-    "{;a*}{;b*}{;c}!" => ";a=1" * 4_000
-  }.each do |pattern, uri|
-    it "rejects a URI that doesn't match #{pattern} in linear time" do
+  # shapes with the most states to try at each position. Each pattern has
+  # a second URI that ends with the literal, so the search has to read it.
+  [
+    ["{a}" * 12 + "!", "a" * 16_000],
+    ["{a}" * 12 + "!", "a" * 16_000 + "?!"],
+    ["{/a*,b*,c*}!", "/" * 16_000],
+    ["{/a*,b*,c*}!", "/" * 16_000 + "?!"],
+    ["{;a*}{;b*}{;c}!", ";a=1" * 4_000],
+    ["{;a*}{;b*}{;c}!", ";a=1" * 4_000 + "?!"]
+  ].each do |pattern, uri|
+    it "rejects a URI ending in #{uri[-2, 2].inspect} that doesn't match " \
+      "#{pattern} in linear time" do
       template = Addressable::Template.new(pattern, engine: :machine)
       result = Timeout.timeout(5) { template.match(uri) }
       expect(result).to be_nil

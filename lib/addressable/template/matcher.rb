@@ -64,6 +64,12 @@ module Addressable
         @encoding = nil
         @states = []
         @groups = 0
+        # How many optional parts and repeats the states being added are
+        # inside. Text outside all of them is required text.
+        @optional_depth = 0
+        @required_text = []
+        @last_required_literal = nil
+        @required_text_ends_uri = false
       end
 
       ##
@@ -97,7 +103,9 @@ module Addressable
             joined << Unit.new(raw, encoded)
           end
         end
-        add(Literal, joined)
+        state = add(Literal, joined)
+        note_required_text(state, joined) if @optional_depth.zero?
+        state
       end
 
       # Text that matches only as it is.
@@ -129,7 +137,7 @@ module Addressable
       def optional
         choice = add(Choice)
         choice.first = @states.size
-        yield
+        inside_optional { yield }
         choice.second = @states.size
       end
 
@@ -137,7 +145,7 @@ module Addressable
       def nothing_or
         choice = add(Choice)
         choice.second = @states.size
-        yield
+        inside_optional { yield }
         choice.first = @states.size
       end
 
@@ -158,12 +166,14 @@ module Addressable
         another = add(Choice)
         another.first = @states.size
         add(MemberStart)
-        if joiner_required
-          exact(joiner)
-        else
-          optional { exact(joiner) }
+        inside_optional do
+          if joiner_required
+            exact(joiner)
+          else
+            optional { exact(joiner) }
+          end
+          yield
         end
-        yield
         member_end = add(MemberEnd)
         member_end.again = another.index
         member_end.after = @states.size
@@ -173,6 +183,9 @@ module Addressable
       # Ends the template, links the states, and works out their first
       # bytes.
       def finish
+        @required_text_ends_uri = !@last_required_literal.nil? &&
+          @states.last.equal?(@last_required_literal)
+        @required_text.freeze
         add(Done)
         @states.each { |state| state.link(@states) }
         changed = true
@@ -203,6 +216,7 @@ module Addressable
             "incompatible encoding regexp match (#{@encoding} regexp with " \
             "#{text.encoding} string)"
         end
+        return nil unless holds_required_text?(text)
         search = Search.new(text)
         to_try = [Attempt.new(@states.first, 0, nil, false)]
         until to_try.empty?
@@ -222,6 +236,51 @@ module Addressable
       end
 
       private
+
+      # Adds the block's states as ones a match can leave out or repeat.
+      def inside_optional
+        @optional_depth += 1
+        yield
+      ensure
+        @optional_depth -= 1
+      end
+
+      # Notes the literal's text that only matches as written: every match
+      # takes it, in order, so the URI has to hold it. A unit that may also
+      # be pct-encoded is left out, which splits the text into pieces.
+      # Only a literal whose text ends that way can make the URI end with
+      # it.
+      def note_required_text(state, units)
+        units.each { |unit| @required_text << unit.raw if unit.encoded.nil? }
+        @last_required_literal = units.last.encoded.nil? ? state : nil
+      end
+
+      ##
+      # Whether the URI holds the required text, each piece after the one
+      # before it, and ends with the last one if the template ends with
+      # it. A URI that doesn't can't match, so it's rejected without a
+      # search. This is what rejects a URI missing a literal the template
+      # ends with, which would otherwise take the search through every
+      # split of the text before it. Positions here count characters, as
+      # String#index does.
+      #
+      # @param [String] text The URI's text.
+      #
+      # @return [TrueClass, FalseClass]
+      def holds_required_text?(text)
+        from = 0
+        last = @required_text.size - 1
+        @required_text.each_with_index do |piece, i|
+          if i == last && @required_text_ends_uri
+            return text.end_with?(piece) &&
+              text.length - piece.length >= from
+          end
+          found = text.index(piece, from)
+          return false unless found
+          from = found + piece.length
+        end
+        true
+      end
 
       def add(type, *arguments)
         state = type.new(@states.size, *arguments)

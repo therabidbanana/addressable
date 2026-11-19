@@ -132,9 +132,9 @@ cover the shapes in 3 and 4. What's left, in order:
    being the default. Measure each change with
    `profile:template_machine` (twice), and keep only what stays easy to
    read. Suggested order:
-   - Whole-URI rejects: a trailing literal must end the URI, and each
-     required literal must occur in it. Cheap, and it rejects every
-     `…!` adversarial case at once.
+   - Done: whole-URI rejects (`Matcher#holds_required_text?`). It
+     rejects the `…!` adversarial cases in 3 in under 0.2 ms; payloads
+     that end with the literal (`?!`) still take the full search.
    - Memoize only `Choice` and the runs.
    - Use the regexp's pruning in `add_match_steps` too (`absorbs?`,
      the `group_regexp_source` rules). The biggest change, and the
@@ -282,9 +282,13 @@ Besides the ideas under "Matcher speed":
   byte.
 - **`FirstBytes#allow?`** indexes a 257-bit Integer: 44 ns, against
   19 ns for an Array lookup, on every `Choice` and `LazyRun`.
-- **No whole-URI rejects.** A trailing literal that doesn't end the
-  URI, or a required literal that never occurs in it, would reject every
-  `…!` case in 3 at once.
+- Resolved: **no whole-URI rejects.** Literal text outside every
+  optional part and repeat must now occur in the URI in order, and a
+  literal that ends the template must end it. At n=2,000 the `…!` cases
+  in 3 went from 71–277 ms to 0.02–0.13 ms; the reused-template cases
+  didn't change, since their URIs match. With payloads that end in
+  `?!`, `{a}`×12`!` still grows about 6× from n=500 to 2,000, as it did
+  before.
 - `matcher_for` rebuilt the whole matcher, first bytes included, on
   every call with a processor that has `match`. It still does; it's
   needed while the processor is asked for its patterns on every call.
