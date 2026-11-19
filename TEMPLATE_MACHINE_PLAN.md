@@ -135,7 +135,10 @@ cover the shapes in 3 and 4. What's left, in order:
    - Done: whole-URI rejects (`Matcher#holds_required_text?`). It
      rejects the `…!` adversarial cases in 3 in under 0.2 ms; payloads
      that end with the literal (`?!`) still take the full search.
-   - Memoize only `Choice` and the runs.
+   - Done: memoize only states that branch (`State#branches?`). It
+     saves 10–30% on adversarial payloads (`{a}`×12`!` ending `?!`,
+     n=2,000: 111 → 77 ms) and changes the reused-template ratios
+     little.
    - Use the regexp's pruning in `add_match_steps` too (`absorbs?`,
      the `group_regexp_source` rules). The biggest change, and the
      likeliest to bring reused templates under 2×; it also stops each
@@ -269,10 +272,12 @@ Besides the ideas under "Matcher speed":
   all of it and walks the naive shape: `{a}{b}{c}{d}{e}x` on `"a"*1000`
   makes 31 attempts a byte, 10k of them memo hits. Each operator's
   shape is also described twice.
-- **Every state is memoized.** `Search#first_time?` does a hash insert
-  for every attempt, including `Capture`, `Literal`, `MemberStart` and
-  `MemberEnd`, which have one way on. Memoizing only `Choice` and the
-  runs would keep it linear with about half the hash work and memory.
+- Resolved: **every state was memoized.** Only `Choice`, the lazy and
+  greedy runs and `ProcessorPattern` are now; the rest have one way on,
+  and every loop passes through a state that branches, so it stays
+  linear (timed at 2k–16k bytes). Objects per call rose slightly (long
+  query 14.1k → 15.9k), since a state that isn't remembered allocates
+  its next attempt each time it's reached.
 - **Per-attempt allocation.** Each step makes an `Attempt` and an array
   from `follow`, then `reverse_each` pushes them; `Unit#match_end`
   allocates a substring with `byteslice` per comparison.

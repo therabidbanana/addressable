@@ -37,8 +37,13 @@ module Addressable
     # A plain depth-first search can take exponential time. This one
     # remembers each state and position it has tried: if it comes back to
     # one, that one already failed (or the search would have stopped), so
-    # it's skipped. Each state is tried at most once per position, so the
-    # time grows with the template's size times the URI's length.
+    # it's skipped. It only needs to remember states that branch (choices,
+    # lazy and greedy runs, processor patterns). Every other state has one
+    # way on, and every loop in the graph passes through a state that
+    # branches, so from each branch the search takes at most as many
+    # steps as the template has states before it reaches another. The
+    # time grows with the URI's length times the template's size, squared
+    # at worst.
     #
     # To try less, each state also knows which bytes a match from it can
     # start with (FirstBytes), and the search skips a state that can't
@@ -222,8 +227,12 @@ module Addressable
         until to_try.empty?
           attempt = to_try.pop
           # The same state at the same position always ends the same way,
-          # and the first time it failed, or we'd have stopped.
-          next unless search.first_time?(attempt)
+          # and the first time it failed, or we'd have stopped. Only states
+          # that branch are remembered: the others have one way on, which
+          # reaches a state that branches within a few steps.
+          if attempt.state.branches? && !search.first_time?(attempt)
+            next
+          end
           if attempt.state.is_a?(Done) && attempt.position == search.size
             return captures(text, attempt.captures)
           end

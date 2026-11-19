@@ -75,6 +75,12 @@ module Addressable
         def prepare
         end
 
+        # Whether the state can go on more than one way. The search only
+        # remembers where it tried these (see Matcher#match).
+        def branches?
+          false
+        end
+
         # The first bytes, from the states it moves on to. Loops make a
         # state depend on itself, so Matcher#finish asks again until no
         # answer changes.
@@ -130,6 +136,10 @@ module Addressable
           @stops_where_set_stops = @set.first_bytes.disjoint?(@next.first_bytes)
         end
 
+        def branches?
+          true
+        end
+
         def follow(attempt, search)
           position = attempt.position
           if @stops_where_set_stops
@@ -176,6 +186,10 @@ module Addressable
           @first_state.first_bytes | @second_state.first_bytes
         end
 
+        def branches?
+          true
+        end
+
         def follow(attempt, search)
           position = attempt.position
           attempts = []
@@ -215,6 +229,10 @@ module Addressable
 
         def possible_first_bytes
           ANYTHING
+        end
+
+        def branches?
+          true
         end
 
         def follow(attempt, search)
