@@ -52,7 +52,8 @@ Decisions that shape the code:
   it once, on first use or in `freeze`.
 - **The machine matches `Template` exactly, bugs included.** Fixing one is
   a `Template` change with its own changelog entry, and the machine
-  follows it.
+  follows it. The one exception is processor patterns; see "Where the
+  machine differs from `Template`".
 
 ## Done
 
@@ -99,7 +100,200 @@ Performance (Ruby 3.3.1, compared with `:regexp`):
 - The machine doesn't copy this one: on Ruby 2.3, `named_captures`
   merges `{42}` with `{__42__}`.
 
+## Where the machine differs from `Template`
+
+Processor patterns (a processor whose `match` gives a variable a
+regexp). `Template` puts them in its regexp, which can then backtrack
+across the whole template on Rubies without regex memoization, since it
+drops its pruning for them. The machine checks each pattern against the
+value alone, trying the pattern's first choice, then the ends nearest
+it. So:
+
+- Where a URI can be split more than one way, the split can differ from
+  `Template`'s.
+- A lookahead or lookbehind in a pattern stops at the value's ends:
+  `{a}.{b}` with `\w+(?=\.)` doesn't match `x.y`.
+
+The way back is `engine: :regexp`. Note both in the changelog when the
+machine ships.
+
 ## What's left
+
+### Review findings to fix
+
+From a review of the branch (2026-11-18), on Ruby 3.3.1 only: nothing
+was run on JRuby, TruffleRuby, a Ruby without regex memoization, or with
+`IDNA_MODE=pure`.
+
+Its verdict: behaviour parity is excellent, but the matcher doesn't meet
+the performance and backtracking goals, and processor patterns were
+catastrophically slow. Don't make `:machine` the default until 3 and 4
+are decided on.
+
+What it checked and found sound: `bundle exec rake spec` passes in both
+modes (4442 and 4730 examples). A differential fuzz of 8,000 random
+templates (about 116k operations) found no differences between master,
+branch `:regexp` and branch `:machine`, so moving code into `Values` and
+`Matching` and the new `LITERAL_TOKEN` didn't change `:regexp`. Line
+coverage of the new files is complete except `matching.rb:142`, the
+branch for Ruby 2.3 and earlier.
+
+#### 1. Processor patterns were polynomial, even on URIs that match (resolved)
+
+`Search#pattern_ends` listed every end of a processor's pattern before
+the search tried the first, recompiling the pattern for each end with a
+`(?!…|…)` that ruled out the ends found so far: roughly 15× the time
+for each doubling of the URI.
+
+| Template, processor pattern | URI | `:regexp` | `:machine` |
+|---|---|---|---|
+| `http://example.com/search/{query}/`, `[^/]+` | 227 chars, matches | 67 µs | 0.30 s |
+| `/{first}/{second}`, `.*?` and `.*` | 202 chars, matches | 65 µs | 0.66 s |
+| `{a}/{b}`, `.*` | `"a"*500`, no match | 0.05 ms | 10.1 s |
+| `{a}/{b}`, `.*` | `"a"*1000`, no match | 0.11 ms | over 30 s |
+
+Resolved by checking each candidate end directly (`ProcessorPattern`):
+the pattern's first choice, then the ends nearest it, each only where
+what follows can start, against `\A(?:pattern)\z` on the value. That
+loosens parity for processors; see "Where the machine differs from
+`Template`". After it, the rows above take 0.39 ms, 0.78 ms and
+0.45 ms (the 1000-character row wasn't rerun). The worst case is a
+pattern whose next state can start anywhere, which checks every end:
+`{a}{b}` with `a*` on 2,001 characters that don't match takes 17.8 ms
+(`:regexp`: 0.24 ms), and grows quadratically.
+
+Rejected: putting the patterns in a regexp rendered from the nodes, as
+`Template` does. Exact, but it needs a second regexp shape in every
+node, and it backtracks across the template on Rubies without
+memoization, since `Template` drops its pruning when a processor has
+`match`. Finding the ends lazily kept exact parity, but stayed
+polynomial for lazy patterns and URIs that don't match.
+
+#### 2. Processor patterns raised `RegexpError` on long URIs (resolved)
+
+`pattern_ends` wrote `.{N}` with N up to the URI's length, and Onigmo
+caps a repeat at 100,000.
+`Template.new("{a}/{+rest}", engine: :machine).match("ab/" + "x"*100_010, processor)`,
+with a processor whose `match` returns `"ab?"`, raised
+`RegexpError: too big number for repeat range`, where `:regexp` returns
+`nil`. Resolved with 1: there are no ruled-out ends any more.
+
+#### 3. Matching is linear but about 1000× slower on adversarial input
+
+`matcher.rb:200-222` and `matcher/states.rb`. Growth is a clean 2× per
+doubling, but at 10–45 µs a byte:
+
+| Template | 16 KB URI that doesn't match | `:regexp` | `:machine` |
+|---|---|---|---|
+| `{a}` ×12, then `!` | `"a"*16000` | 0.4 ms | 712 ms |
+| `{/a*,b*,c*}!` | `"/"*16000` | 0.2 ms | 428 ms |
+| `{;a*}{;b*}{;c}!` | `";a=1"*4000` | 0.3 ms | 349 ms |
+
+`{/a*,b*,c*}!` also allocates 1.5M objects and a 33 MB memo hash (608k
+entries) for one 16 KB URI. Linear, but a practical CPU and memory
+regression on MRI 3.2+. The "10–600×" under "Matcher speed" understates
+it.
+
+#### 4. The 2× target only holds for short URIs
+
+The ratio grows with the values' length, and the profile's cases in
+`tasks/template_machine_profile.rb` are all 27–69 characters:
+
+| Template | URI length | Ratio to `:regexp` |
+|---|---|---|
+| `http://example.com/users/{id}` | 27 | 1.2× |
+| `/repos/{owner}/{repo}/issues{/number}{?state,labels,page,per_page}` | 82 | 2.7× |
+| `/q{?a,b,c}` | 911 | 11.7× |
+| `/files{/path*}` | 488 | 13.9× |
+
+For the 82-character URI the matcher alone takes 159 µs against 1.9 µs
+for the raw regexp; the whole `#match` ratio looks modest only because
+both engines share about 50 µs of `Matching.match_data` and URI
+handling. Add longer URIs to the profile.
+
+#### 5. Where the matcher's time goes
+
+Besides the ideas under "Matcher speed":
+
+- **Pruning is only in the regexp.** `Expression#regexp_source`
+  (`machine/expression.rb`) uses `absorbs?` to write `(?!)`, and the
+  `group_regexp_source` overrides prune further (`NOT_AFTER_VALUE`,
+  empty groups after an exploded variable). `add_match_steps` ignores
+  all of it and walks the naive shape: `{a}{b}{c}{d}{e}x` on `"a"*1000`
+  makes 31 attempts a byte, 10k of them memo hits. Each operator's
+  shape is also described twice.
+- **Every state is memoized.** `Search#first_time?` does a hash insert
+  for every attempt, including `Capture`, `Literal`, `MemberStart` and
+  `MemberEnd`, which have one way on. Memoizing only `Choice` and the
+  runs would keep it linear with about half the hash work and memory.
+- **Per-attempt allocation.** Each step makes an `Attempt` and an array
+  from `follow`, then `reverse_each` pushes them; `Unit#match_end`
+  allocates a substring with `byteslice` per comparison.
+- **Lazy and greedy runs step one character at a time** through the
+  whole loop whenever the next state can start with a character of the
+  set (`LazyRun#follow`). That's why `/q{?a,b,c}` costs 6.3 attempts a
+  byte.
+- **`FirstBytes#allow?`** indexes a 257-bit Integer: 44 ns, against
+  19 ns for an Array lookup, on every `Choice` and `LazyRun`.
+- **No whole-URI rejects.** A trailing literal that doesn't end the
+  URI, or a required literal that never occurs in it, would reject every
+  `…!` case in 3 at once.
+- `matcher_for` rebuilt the whole matcher, first bytes included, on
+  every call with a processor that has `match`. It still does; it's
+  needed while the processor is asked for its patterns on every call.
+
+#### 6. The comparison with `:regexp` never fails CI
+
+`.github/workflows/test.yml` and `template_match_spec.rb`. The "matches
+like the :regexp engine" examples only run with `TEMPLATE_MODE=machine`,
+in a job that's `continue-on-error: true` and covers four spec files.
+Its comment ("Most of them fail until the machine is finished") is
+stale: they all pass. The linear-time specs in
+`template_machine_spec.rb` use only `Timeout`, and have no shapes with
+several expressions like those in 3.
+
+#### 7. Changelog and docs
+
+- `CHANGELOG.md` has no entry for the new public API (`Template.engine`,
+  `Template.engine=`, `Template#engine`, `Template.new(pattern,
+  engine:)`). This plan holds entries back until release N, but
+  `CLAUDE.md` asks for one with the change; decide which.
+- About 32 comments say "as 2.10.0 does" or "2.10.0's regexp". 2.10.0
+  is unreleased and would ship this code; they mean the `:regexp`
+  engine.
+- This plan is committed at the repository's root.
+
+#### 8. Minor
+
+- `expand(mapping, processor, false)` where `transform` returns an array
+  whose first member isn't a String (for example `[1, [2, :x], nil]`):
+  `:regexp` raises `NoMethodError`, `:machine` returns
+  `?a=1&a=[2, :x]&a=`. Only an accidental error becomes a value.
+- An invalid processor pattern raises `RegexpError` in both engines,
+  with different messages.
+- A `Marshal` or YAML dump of a used machine template holds the private
+  node and matcher graph (2630 bytes against 436). They round-trip, and
+  a dump from master loads. See "Dumps" under "Before release N".
+- `ParsedTemplate#initialize` sets `@matcher = nil` but not `@regexp`,
+  against the "same shape" intent of "Set the template machine's cached
+  state when it's created".
+- `machine.rb`, `machine/*.rb` and `parser.rb` lack the
+  `# frozen_string_literal: true` line and licence header the other
+  files have.
+- `Parser::RESERVED_OPERATOR` copies `RESERVED_OPERATORS` "because of
+  load order", yet `parser.rb` uses `RESERVED_OPERATORS` at call time.
+  `Machine::VARSPEC` likewise copies `Template`'s grammar.
+- In `values.rb`, `private` sits above `def self.` methods, which it
+  doesn't affect, so they read as private.
+
+#### 9. Not reproduced
+
+- **Subclass overrides.** `:machine` ignores overrides of `Template`'s
+  private methods (confirmed for `normalize_value`: `"NV"` against
+  `"x"`). "Releasing" accepts this, but it's a behaviour change under
+  "no breaking changes" once `:machine` is the default.
+- **Other runtimes.** The processor pattern check relies on `\A`, `\z`
+  and `$~`; check it on JRuby and TruffleRuby.
 
 ### Matcher speed
 
