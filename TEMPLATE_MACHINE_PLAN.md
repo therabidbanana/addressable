@@ -98,6 +98,9 @@ Performance (Ruby 3.3.1, compared with `:regexp`):
 - A UTF-8 pattern that isn't valid raises `ArgumentError`, not
   `InvalidTemplateError`.
 - `match(nil)` raises `NoMethodError`, where the docs say `nil`.
+- An empty capture after an exploded `;` variable has no name, so
+  `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to `""` (see "Matching
+  changes to consider").
 - Non-ASCII literals in a pattern that isn't UTF-8 make `match` raise
   `Encoding::CompatibilityError`.
 - The machine doesn't copy this one: on Ruby 2.3, `named_captures`
@@ -119,6 +122,43 @@ it. So:
 
 The way back is `engine: :regexp`. Note both in the changelog when the
 machine ships.
+
+## Matching changes to consider
+
+RFC 6570 only defines expansion, so how a URI matches a template is
+Addressable's own contract, and some templates can't be matched the way
+they expand. `Template` matches them in ways that are hard to defend.
+Changing them would make the results more correct, give the matcher
+fewer ways to split a URI (less to search, and less to attack), and
+could retire some of `Matching.match_data`'s quirks. But each changes
+what `match` and `extract` return for valid input: a "Changed output"
+entry in a minor release, made in `Template` for both engines, or a
+machine-only difference documented in "Where the machine differs from
+`Template`". Undecided. Candidates (both engines give these today):
+
+- **Check names in `;`, `?` and `&` expressions.** Expansion writes
+  each variable's name, but matching takes any name and files the
+  value under the one the URI gives: `{?a}` matches `?x=1` as
+  `{"a" => nil, "x" => "1"}`, and `{?a,b}` matches `?x=1&y=2` as
+  `{"a" => nil, "x" => "1", "b" => nil, "y" => "2"}`. Matching the
+  names as literals would make both reject those URIs, and the names
+  would anchor each value, so values couldn't move between variables.
+  That removes most of the splits the search tries in a query, and
+  `match_data`'s rule for names the URI gives.
+- **Variables after an exploded one in the same expression.** Members
+  are tried longest first, so the exploded variable takes them all:
+  `{;a*,b}` on `;x=1;y=2;b=3` gives
+  `{"a" => {"x" => "1", "y" => "2", "b" => "3"}, "b" => nil}`, and
+  `{?a*,b*,c*}` is effectively `{?a*}`. With names checked, `b` would
+  get `"3"`, as expanding those values writes it; without, they could
+  be documented as always empty.
+- **The `nil => ""` key.** That `{;a*,b}` match also maps `nil` to
+  `""`: `b`'s empty capture has no name to go under. A bug in any case,
+  so a `Template` fix the machine follows.
+
+To decide: look for code and issues that rely on today's results
+(GitHub issues, dependants' specs), and whether to change both engines
+at release N+1 or let the machine differ.
 
 ## What's left
 
@@ -182,6 +222,14 @@ cover the shapes in 3 and 4. What's left, in order:
        `%23`, which a query value can hold. Making `bytes_after_run`
        carry texts too ("followed by `=`, or where `%23` occurs") would
        fix it, at the cost of a harder idea to explain.
+     - Done: no `Attempt` objects or `follow` arrays. Each state hands
+       its next attempts to `Search#try` (or `#try_in_order`), which
+       keeps them as three flat entries on a stack. Matcher time fell
+       15–25% and its objects 70–87% (long path 563 → 74 per match);
+       `pop(3)` reads better but makes an array per attempt (319
+       objects, 3–7% slower). Every reused `match` case is now at or
+       under 2× (reserved, fragment 1.93–2.00×, `extract` 2.07–2.22×),
+       and the machine allocates within 2–10% of `:regexp`'s objects.
      - Next, measured one at a time: literal comparisons with the
        scanner rather than a `byteslice` each, a run's next character
        with a one-unit pattern, and the pruning rules, if adversarial

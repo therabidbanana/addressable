@@ -56,8 +56,8 @@ module Addressable
     #
     # The rest is in matcher/:
     #
-    # - states.rb: the states, each answering #follow with the attempts
-    #   to make next, in the order to try them.
+    # - states.rb: the states, each of which #follow hands the attempts to
+    #   make next to the search (Search#try).
     # - search.rb: what one call to #match keeps while it searches, and
     #   the Captures it gives back.
     # - character_set.rb: the characters each kind of value can hold.
@@ -227,23 +227,23 @@ module Addressable
         end
         return nil unless holds_required_text?(text)
         search = Search.new(text)
-        to_try = [Attempt.new(@states.first, 0, nil)]
+        search.try(@states.first, 0, nil)
+        to_try = search.to_try
         until to_try.empty?
-          attempt = to_try.pop
+          # Search#try adds each attempt as three entries. They're taken
+          # off one at a time, since pop(3) would make an array for each.
+          state = to_try.pop
+          position = to_try.pop
+          list = to_try.pop
           # The same state at the same position always ends the same way,
           # and the first time it failed, or we'd have stopped. Only states
           # that branch are remembered: the others have one way on, which
           # reaches a state that branches within a few steps.
-          if attempt.state.branches? && !search.first_time?(attempt)
-            next
+          next if state.branches? && !search.first_time?(state, position)
+          if state.is_a?(Done) && position == search.size
+            return captures(text, list)
           end
-          if attempt.state.is_a?(Done) && attempt.position == search.size
-            return captures(text, attempt.captures)
-          end
-          # Pushed in reverse, so the first one is tried first.
-          attempt.state.follow(attempt, search).reverse_each do |next_attempt|
-            to_try << next_attempt
-          end
+          state.follow(search, position, list)
         end
         nil
       end

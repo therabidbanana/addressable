@@ -21,16 +21,6 @@ require "strscan"
 module Addressable
   class Template
     class Matcher
-      # One place the search can be: a state, a position in the URI, and
-      # the captures so far.
-      Attempt = Struct.new(:state, :position, :captures) do
-        # The attempt at another state and position, with the same
-        # captures.
-        def move(state, position)
-          Attempt.new(state, position, captures)
-        end
-      end
-
       # The captures, as a list from the latest back to the first, so an
       # attempt adds one without copying the others.
       CaptureList = Struct.new(:slot, :position, :rest)
@@ -40,14 +30,21 @@ module Addressable
       # there are no more.
       Occurrences = Struct.new(:places, :from)
 
-      # What the search keeps for one URI: the text, the attempts tried,
-      # where runs of each set end, and where literal text occurs.
+      # What the search keeps for one URI: the text, the attempts to make
+      # and those tried, where runs of each set end, and where literal text
+      # occurs.
       class Search
         attr_reader :text, :size
+        # The attempts still to make, the next one last. Each is a state, a
+        # position in the URI and the captures so far, kept as three
+        # entries rather than an object of its own, so that making one
+        # allocates nothing. Matcher#match takes them off.
+        attr_reader :to_try
 
         def initialize(text)
           @text = text
           @size = text.bytesize
+          @to_try = []
           @tried = {}
           @run_ends = {}
           @occurrences = {}
@@ -55,11 +52,25 @@ module Addressable
           @scanner = nil
         end
 
-        # Whether this is the first time the search reaches the attempt's
-        # state and position. The captures don't change whether the rest
-        # can match, so they're left out.
-        def first_time?(attempt)
-          key = attempt.state.index * (@size + 1) + attempt.position
+        # Adds an attempt to make next: the state, at the position, with
+        # the captures so far.
+        def try(state, position, captures)
+          @to_try.push(captures, position, state)
+        end
+
+        # Adds two attempts with the same captures, to be made in order.
+        # A nil state is left out.
+        def try_in_order(first, first_position, second, second_position,
+          captures)
+          try(second, second_position, captures) if second
+          try(first, first_position, captures) if first
+        end
+
+        # Whether this is the first time the search reaches the state at
+        # the position. The captures don't change whether the rest can
+        # match, so they're left out.
+        def first_time?(state, position)
+          key = state.index * (@size + 1) + position
           return false if @tried[key]
           @tried[key] = true
         end
