@@ -8,7 +8,10 @@
 2. **No catastrophic backtracking.** Expanding, matching and building the
    regexp run in linear time on every supported runtime, including ones
    without regex memoization (Ruby < 3.2, JRuby, TruffleRuby), without
-   relying on `Regexp.timeout`.
+   relying on `Regexp.timeout`. The exception is a processor's pattern:
+   it's the caller's regexp and costs what it costs, and the machine
+   adds at most one check of it per place its value could end, so its
+   time grows with the square of the value's length.
 3. **Same or better performance** than today's `Template`. Matching
    (`match`, `extract`) may take up to 2× as long if that keeps the
    matcher readable, as long as adversarial input stays linear.
@@ -160,7 +163,11 @@ loosens parity for processors; see "Where the machine differs from
 0.45 ms (the 1000-character row wasn't rerun). The worst case is a
 pattern whose next state can start anywhere, which checks every end:
 `{a}{b}` with `a*` on 2,001 characters that don't match takes 17.8 ms
-(`:regexp`: 0.24 ms), and grows quadratically.
+(`:regexp`: 0.24 ms), and grows quadratically, which Goal 2 accepts.
+An untried way to cut it: for a greedy pattern like `a*`, the first
+choice is the longest end it reaches, so the ends past it needn't be
+checked. That doesn't hold for every pattern (`a*?`, `a|ab`), so it
+needs a way to tell when it's safe.
 
 Rejected: putting the patterns in a regexp rendered from the nodes, as
 `Template` does. Exact, but it needs a second regexp shape in every
