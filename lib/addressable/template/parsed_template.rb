@@ -161,12 +161,12 @@ module Addressable
         @matcher ||= build_matcher
       end
 
-      # Adds each node's steps to a new matcher, with the processor's
-      # patterns, if any.
+      # Works out the template's slots, with the processor's patterns, if
+      # any, then adds each node's steps to a new matcher.
       def build_matcher(processor = nil)
-        matcher = Matcher.new(expression_texts)
-        names = Machine::RepeatedNames.new
-        @nodes.each { |node| node.add_match_steps(matcher, processor, names) }
+        slots = Machine::Slots.new(@nodes, processor)
+        matcher = Matcher.new(expression_texts, slots.size)
+        @nodes.each { |node| node.add_match_steps(matcher, slots.of(node)) }
         matcher.finish
       end
 

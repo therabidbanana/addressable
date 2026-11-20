@@ -17,7 +17,6 @@
 #++
 
 require "addressable/template/machine/tagged_value"
-require "addressable/template/machine/repeated_value"
 
 module Addressable
   class Template
@@ -167,103 +166,33 @@ module Addressable
         # one after the joiner. Each value is as long as can be first, so
         # where two variables could take the same text, the earlier one
         # does. Each value is captured, for Matching.match_data, and a
-        # value left out is captured as nothing, so it's nil. A variable that
-        # can never take anything (#absorbed?) gets a group but no steps.
+        # value left out is captured as nothing, so it's nil.
         #
         # This is where the machine differs from :regexp, whose regexp
         # makes the joiners optional and tries the shortest values first
-        # (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine").
+        # (TEMPLATE_MACHINE_PLAN.md, "Matching rules").
         #
-        # A variable whose name an earlier varspec has matches only that
-        # one's value (RepeatedValue).
+        # What a varspec's steps depend on in the varspecs before it is
+        # already decided, in its slot (Slots): one that can never take
+        # anything gets a group but no steps, one whose name an earlier
+        # varspec has matches only that one's value (RepeatedValue), and
+        # one with a processor's pattern has to match it.
         #
         # @param [Matcher] matcher The matcher.
-        # @param [#match, nil] processor
-        #   A processor whose match method may give a variable's value a
-        #   pattern of its own, which then has to match.
-        # @param [RepeatedNames] names
-        #   The varspecs so far, for the template's later expressions.
-        def add_match_steps(matcher, processor = nil,
-                            names = RepeatedNames.new)
-          # Asked for every variable before any steps, as :regexp asks.
-          patterns = variables.map do |variable|
-            processor && processor.match(variable.name)
-          end
-          groups = variables.map { matcher.new_group }
-          positions = variables.each_index.reject do |position|
-            absorbed?(position, patterns)
-          end
-          repeats = variables.each_with_index.map do |variable, position|
-            names.note(self, variable, groups[position], patterns[position])
-          end
-          # Adds a variable's value, by its position: as its steps take it,
-          # or, with :empty, nothing. With an array, a value that takes
-          # nothing is left out instead, at the place the array's states are
-          # later landed (Matcher#leave_out_if_empty).
-          value = lambda do |position, how = nil|
-            repeated = repeats[position]
-            extends = repeated && repeated.extends?
-            matcher.capture(groups[position]) do
-              variable = variables[position]
-              leaders = next_leaders.select { |text| may_hold?(variable, text) }
-              names = named_texts(position, positions, patterns,
-                self.class.joiner)
-              if repeated && !extends
-                matcher.same_value(repeated.first_group, repeated)
-              elsif how == :empty
-                # Nothing to add.
-              elsif patterns[position]
-                matcher.processor_pattern(patterns[position].to_s)
-              elsif leaders.empty?
-                variable_steps(matcher, variable, names)
-              else
-                # The value stops before the last place the next
-                # expression's leader follows it, if the rest can match from
-                # there, so that it doesn't take the next expression's
-                # text: /{name}{.ext} gives "/archive.tar.gz" to name and ext
-                # as "archive.tar" and "gz".
-                matcher.preferring_followed_by(leaders) do
-                  variable_steps(matcher, variable, names)
-                end
-              end
-              # A value of its own that has to agree with an earlier one
-              # is checked even when it's empty, so it isn't left out.
-              if how.is_a?(Array) && !extends
-                how << matcher.leave_out_if_empty
-              end
-            end
-            if extends
-              matcher.starts_with(repeated.first_group, groups[position],
-                repeated)
-            end
-          end
-          # Adds the block's steps for a variable, which may be left out. An
-          # exploded variable is left out first where a later variable's
-          # name follows (#named_texts); prefix is the text before that
-          # name. A name written again is left out only where its first
-          # varspec allows it (RepeatedValue#left_out?).
-          optional = lambda do |position, prefix, &steps|
-            names = named_texts(position, positions, patterns, prefix)
-            repeated = repeats[position]
-            if repeated
-              matcher.optional_same_value(repeated.first_group, repeated, &steps)
-            elsif names.empty?
-              matcher.optional(&steps)
-            else
-              matcher.optional_unless_followed_by(names, &steps)
-            end
-          end
+        # @param [Array<Slot>] slots The expression's slots, in order.
+        def add_match_steps(matcher, slots)
+          slots = slots.reject(&:absorbed)
           if self.class.leader == self.class.joiner
             # Every value comes after the same text, so each one is
             # matched the same way, whether or not one came before it.
-            positions.each do |position|
-              optional.call(position, self.class.joiner) do
+            slots.each do |slot|
+              optional_steps(matcher, slot, slots, self.class.joiner) do
                 leader_steps(matcher)
-                value.call(position)
+                captured_steps(matcher, slot, slots)
               end
             end
           else
-            first_value_steps(matcher, value, positions, optional)
+            first_value_steps(matcher, slots)
           end
         end
 
@@ -420,6 +349,77 @@ module Addressable
         # --- Matching ---
 
         ##
+        # Adds a slot's value, captured in its group: as its steps take it,
+        # or, with :empty, nothing. With an array, a value that takes
+        # nothing is left out instead, at the place the array's states are
+        # later landed (Matcher#leave_out_if_empty).
+        #
+        # @param [Matcher] matcher The matcher.
+        # @param [Slot] slot The slot.
+        # @param [Array<Slot>] slots The expression's slots with steps.
+        # @param [Symbol, Array, nil] how :empty, an array, or nil.
+        def captured_steps(matcher, slot, slots, how = nil)
+          repeated = slot.repeated
+          extends = repeated && repeated.extends?
+          matcher.capture(slot.group) do
+            variable = slot.variable
+            leaders = next_leaders.select { |text| may_hold?(variable, text) }
+            if repeated && !extends
+              matcher.same_value(repeated.first_group, repeated)
+            elsif how == :empty
+              # Nothing to add.
+            elsif slot.pattern
+              matcher.processor_pattern(slot.pattern.to_s)
+            elsif leaders.empty?
+              variable_steps(matcher, variable,
+                named_texts(slot, slots, self.class.joiner))
+            else
+              # The value stops before the last place the next
+              # expression's leader follows it, if the rest can match from
+              # there, so that it doesn't take the next expression's
+              # text: /{name}{.ext} gives "/archive.tar.gz" to name and ext
+              # as "archive.tar" and "gz".
+              matcher.preferring_followed_by(leaders) do
+                variable_steps(matcher, variable,
+                  named_texts(slot, slots, self.class.joiner))
+              end
+            end
+            # A value of its own that has to agree with an earlier one
+            # is checked even when it's empty, so it isn't left out.
+            if how.is_a?(Array) && !extends
+              how << matcher.leave_out_if_empty
+            end
+          end
+          if extends
+            matcher.starts_with(repeated.first_group, slot.group, repeated)
+          end
+        end
+
+        ##
+        # Adds the block's steps for a slot, which may be left out. An
+        # exploded variable is left out first where a later variable's name
+        # follows (#named_texts). A name written again is left out only
+        # where its first varspec allows it (RepeatedValue#left_out?).
+        #
+        # @param [Matcher] matcher The matcher.
+        # @param [Slot] slot The slot.
+        # @param [Array<Slot>] slots The expression's slots with steps.
+        # @param [String] prefix
+        #   The text before a later variable's name: the leader where it
+        #   could be the first value, the joiner otherwise.
+        def optional_steps(matcher, slot, slots, prefix, &steps)
+          names = named_texts(slot, slots, prefix)
+          repeated = slot.repeated
+          if repeated
+            matcher.optional_same_value(repeated.first_group, repeated, &steps)
+          elsif names.empty?
+            matcher.optional(&steps)
+          else
+            matcher.optional_unless_followed_by(names, &steps)
+          end
+        end
+
+        ##
         # The steps for an expression whose leader isn't its joiner, such as
         # {?a,b} ("?" and "&") or {a,b} (nothing and ","). The leader goes
         # before whichever value comes first, so the steps come in two
@@ -445,44 +445,39 @@ module Addressable
         # to q.
         #
         # @param [Matcher] matcher The matcher.
-        # @param [Proc] value Adds a variable's value, by its position.
-        # @param [Array<Integer>] positions
-        #   The positions of the variables to add steps for, in order.
-        # @param [Proc] optional
-        #   Adds the block's steps for a variable, by its position and the
-        #   text before its value, as steps that may be left out.
-        def first_value_steps(matcher, value, positions, optional)
+        # @param [Array<Slot>] slots The expression's slots with steps.
+        def first_value_steps(matcher, slots)
           no_leader = self.class.leader.empty?
-          # The jumps into the second part, by the index in positions: to
-          # each variable's steps, which may leave it out, to its joiner,
-          # which it has to take, and to the end of the expression.
+          # The jumps into the second part, by the index in slots: to each
+          # variable's steps, which may leave it out, to its joiner, which
+          # it has to take, and to the end of the expression.
           ahead = Hash.new { |hash, index| hash[index] = [] }
           to_joiner = Hash.new { |hash, index| hash[index] = [] }
-          positions.each_with_index do |position, index|
+          slots.each_with_index do |slot, index|
             left_out = []
-            optional.call(position, self.class.leader) do
+            optional_steps(matcher, slot, slots, self.class.leader) do
               leader_steps(matcher)
-              value.call(position, no_leader ? left_out : nil)
+              captured_steps(matcher, slot, slots, no_leader ? left_out : nil)
               ahead[index + 1] << matcher.jump_ahead
             end
             matcher.land(left_out)
-            next unless no_leader && index < positions.size - 1
+            next unless no_leader && index < slots.size - 1
             matcher.optional do
-              value.call(position, :empty)
+              captured_steps(matcher, slot, slots, :empty)
               to_joiner[index + 1] << matcher.jump_ahead
             end
           end
           # No value at all.
-          ahead[positions.size] << matcher.jump_ahead
-          (1...positions.size).each do |index|
+          ahead[slots.size] << matcher.jump_ahead
+          (1...slots.size).each do |index|
             matcher.land(ahead[index])
-            optional.call(positions[index], self.class.joiner) do
+            optional_steps(matcher, slots[index], slots, self.class.joiner) do
               matcher.land(to_joiner[index])
               matcher.exact(self.class.joiner)
-              value.call(positions[index])
+              captured_steps(matcher, slots[index], slots)
             end
           end
-          matcher.land(ahead[positions.size])
+          matcher.land(ahead[slots.size])
         end
 
         ##
@@ -507,22 +502,6 @@ module Addressable
         end
 
         ##
-        # Whether the variable can never take anything: an exploded variable
-        # right after another exploded one, which takes every member it
-        # could, since the earlier variable wins. {;a*,b*} matches like
-        # {;a*}. A processor's pattern can give either one other text, so a
-        # variable with one, or after one, isn't absorbed.
-        #
-        # @param [Integer] position The variable's position.
-        # @param [Array] patterns The processor's pattern for each variable.
-        def absorbed?(position, patterns)
-          return false if position.zero?
-          before = position - 1
-          variables[position].explode && variables[before].explode &&
-            !patterns[position] && !patterns[before]
-        end
-
-        ##
         # The texts that start a later variable's pair, which an exploded
         # ;, ? or & value's members could also take: each later variable
         # that isn't exploded, in the expression or in the expressions right
@@ -532,21 +511,21 @@ module Addressable
         # outside it takes its own pair: {?a*,b} gives "?x=1&b=2" to a and b
         # as {"x" => "1"} and "2", and "?b=2" to b.
         #
-        # @param [Integer] position The exploded variable's position.
-        # @param [Array<Integer>] positions The positions with steps.
-        # @param [Array] patterns The processor's pattern for each variable.
+        # @param [Slot] slot The exploded variable's slot.
+        # @param [Array<Slot>] slots The expression's slots with steps.
         # @param [String] prefix
         #   The text before a later variable's name in the expression: the
         #   leader where it could be the first value, the joiner otherwise.
         #
         # @return [Array<String>] The texts.
-        def named_texts(position, positions, patterns, prefix)
+        def named_texts(slot, slots, prefix)
           return [] unless self.class.names_values?
-          return [] unless variables[position].explode
-          later = positions.select do |after|
-            after > position && !variables[after].explode && !patterns[after]
+          return [] unless slot.variable.explode
+          later = slots.select do |after|
+            after.group > slot.group && !after.variable.explode &&
+              !after.pattern
           end
-          texts = later.map { |after| prefix + variables[after].name }
+          texts = later.map { |after| prefix + after.variable.name }
           node = following
           while node.is_a?(Expression) && node.class.names_values? &&
               node.class.leader == self.class.joiner

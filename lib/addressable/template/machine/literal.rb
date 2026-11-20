@@ -76,9 +76,8 @@ module Addressable
         # Matching.literal_units).
         #
         # @param [Matcher] matcher The matcher.
-        # @param [#match, nil] _processor Unused: a literal has no variables.
-        # @param [RepeatedNames] _names Unused: a literal has no variables.
-        def add_match_steps(matcher, _processor = nil, _names = nil)
+        # @param [Array<Slot>] _slots Unused: a literal has no variables.
+        def add_match_steps(matcher, _slots = nil)
           matcher.literal(Matching.literal_units(@pattern_text, fragment))
         end
 

@@ -24,80 +24,6 @@ module Addressable
   class Template
     module Machine
       ##
-      # Finds the varspecs that repeat an earlier one's name, going through
-      # the template's varspecs in order (Expression#add_match_steps).
-      # Each later one becomes a RepeatedValue, which matches only the
-      # earlier value, where that value's place in the URI is decided:
-      #
-      # - Where it starts and ends: it and every variable before it end at
-      #   the end of their runs of characters, since what follows each is a
-      #   character it can't hold (Expression#end_decided?).
-      # - What comes between: no variable with a value of its own between
-      #   the two, only literals and other RepeatedValues, whose values the
-      #   earlier ones decide.
-      #
-      # Then the earlier value can only be in a few places, and the search
-      # stays linear, though it remembers states between the two once for
-      # each place it took (Matcher#note_dependencies). /{lang}/docs{?lang},
-      # {.who,who} and {a}/{a} qualify. {a}{b}{a} and {a}{a} don't: the
-      # earlier a could end anywhere, and checking each place costs the
-      # value's length, so the search would grow with the square of the
-      # URI's. They match as if the name were written once, the first value
-      # given winning.
-      #
-      # @api private
-      class RepeatedNames
-        # The earlier varspec with a name: its expression, variable and
-        # group, and how many values of their own came up to it.
-        First = Struct.new(:expression, :variable, :group, :values)
-
-        def initialize
-          @firsts = {}
-          # How many varspecs with values of their own so far.
-          @values = 0
-          # Whether the next value's start is decided.
-          @start_decided = true
-        end
-
-        ##
-        # Notes the template's next varspec, and gives a RepeatedValue for
-        # it if it repeats an earlier one's name where it qualifies, or
-        # nil. Only varspecs that aren't exploded and have no processor
-        # pattern count.
-        #
-        # An earlier varspec with a prefix has only the start of the value,
-        # so a later one without matches a value of its own, which has to
-        # start with the earlier one's (RepeatedValue#extends?). Two with
-        # prefixes match as if the name were written once.
-        #
-        # @param [Expression] expression The varspec's expression.
-        # @param [Variable] variable The varspec.
-        # @param [Integer] group The varspec's group.
-        # @param [Object, nil] pattern The processor's pattern for it.
-        #
-        # @return [RepeatedValue, nil]
-        def note(expression, variable, group, pattern)
-          plain = !variable.explode && !pattern
-          first = @firsts[variable.name]
-          qualifies = plain && first && first.values == @values
-          if qualifies && !first.variable.prefix
-            return RepeatedValue.new(first, expression, variable)
-          end
-          @values += 1
-          decided = plain && @start_decided &&
-            expression.end_decided?(variable)
-          if decided && first.nil?
-            @firsts[variable.name] =
-              First.new(expression, variable, group, @values)
-          end
-          @start_decided = decided
-          if qualifies && !variable.prefix
-            RepeatedValue.new(first, expression, variable)
-          end
-        end
-      end
-
-      ##
       # A varspec whose name an earlier one in the template already has.
       # Expansion writes the same value in both, so the later one matches
       # only the value the earlier one took, as the later one writes it
@@ -105,10 +31,10 @@ module Addressable
       # (#left_out?). /{lang}/docs{?lang} matches "/en/docs?lang=en", but
       # not "/en/docs?lang=fr" or "/en/docs", which no expansion writes.
       #
-      # It's only for varspecs that aren't exploded and have no processor
-      # pattern, with no prefix on the earlier one (Expression
-      # #add_match_steps). A later one with a prefix matches the start of
-      # the value.
+      # Slots decides which varspecs get one. A later one with a prefix
+      # matches the start of the value, and a later one after a prefix
+      # matches a value of its own that starts with the earlier one's
+      # (#extends?).
       #
       # @api private
       class RepeatedValue
@@ -125,16 +51,15 @@ module Addressable
         attr_reader :first_group
 
         ##
-        # @param [RepeatedNames::First] first The earlier varspec.
-        # @param [Expression] expression The later varspec's expression.
-        # @param [Variable] variable The later varspec.
-        def initialize(first, expression, variable)
+        # @param [Slot] first The earlier varspec's slot.
+        # @param [Slot] slot The later varspec's slot.
+        def initialize(first, slot)
           @first_expression = first.expression
           @first_variable = first.variable
           @first_group = first.group
-          @expression = expression
-          @variable = variable
-          @set = Matcher::SETS.fetch(expression.value_set(variable))
+          @expression = slot.expression
+          @variable = slot.variable
+          @set = Matcher::SETS.fetch(@expression.value_set(@variable))
         end
 
         # Whether the earlier varspec has a prefix and this one doesn't, so

@@ -28,6 +28,7 @@ require "addressable/template/machine/op_path"
 require "addressable/template/machine/op_label"
 require "addressable/template/machine/op_path_params"
 require "addressable/template/machine/op_form"
+require "addressable/template/machine/slots"
 
 module Addressable
   class Template
@@ -35,7 +36,9 @@ module Addressable
     # for each varspec, and an Expression subclass for each operator, each
     # in its own file in machine/. Parser builds them and ParsedTemplate
     # walks them. Each node can expand, add the steps that match it to a
-    # Matcher, and write its part of Template#to_regexp.
+    # Matcher, and write its part of Template#to_regexp. Slots works out,
+    # for a match, what each varspec's steps depend on in the varspecs
+    # before it.
     #
     # As it builds them, Parser notes on each node what matching it depends
     # on around it: whether a fragment may have started before it, the node

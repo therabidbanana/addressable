@@ -192,7 +192,7 @@ The machine's rules:
 - **A name written again matches the earlier value,** where that
   value's place in the URI is decided: it and every variable before it
   end at their run's end, as what follows each is a character it can't
-  hold, and no other value comes between the two (`RepeatedNames`). The
+  hold, and no other value comes between the two (`Machine::Slots`). The
   later varspec matches the value written as the earlier one is, or as
   expansion writes it, and is left out only where the earlier one is.
   A prefix is the start of the value: `{/var:1,var}` on `/v/value`
@@ -258,11 +258,11 @@ it").
    prefixes, two prefixes of one name can be compared (the shorter is
    the start of the longer, and the same if the value is shorter than
    both), so it won't match; and a prefix's end is near enough to
-   decided that `RepeatedNames` can accept shapes like `{a:1}{a}`.
+   decided that `Machine::Slots` can accept shapes like `{a:1}{a}`.
 2. **Reject repeated names whose values disagree (decided; worth more
    exploration).** `{a}{a}`, `{a}{b}{a}`, `{a}.{a}` and a name
    exploded in one varspec and not another (`{/a}{/a*}`) aren't
-   converted by `RepeatedNames`, and give the first value, which can
+   converted by `Machine::Slots`, and give the first value, which can
    fail to expand back. For now, once the search finds a match, check
    each such name's varspecs (decoded values equal, a prefix the start
    of the whole, left out only where it writes nothing) and give `nil`
@@ -309,9 +309,11 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
    everything it can (`{a}{b}`, `{a}{b}{c}`, and `{a}`×12, whose
    repeats aren't converted) never gets a value: checked on 100,000
    generated URIs over `{a}{b}`, `{a}{b}x`, `{.a}{b}`, `{a}{.b}` and
-   `{a}{b}{c}`. Giving such variables a group but no steps, as
-   `Expression#absorbed?` does for exploded ones, would shrink these
-   to one variable's states. It depends on item 1: a capped prefix
+   `{a}{b}{c}`. Marking such a variable's slot absorbed, as
+   `Machine::Slots` does for an exploded variable after another, would
+   shrink these to one variable's states. `Slots` only looks at the
+   slot before in the same expression today; this needs the one before
+   in the template. It depends on item 1: a capped prefix
    (`{a:3}{b}`) leaves text for the next variable.
 6. **Shrink the memo and the capture lists.** Notes from reading
    `Search` and `Matcher#match` (2026-11-20, not yet measured; measure
@@ -424,7 +426,7 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
 15. **Round-trip coverage of repeated names.** The round-trip spec's
     generator gives each name one use, and `template_match_spec.rb`'s
     soundness check skips patterns that reuse a name. Both could now
-    include the repeated shapes `RepeatedNames` converts.
+    include the repeated shapes `Machine::Slots` converts.
 
 ## Tried and ruled out
 
@@ -503,10 +505,13 @@ ITERATIONS=3000 bundle exec rake profile:template_machine
   pass `engine: :machine`; otherwise you're looking at `:regexp`.
 - Machine specs: `template_machine_spec.rb` (each operation against
   `:regexp`, the matching fixes, the round trip and the linear-time
-  checks), `template_engine_spec.rb` and `template_parser_spec.rb`.
+  checks), `template_engine_spec.rb`, `template_parser_spec.rb` and
+  `template_slots_spec.rb`.
 - Where the code is: `lib/addressable/template/parsed_template.rb`
-  (the engine), `machine/` (the nodes: `expression.rb` builds each
-  expression's match steps, `repeated_value.rb` repeated names),
+  (the engine), `machine/` (the nodes: `slots.rb` decides how each
+  varspec matches before any steps are added, `expression.rb` builds
+  each expression's match steps from its slots, `repeated_value.rb`
+  matches a name written again),
   `matcher.rb` (the builder and the search loop) and `matcher/` (the
   states, the search, character sets and first bytes).
 - Follow `CLAUDE.md`: specs first, Ruby 2.2-compatible code, both IDNA

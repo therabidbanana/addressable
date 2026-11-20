@@ -70,11 +70,15 @@ module Addressable
       # Matching.match_data.
       attr_reader :expansions
 
-      def initialize(expansions)
+      # @param [Array<String>] expansions The template's expressions.
+      # @param [Integer] groups
+      #   How many groups the template has: one for each varspec's value,
+      #   numbered in order from 0 (Machine::Slots).
+      def initialize(expansions, groups)
         @expansions = expansions
         @encoding = nil
         @states = []
-        @groups = 0
+        @groups = groups
         # How many optional parts and repeats the states being added are
         # inside. Text outside all of them is required text.
         @optional_depth = 0
@@ -248,12 +252,6 @@ module Addressable
         choice.second = @states.size
         optional { yield }
         land([to_end])
-      end
-
-      # A new group for a varspec's value, numbered in order from 0.
-      def new_group
-        @groups += 1
-        @groups - 1
       end
 
       # Captures what the block's states match, in the group. A group can
