@@ -40,9 +40,9 @@ describe Addressable::Template::Machine::Slots do
   end
 
   # Each slot as its varspec, then how it matches: :own for a value of its
-  # own, :nothing for a variable that never takes anything, and for a name
-  # written again, [:same, group] or [:extends, group] with the earlier
-  # varspec's group.
+  # own, :nothing for a variable that never takes anything, :empty for one
+  # that never takes a character, and for a name written again,
+  # [:same, group] or [:extends, group] with the earlier varspec's group.
   def roles(pattern, processor = nil)
     nodes = parse(pattern)
     slots = described_class.new(nodes, processor)
@@ -50,6 +50,8 @@ describe Addressable::Template::Machine::Slots do
       role =
         if slot.absorbed
           :nothing
+        elsif slot.empty_only
+          :empty
         elsif slot.repeated.nil?
           :own
         elsif slot.repeated.extends?
@@ -65,8 +67,34 @@ describe Addressable::Template::Machine::Slots do
     "" => [],
     "a/b" => [],
     "{a}" => [["a", :own]],
-    "{a}{b}" => [["a", :own], ["b", :own]],
     "x{?a,b}y{/c}" => [["a", :own], ["b", :own], ["c", :own]],
+    # The first variable of a default expression right after a default or
+    # + expression never takes a character.
+    "{a}{b}" => [["a", :own], ["b", :empty]],
+    "{a}{b}{c}" => [["a", :own], ["b", :empty], ["c", :empty]],
+    "{+a}{b}" => [["a", :own], ["b", :empty]],
+    "{+a,b}{c}" => [["a", :own], ["b", :own], ["c", :empty]],
+    "{a,c}{b}" => [["a", :own], ["c", :own], ["b", :empty]],
+    "{a}{b,c}" => [["a", :own], ["b", :empty], ["c", :own]],
+    "{a*}{b}" => [["a*", :own], ["b", :empty]],
+    "{a}{b:3}" => [["a", :own], ["b:3", :empty]],
+    "{+z}{a}{b}" => [["z", :own], ["a", :empty], ["b", :empty]],
+    # Not a + variable, an exploded one, or one after a leader or a
+    # literal.
+    "{a}{+b}" => [["a", :own], ["b", :own]],
+    "{+a}{+b}" => [["a", :own], ["b", :own]],
+    "{a}{b*}" => [["a", :own], ["b*", :own]],
+    "{a}{/b}" => [["a", :own], ["b", :own]],
+    "{a}{#b}" => [["a", :own], ["b", :own]],
+    "{/a}{b}" => [["a", :own], ["b", :own]],
+    "{#a}{b}" => [["a", :own], ["b", :own]],
+    "{a}x{b}" => [["a", :own], ["b", :own]],
+    "{a}{/z}{b}" => [["a", :own], ["z", :own], ["b", :own]],
+    # Not after an expression with a prefix, which leaves text, or a name
+    # written again, which takes only its earlier value.
+    "{a:3}{b}" => [["a:3", :own], ["b", :own]],
+    "{a,c:3}{b}" => [["a", :own], ["c:3", :own], ["b", :own]],
+    "{a}/{a}{b}" => [["a", :own], ["a", [:same, 0]], ["b", :own]],
     # An exploded variable right after another in its expression.
     "{;a*,b*}" => [["a*", :own], ["b*", :nothing]],
     "{/a*,b*,c*}" => [["a*", :own], ["b*", :nothing], ["c*", :nothing]],
@@ -82,10 +110,10 @@ describe Addressable::Template::Machine::Slots do
     "{/var:1,var}" => [["var:1", :own], ["var", [:extends, 0]]],
     "{/var,var:1}" => [["var", :own], ["var:1", [:same, 0]]],
     # Where it isn't decided, the name matches as if written once.
-    "{a}{a}" => [["a", :own], ["a", :own]],
-    "{a}{b}{a}" => [["a", :own], ["b", :own], ["a", :own]],
+    "{a}{a}" => [["a", :own], ["a", :empty]],
+    "{a}{b}{a}" => [["a", :own], ["b", :empty], ["a", :empty]],
     "{a}/{b}/{a}" => [["a", :own], ["b", :own], ["a", :own]],
-    "{b}{a}/{a}" => [["b", :own], ["a", :own], ["a", :own]],
+    "{b}{a}/{a}" => [["b", :own], ["a", :empty], ["a", :own]],
     "{+a}/{+a}" => [["a", :own], ["a", :own]],
     "{/a}{/a*}" => [["a", :own], ["a*", :own]],
     "{/a*}{/a}" => [["a*", :own], ["a", :own]],
@@ -131,6 +159,15 @@ describe Addressable::Template::Machine::Slots do
     )
     expect(roles("{/a*,b*}", SlotsSpecProcessor.new("a" => "x"))).to eq(
       [["a*", :own], ["b*", :own]]
+    )
+  end
+
+  it "gives a variable with a pattern, or after one, a value of its own" do
+    expect(roles("{a}{n}", SlotsSpecProcessor.new("n" => "x"))).to eq(
+      [["a", :own], ["n", :own]]
+    )
+    expect(roles("{n}{b}", SlotsSpecProcessor.new("n" => "x"))).to eq(
+      [["n", :own], ["b", :own]]
     )
   end
 

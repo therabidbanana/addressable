@@ -79,6 +79,19 @@ describe Addressable::Template::Matcher, "#to_s" do
       "12 Jump to 13",
       "13 Done"
     ],
+    # A variable that can never take a character has no states for a
+    # value: only those for an empty one, where a joiner follows it.
+    "{a}{b}" => [
+      "0 Choice 1 or 6",
+      "1 Capture group 0 start",
+      "2 GreedyRun unreserved, stopping at its end",
+      "3 LeaveOutIfEmpty to 6",
+      "4 Capture group 0 end",
+      "5 Jump to 7",
+      "6 Jump to 7",
+      "7 Jump to 8",
+      "8 Done"
+    ],
     # A leader that isn't the joiner: each variable after the leader, then
     # the later ones after the joiner.
     "{?a,b}" => [

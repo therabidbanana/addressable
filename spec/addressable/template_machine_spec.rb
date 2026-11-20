@@ -1325,13 +1325,19 @@ describe Addressable::Template, "with the :machine engine, #match" do
     # A prefix's run starts again at every place the value before it can
     # end, and takes up to its length in steps from each, so these grow
     # with the URI's length times the prefix's. That's linear in the URI,
-    # but slow for a long prefix: {x}{a:9999}! takes about 25 s here, so
+    # but slow for a long prefix: {x}.{a:9999}! takes about 12 s here, so
     # it isn't run (TEMPLATE_MACHINE_PLAN.md, "Next work", item 17).
-    ["{x}{a:3}!", "a" * 16_000 + "?!"],
     ["{a:3}{b:3}{c:3}!", "a" * 16_000 + "?!"],
-    ["{x}{a:100}!", "a" * 16_000 + "?!"],
-    ["{x}{a:100}!", "%C3%A9" * 4_000 + "?!"],
+    ["{x}.{a:3}!", "a." * 8_000 + "?!"],
+    ["{x}.{a:100}!", "a." * 8_000 + "?!"],
+    ["{x}.{a:100}!", "%C3%A9." * 2_000 + "?!"],
     ["{+x}{+a:100}!", "a?" * 8_000 + " !"],
+    # After a variable that can take everything it could, a variable
+    # never takes a character, whatever its prefix, so it has no states.
+    ["{x}{a:9999}!", "a" * 16_000 + "?!"],
+    ["{a}{b}{c}!", "a" * 16_000 + "?!"],
+    ["{+a}{b}{c}!", "a/" * 8_000 + " !"],
+    ["{a}{b,c}!", "a" * 16_000 + "?!"],
     ["{;x}{;a:9999}!", ";x=" + "a" * 16_000 + "?!"]
   ].each do |pattern, uri|
     it "rejects a URI ending in #{uri[-2, 2].inspect} that doesn't match " \

@@ -30,14 +30,16 @@ module Addressable
       #
       # - absorbed: it can never take anything, so it gets no steps, and
       #   its value is always nil.
+      # - empty_only: it can never take a character, so it gets no steps
+      #   for a value, and is nil, or "" where a joiner follows it.
       # - repeated: a RepeatedValue if it matches only an earlier varspec's
       #   value, and otherwise nil.
       #
-      # A slot with neither matches a value of its own.
+      # A slot with none of them matches a value of its own.
       #
       # @api private
       Slot = Struct.new(:expression, :variable, :group, :pattern, :absorbed,
-        :repeated)
+        :empty_only, :repeated)
 
       ##
       # A template's slots: one for each varspec, in order, worked out
@@ -52,6 +54,20 @@ module Addressable
       # could, since the earlier variable wins. {;a*,b*} matches like
       # {;a*}. A processor's pattern can give either one other text, so a
       # variable with one, or after one, isn't absorbed.
+      #
+      # A varspec is empty_only if it's the first of a default expression
+      # ({b} or {b,c}) right after a default or + expression, with no
+      # literal between. Neither expression has a leader, so wherever b
+      # could take a character, a variable of the expression before could
+      # have taken it, and the earlier variable wins: {a}{b} gives "xy" to
+      # a, and b is nil. In {a}{b,c}, "xy,z" gives b "", for its joiner.
+      # It isn't for an exploded b, which can start with its own joiner,
+      # nor a + one, which takes what the value before it leaves at a "?"
+      # or "#". Nor where the expression before can't take everything:
+      # where one of its varspecs has a prefix, a processor's pattern or a
+      # RepeatedValue, or b has a pattern. It still counts as a value
+      # between two varspecs with the same name, as it did when it had
+      # steps.
       #
       # A varspec that repeats an earlier one's name becomes a
       # RepeatedValue, which matches only the earlier value, where that
@@ -103,12 +119,20 @@ module Addressable
           # Whether the next value's start is decided.
           @start_decided = true
           @by_expression = {}.compare_by_identity
+          # The expression before, and its slots.
+          before = nil
           nodes.grep(Expression).each do |expression|
+            before = nil unless before && before.following.equal?(expression)
             previous = nil
-            @by_expression[expression] = expression.variables.map do |variable|
+            slots = expression.variables.map do |variable|
               pattern = processor && processor.match(variable.name)
               previous = add(expression, variable, pattern, previous)
             end
+            if before && takes_all_before?(slots.first, @by_expression[before])
+              slots.first.empty_only = true
+            end
+            @by_expression[expression] = slots
+            before = expression
           end
           @all = @by_expression.values.flatten.freeze
         end
@@ -158,10 +182,25 @@ module Addressable
         def add(expression, variable, pattern, previous)
           absorbed = !previous.nil? && !pattern && !previous.pattern &&
             variable.explode && previous.variable.explode
-          slot = Slot.new(expression, variable, @size, pattern, absorbed, nil)
+          slot = Slot.new(expression, variable, @size, pattern, absorbed,
+            false, nil)
           @size += 1
           slot.repeated = repeated_value(slot)
           slot
+        end
+
+        # Whether the expression right before a slot's takes every
+        # character the slot could, so that it's empty_only: the slot is
+        # the first of a default expression, as it is, and the expression
+        # before has no leader, and nothing that limits what it takes.
+        def takes_all_before?(slot, slots_before)
+          variable = slot.variable
+          return false unless slot.expression.instance_of?(OpPlain)
+          return false if variable.explode || slot.pattern || slot.repeated
+          return false unless slots_before.first.expression.class.leader.empty?
+          slots_before.none? do |before|
+            before.pattern || before.variable.prefix || before.repeated
+          end
         end
 
         # A RepeatedValue for the slot if it repeats an earlier one's name

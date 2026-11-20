@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (4,888 and 4,774 examples), and
+full suite passes in both IDNA modes (4,910 and 4,796 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -105,9 +105,11 @@ at 3,000 iterations, two runs, 2026-11-20):
 `partial_expand` is 0.39–0.78×. A new template matched once is
 1.4–1.7× (reserved, fragment 2.1×). Every adversarial shape in the
 profile and in `template_machine_spec.rb`'s linear-time checks grows
-linearly, but the absolute cost is far above `:regexp`'s: at n=2,000,
-`{;a*}{;b*}{;c}!` (ending `?!`) takes 72 ms and 3.3 MB, and `{a}`×12`!`
-46 ms and 3.1 MB, against under 5 ms for `:regexp`.
+linearly, but the absolute cost can be far above `:regexp`'s: at
+n=2,000, `{;a*}{;b*}{;c}!` (ending `?!`) takes 54 ms and 3.3 MB,
+against 3 ms for `:regexp`. `{a}`×12`!` took 46 ms and 3.1 MB until its
+later variables lost their states (`Slots`, `empty_only`); it now takes
+0.06 ms, as `:regexp` does.
 
 ## `Template` bugs the machine copies
 
@@ -338,21 +340,20 @@ it").
     where its value started, so it hands over every end from each
     start, and the time grows with the URI's length times the
     prefix's. That's linear in the URI and small for a short prefix
-    (`{x}{a:3}!` rejects 16 KB in 50 ms, `{x}{a:100}!` in 0.45 s), but
+    (`{x}.{a:3}!` rejects 16 KB in 38 ms, `{x}.{a:100}!` in 0.24 s), but
     not for the longest (Ruby 3.3.1, 16 KB that doesn't match):
 
     | Template | URI | Time |
     |---|---|---|
-    | `{x}{a:9999}!` | `aaa…?!` | 25 s |
     | `{a:9999}{b:9999}!` | `aaa…?!` | 21 s |
     | `{a:9999}{b:9999}{c:9999}!` | `aaa…?!` | 116 s |
     | `{x}.{a:9999}!` | `a.a.a.…?!` | 12 s |
     | `{+x}/{+a:9999}!` | `a/a/a/… !` | 13 s |
     | `{a:9999}{x}!`, `{/x}{/a:9999}!`, `{x}/{a:9999}!` | | under 25 ms |
 
-    The linear-time specs run the short prefixes, not these. Ways in:
-    - Item 5 removes `{x}{a:9999}`: `x` can hold everything `a` can, so
-      `a` never takes anything.
+    The linear-time specs run the short prefixes, not these. Item 5
+    removed `{x}{a:9999}!` (25 s): `x` can hold everything `a` can, so
+    `a` never takes a character. Ways in for the rest:
     - The same argument thins `{a:N}{b:N}`: if `a` stops short of its
       length and `b` then takes a character, `a` could have taken it,
       and the earlier variable wins. So `b` only needs to start where
@@ -370,22 +371,27 @@ it").
 On a URI that doesn't match, the search tries every state at every
 position it can reach, and remembers each branching one, so memory
 grows with the URI's length times the template's branching states.
-Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
-16.8 MB, `{;a*}{;b*}{;c}!` and `{a}{b}{c}` 4.2 MB, the rest under
-1 MB. `:regexp` allocates well under 0.1 MB for each.
+Measured at 16 KB (memo only, `ObjectSpace.memsize_of`):
+`{;a*}{;b*}{;c}!` 4.2 MB, `{a}{b,c}!` 2.1 MB, `{+a}{b}{c}!` 0.5 MB.
+`:regexp` allocates well under 0.1 MB for each. Before item 5,
+`{a}`×12`!` was 16.8 MB and `{a}{b}{c}` 4.2 MB; both now remember two
+entries.
 
-5. **Prune variables that can never take anything.** Under earlier-wins,
-   a variable with no leader right after another whose value can hold
-   everything it can (`{a}{b}`, `{a}{b}{c}`, and `{a}`×12, whose
-   repeats aren't converted) never gets a value: checked on 100,000
-   generated URIs over `{a}{b}`, `{a}{b}x`, `{.a}{b}`, `{a}{.b}` and
-   `{a}{b}{c}`. Marking such a variable's slot absorbed, as
-   `Machine::Slots` does for an exploded variable after another, would
-   shrink these to one variable's states. `Slots` only looks at the
-   slot before in the same expression today; this needs the one before
-   in the template. A prefix is capped now, so it leaves text for the
-   next variable (`{a:3}{b}`) and can't absorb it; a variable with a
-   prefix after one without is absorbed like any other (item 17).
+5. **Prune more variables that can never take a character (the first
+   case is built).** The first variable of a default expression right
+   after a default or `+` expression has no states for a value now
+   (`Slot#empty_only`; the conditions are in `Slots`' comment). It
+   changes no result: 43,202 generated templates and texts give the
+   same output with and without it. At 16 KB, `{a}`×12`!` went from
+   399 ms and 16.8 MB to 0.6 ms, and `{x}{a:9999}!` from 25 s to
+   0.5 ms. Left to do, each with the same check:
+   - In `{a}{b,c}`, `c` can't be the expression's first value with a
+     character either (it only takes one after its joiner), but still
+     has those states.
+   - An `empty_only` variable still counts as a value between two
+     varspecs with the same name, so `{a}{b}/{a}` isn't compared.
+     Not counting it would change results, for the better.
+   - `{a:N}{b:N}` (item 17).
 6. **Shrink the memo and the capture lists.** Notes from reading
    `Search` and `Matcher#match` (2026-11-20, not yet measured; measure
    each with `ObjectSpace.memsize_of` or `memory_profiler`, which runs

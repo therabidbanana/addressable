@@ -174,7 +174,8 @@ module Addressable
         #
         # What a varspec's steps depend on in the varspecs before it is
         # already decided, in its slot (Slots): one that can never take
-        # anything gets a group but no steps, one whose name an earlier
+        # anything gets a group but no steps, one that can never take a
+        # character gets none for a value, one whose name an earlier
         # varspec has matches only that one's value (RepeatedValue), and
         # one with a processor's pattern has to match it.
         #
@@ -497,13 +498,18 @@ module Addressable
           ahead = Hash.new { |hash, index| hash[index] = [] }
           to_joiner = Hash.new { |hash, index| hash[index] = [] }
           slots.each_with_index do |slot, index|
-            left_out = []
-            optional_steps(matcher, slot, slots, self.class.leader) do
-              leader_steps(matcher)
-              captured_steps(matcher, slot, slots, no_leader ? left_out : nil)
-              ahead[index + 1] << matcher.jump_ahead
+            # A slot that can never take a character has no steps for a
+            # value, only those for an empty one before a joiner.
+            unless slot.empty_only
+              left_out = []
+              optional_steps(matcher, slot, slots, self.class.leader) do
+                leader_steps(matcher)
+                captured_steps(matcher, slot, slots,
+                  no_leader ? left_out : nil)
+                ahead[index + 1] << matcher.jump_ahead
+              end
+              matcher.land(left_out)
             end
-            matcher.land(left_out)
             next unless no_leader && index < slots.size - 1
             matcher.optional do
               captured_steps(matcher, slot, slots, :empty)
