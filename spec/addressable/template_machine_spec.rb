@@ -1000,7 +1000,9 @@ describe Addressable::Template, "with the :machine engine, #match" do
       ["{;a*,b}", ";x=1;b=2"] => {"a" => {"x" => "1"}, "b" => "2"},
       ["{;a*,b}", ";x;;b"] => {"a" => {"x" => "", "" => ""}, "b" => ""},
       ["{?a*,b}", "?x=1&b=2"] => {"a" => {"x" => "1"}, "b" => "2"},
-      ["{?a*,b}", "?x=1=2&b="] => {"a" => {"x" => "1=2"}, "b" => ""}
+      ["{?a*,b}", "?x=1=2&b="] => {"a" => {"x" => "1=2"}, "b" => ""},
+      # A prefix takes at most its length.
+      ["/{.a:2}/", "/.x.y/"] => nil
     }
   end
 
@@ -1319,7 +1321,18 @@ describe Addressable::Template, "with the :machine engine, #match" do
     ["{/v:3,v}", "/aaa/" + "a" * 16_000 + "?!"],
     ["{a}{a}{a}!", "a" * 16_000 + "?!"],
     ["{a}{b}{a}!", "a" * 16_000 + "?!"],
-    ["{a}{+a}!", "%41" * 5_000 + " !"]
+    ["{a}{+a}!", "%41" * 5_000 + " !"],
+    # A prefix's run starts again at every place the value before it can
+    # end, and takes up to its length in steps from each, so these grow
+    # with the URI's length times the prefix's. That's linear in the URI,
+    # but slow for a long prefix: {x}{a:9999}! takes about 25 s here, so
+    # it isn't run (TEMPLATE_MACHINE_PLAN.md, "Next work", item 17).
+    ["{x}{a:3}!", "a" * 16_000 + "?!"],
+    ["{a:3}{b:3}{c:3}!", "a" * 16_000 + "?!"],
+    ["{x}{a:100}!", "a" * 16_000 + "?!"],
+    ["{x}{a:100}!", "%C3%A9" * 4_000 + "?!"],
+    ["{+x}{+a:100}!", "a?" * 8_000 + " !"],
+    ["{;x}{;a:9999}!", ";x=" + "a" * 16_000 + "?!"]
   ].each do |pattern, uri|
     it "rejects a URI ending in #{uri[-2, 2].inspect} that doesn't match " \
       "#{pattern} in linear time" do
@@ -1798,6 +1811,37 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       ["{;a*,b*}", ";x=1", {"a" => {"x" => "1"}, "b" => {}},
         {"a" => {"x" => "1"}, "b" => nil}]
     ],
+    "a prefix takes at most its length, in decoded characters" => [
+      ["{a:3}", "abc", {"a" => "abc"}, {"a" => "abc"}],
+      ["{a:3}", "abcdef", {"a" => "abcdef"}, nil],
+      ["{a:1}", "%C3%A9", {"a" => "é"}, {"a" => "é"}],
+      ["{a:1}", "%C3%A9%C3%A9", {"a" => "éé"}, nil],
+      ["{a:2}", "%E2%82%ACx", {"a" => "€x"}, {"a" => "€x"}],
+      ["{a:2}", "%E2%82%ACxy", {"a" => "€xy"}, nil],
+      ["{+a:1}", "%C3%A9", {"a" => "é"}, {"a" => "é"}],
+      ["{+a:2}", "/?x", {"a" => "/?x"}, nil],
+      ["{#a:2}", "#xyz", {"a" => "xyz"}, nil],
+      ["{/a:2}", "/xyz", {"a" => "xyz"}, nil],
+      ["{.a:2}", ".xyz", {"a" => "xyz"}, nil],
+      ["/{.a:2}/", "/.x.y/", {"a" => "x.y"}, nil],
+      ["/{.a:3}/", "/.x.y/", {"a" => "x.y"}, {"a" => "x.y"}],
+      ["{;a:2}", ";a=xy", {"a" => "xy"}, {"a" => "xy"}],
+      ["{;a:2}", ";a=xyz", {"a" => "xyz"}, nil],
+      ["{;a:2}", ";a", {"a" => ""}, {"a" => ""}],
+      ["{?a:2}", "?a=xyz", {"a" => "xyz"}, nil],
+      ["{?a:2}", "?a=", {"a" => ""}, {"a" => ""}],
+      ["x{a:2}y", "xyyy", {"a" => "yy"}, {"a" => "yy"}],
+      ["x{a:2}y", "xyyyy", {"a" => "yyy"}, nil],
+      # What a prefix leaves goes to the next variable.
+      ["{a:2}{b}", "xyz", {"a" => nil, "b" => "xyz"},
+        {"a" => "xy", "b" => "z"}],
+      ["{a:2},{b}", "xyz,w", {"a" => "xyz", "b" => "w"}, nil],
+      ["{+a:2,b}", "xyz,y", {"a" => "xyz", "b" => "y"},
+        {"a" => nil, "b" => "xyz,y"}],
+      # A + value with a prefix still stops at the first "?".
+      ["{+a:5}{+b}", "x?y", {"a" => nil, "b" => "x?y"},
+        {"a" => "x", "b" => "?y"}]
+    ],
     "joiners between values are required" => [
       ["{?a,b}", "?a=1b=2", {"a" => "", "b" => nil, "1b" => "2"}, nil]
     ],
@@ -1890,11 +1934,11 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
         {"a" => "xyx", "b" => nil}],
       ["{a}{?b}/{a}", "x/y", {"a" => "x", "b" => nil},
         {"a" => "x", "b" => nil}],
-      # Known wrong: no value expands to "xy" (a = "xy" writes "xxy"), so
-      # it shouldn't match. It waits on prefix lengths: once {a:1} takes
-      # at most one character, the two prefixes can be compared (the
-      # plan's "Next work", item 1).
-      ["{a:1}{a:2}", "xy", {"a" => "xy"}, {"a" => "xy"}],
+      # Known wrong: no value expands to "xy" (a = "x" writes "xx"), so it
+      # shouldn't match. Each prefix now takes at most its length, so the
+      # two can be compared; that's the rest of the plan's "Next work",
+      # item 1.
+      ["{a:1}{a:2}", "xy", {"a" => "xy"}, {"a" => "x"}],
       # A literal the value could hold, or one that starts with "%", or a
       # "#" that may be written "%23", doesn't decide where it ends.
       ["{a}.{a}", "x.y", {"a" => "x"}, {"a" => "x"}],

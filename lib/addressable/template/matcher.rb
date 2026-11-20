@@ -170,6 +170,21 @@ module Addressable
         land([to_end])
       end
 
+      ##
+      # At most a number of characters of a set, as many as can be first,
+      # for a value with a prefix modifier (CappedRun).
+      #
+      # @param [Symbol] set The set's name.
+      # @param [Integer] length The most characters it takes, decoded.
+      # @param [TrueClass, FalseClass] at_least_one
+      #   Whether it has to take a character.
+      # @param [TrueClass, FalseClass] delimiters_first
+      #   Whether it first tries stopping at each "?" or "#" in it, the
+      #   first one first, as #reserved_run does.
+      def capped_run(set, length, at_least_one: false, delimiters_first: false)
+        add(CappedRun, SETS.fetch(set), length, at_least_one, delimiters_first)
+      end
+
       # Every character of a set that follows, giving none back.
       def possessive_run(set)
         add(PossessiveRun, SETS.fetch(set))

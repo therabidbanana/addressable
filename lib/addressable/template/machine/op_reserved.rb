@@ -48,9 +48,17 @@ module Addressable
 
         # --- Matching ---
 
-        # A value stops at a "?" or "#" where it can (Matcher#reserved_run).
-        def value_steps(matcher, _variable = nil)
-          matcher.reserved_run(:reserved)
+        # A value stops at a "?" or "#" where it can (Matcher#reserved_run),
+        # and takes at most its prefix's length. One before the last stops
+        # at the next comma, which expansion writes between values; only
+        # the last can hold one (#value_set).
+        def value_steps(matcher, variable)
+          set = value_set(variable)
+          if variable.prefix
+            matcher.capped_run(set, variable.prefix, delimiters_first: true)
+          else
+            matcher.reserved_run(set)
+          end
         end
 
         # A member can't hold a comma, which would start the next one, but

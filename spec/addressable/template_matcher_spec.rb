@@ -304,6 +304,51 @@ describe Addressable::Template::Matcher, "#to_s" do
       "6 Literal \"/\"",
       "7 Done"
     ],
+    # A prefix takes at most its length.
+    "{a:3}" => [
+      "0 Choice 1 or 6",
+      "1 Capture group 0 start",
+      "2 CappedRun unreserved, at most 3",
+      "3 LeaveOutIfEmpty to 6",
+      "4 Capture group 0 end",
+      "5 Jump to 7",
+      "6 Jump to 7",
+      "7 Done"
+    ],
+    # A ; value with a prefix isn't empty after its "=".
+    "{;a:2}" => [
+      "0 Choice 1 or 8",
+      "1 Literal \";\"",
+      "2 Capture group 0 start",
+      "3 Literal \"a\"",
+      "4 Choice 5 or 7",
+      "5 Literal \"=\"",
+      "6 CappedRun unreserved, at most 2, at least 1",
+      "7 Capture group 0 end",
+      "8 Done"
+    ],
+    # A + or # value with a prefix still stops at the first "?" or "#",
+    # and a label that can hold dots has to fit its prefix.
+    "{#a:2}" => [
+      "0 Choice 1 or 6",
+      "1 Literal \"#\"",
+      "2 Capture group 0 start",
+      "3 CappedRun reserved, at most 2, stopping at the first \"?\" or \"#\"",
+      "4 Capture group 0 end",
+      "5 Jump to 7",
+      "6 Jump to 7",
+      "7 Done"
+    ],
+    "/{.a:2}/" => [
+      "0 Literal \"/\"",
+      "1 Choice 2 or 6",
+      "2 Literal \".\"",
+      "3 Capture group 0 start",
+      "4 CappedRun unreserved, at most 2",
+      "5 Capture group 0 end",
+      "6 Literal \"/\"",
+      "7 Done"
+    ],
     # A name written again matches the earlier value, and the states
     # between are remembered once for each place that value took.
     "{a}/{a}" => [
@@ -332,7 +377,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "0 Choice 1 or 5",
       "1 Literal \"/\"",
       "2 Capture group 0 start",
-      "3 GreedyRun unreserved, stopping at its end",
+      "3 CappedRun unreserved, at most 1",
       "4 Capture group 0 end",
       "5 Choice 6 or 12 (once for each place of group 0)",
       "6 Literal \"/\"",
@@ -411,6 +456,123 @@ describe Addressable::Template::Matcher, "builder methods" do
     end
     expect(captures(matcher, "ab")).to be_nil
     expect(captures(matcher, "a/b")).to be_nil
+  end
+
+  context "#capped_run" do
+    def capped(length, options = {})
+      build(1) do |m|
+        m.capture(0) { m.capped_run(:unreserved, length, **options) }
+      end
+    end
+
+    it "takes at most its length, as much as it can first" do
+      matcher = build(2) do |m|
+        m.capture(0) { m.capped_run(:unreserved, 2) }
+        m.capture(1) { m.greedy_run(:unreserved) }
+      end
+      expect(captures(matcher, "abc")).to eq(["ab", "c"])
+      expect(captures(matcher, "a")).to eq(["a", ""])
+      expect(captures(matcher, "")).to eq(["", ""])
+    end
+
+    it "gives back what the rest needs, and takes no more than its " \
+       "length for it" do
+      matcher = build(1) do |m|
+        m.capture(0) { m.capped_run(:unreserved, 3) }
+        m.exact("b")
+      end
+      expect(captures(matcher, "abab")).to eq(["aba"])
+      expect(captures(matcher, "ab")).to eq(["a"])
+      expect(captures(matcher, "b")).to eq([""])
+      expect(captures(matcher, "aaaab")).to be_nil
+    end
+
+    it "counts a character once, however it's written" do
+      one = capped(1)
+      ["a", "é", "%41", "%C3%A9", "%c3%a9", "%E2%82%AC",
+       "%F0%9F%98%80"].each do |text|
+        expect(captures(one, text)).to eq([text])
+      end
+      ["ab", "éa", "%41%42", "%C3%A9%C3%A9", "%C3%A9a", "a%C3%A9",
+       "%E2%82%AC%41"].each do |text|
+        expect(captures(one, text)).to be_nil
+      end
+      expect(captures(capped(2), "%E2%82%ACx")).to eq(["%E2%82%ACx"])
+    end
+
+    it "counts a triplet that isn't part of a character as one" do
+      one = capped(1)
+      expect(captures(one, "%FF")).to eq(["%FF"])
+      expect(captures(one, "%C3")).to eq(["%C3"])
+      expect(captures(one, "%A9")).to eq(["%A9"])
+      ["%FF%FF", "%A9%A9", "%C3x", "%C3%41", "%C3%A9%A9"].each do |text|
+        expect(captures(one, text)).to be_nil
+      end
+      two = capped(2)
+      ["%C3x", "%E2%82x", "%A9%A9", "%C3%C3%A9"].each do |text|
+        expect(captures(two, text)).to eq([text])
+      end
+    end
+
+    it "can stop between the triplets of a character" do
+      matcher = build(1) do |m|
+        m.capture(0) { m.capped_run(:unreserved, 1) }
+        m.exact("%A9")
+      end
+      expect(captures(matcher, "%C3%A9")).to eq(["%C3"])
+    end
+
+    it "stops at a character that isn't in its set" do
+      expect(captures(capped(5), "a/b")).to be_nil
+      expect(captures(capped(5), "a%4")).to be_nil
+    end
+
+    it "takes at least one character where it has to" do
+      matcher = capped(2, at_least_one: true)
+      expect(captures(matcher, "a")).to eq(["a"])
+      expect(captures(matcher, "ab")).to eq(["ab"])
+      expect(captures(matcher, "")).to be_nil
+      expect(captures(matcher, "abc")).to be_nil
+    end
+
+    context "with delimiters_first" do
+      let(:matcher) do
+        build(2) do |m|
+          m.capture(0) do
+            m.capped_run(:reserved, 5, delimiters_first: true)
+          end
+          m.optional do
+            m.exact("?")
+            m.capture(1) { m.greedy_run(:reserved) }
+          end
+        end
+      end
+
+      it "stops at the first \"?\" or \"#\" where the rest can match" do
+        expect(captures(matcher, "a?b")).to eq(["a", "b"])
+        expect(captures(matcher, "a?b?c")).to eq(["a", "b?c"])
+        expect(captures(matcher, "?b")).to eq(["", "b"])
+      end
+
+      it "takes as much as it can where there's none, or the rest " \
+         "can't match from one" do
+        expect(captures(matcher, "a/b")).to eq(["a/b", nil])
+        expect(captures(matcher, "a#b")).to eq(["a#b", nil])
+        strict = build(1) do |m|
+          m.capture(0) do
+            m.capped_run(:reserved, 5, delimiters_first: true)
+          end
+          m.exact("?x")
+        end
+        expect(captures(strict, "a?b?x")).to eq(["a?b"])
+        expect(captures(strict, "a#b?x")).to eq(["a#b"])
+      end
+
+      it "doesn't reach a delimiter past its length" do
+        expect(captures(matcher, "abcdef?g")).to be_nil
+        expect(captures(matcher, "abcde?g")).to eq(["abcde", "g"])
+      end
+    end
   end
 
   it "#one_character takes one character of the set, however it's " \

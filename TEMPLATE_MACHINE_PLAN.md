@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (4,700 and 4,582 examples), and
+full suite passes in both IDNA modes (4,888 and 4,774 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -195,6 +195,15 @@ The machine's rules:
 - **An exploded variable right after another in its expression takes
   nothing** (`{;foo*,bar*}` matches like `{;foo*}`), so the matcher adds
   no steps for it.
+- **A prefix takes at most its length,** counted in decoded
+  characters, since expansion cuts the value before it pct-encodes it:
+  a character as it is, or the triplets of one UTF-8 character
+  (`{a:1}` writes `é` as `%C3%A9`), is one. A triplet that isn't part
+  of a character is one too, as `+` and `#` expansion count it, so
+  `{+a:1}` takes `%C3%A9`, which it writes for `é` but not for the text
+  `%C3%A9`; the URI can't tell them apart. What a prefix leaves goes to
+  the next variable. Of 20,000 generated prefix expansions, the cap
+  rejects none.
 - **A name written again matches the earlier value,** where that
   value's place in the URI is decided: it and every variable before it
   end at their run's end, as what follows each is a character it can't
@@ -228,6 +237,8 @@ Examples of where the machine's results differ from `:regexp`'s
 | `{+a*}!` | `y!` | no match (the members took the `!`) | `"a" => ["y"]` | Expands back |
 | `{#a*}x` | `#x` | `"a" => nil` (writes `x`) | `"a" => [""]` | Expands back |
 | `{;a*}` | `;x=;` | `"a" => {"x" => ""}` (writes `;x`) | no match | Names as written |
+| `{a:3}` | `abcdef` | `"a" => "abcdef"` (writes `abc`) | no match | Prefix length |
+| `{a:2}{b}` | `xyz` | `"a" => nil, "b" => "xyz"` | `"a" => "xy", "b" => "z"` | Prefix length |
 | `{a}/{a}` | `x/y` | `"a" => "x"` (writes `x/x`) | no match | Name written again |
 | `/{lang}/page{?lang}` | `/en/page?lang=fr` | `"lang" => "en"` | no match | Name written again |
 | `{/var:1,var}` | `/v/value` | `"var" => "v"` (writes `/v/v`) | `"var" => "value"` | Name written again |
@@ -246,20 +257,17 @@ machine template, matching `to_regexp` can split a URI differently from
 
 ## Next work
 
-Each item stands alone and can be built as described; items 1–4 and
-12 record decisions made on 2026-11-20. Work one piece at a time, with
+Each item stands alone and can be built as described; items 1–4, 12,
+16 and 17 record decisions made on 2026-11-20. Work one piece at a time, with
 specs first, and get each reviewed before committing (see "Working on
 it").
 
 ### Matching results
 
-1. **Cap a prefix at its length (decided).** `{a:3}` matches `abcdef`
-   as `{"a" => "abcdef"}`, though expanding `{a:3}` never writes more
-   than three characters. A prefix varspec takes at most its length in
-   characters, counting a pct-encoded triplet as one, as
-   `Values.prefix` does for `+` and `#`; then `{a:3}` on `abcdef`
-   doesn't match. That bounds the run, and fixes a known wrong result:
-   `{a:1}{a:2}` on `xy` gives `"xy"`, which writes `xxy` (pinned in
+1. **Compare two prefixes of one name (decided; the cap is built).**
+   A prefix varspec now takes at most its length (`Matcher::CappedRun`;
+   see "Matching rules"), so `{a:3}` on `abcdef` doesn't match. What's
+   left: `{a:1}{a:2}` on `xy` gives `"x"`, which writes `xx` (pinned in
    `template_machine_spec.rb` with a "Known wrong" note). With bounded
    prefixes, two prefixes of one name can be compared (the shorter is
    the start of the longer, and the same if the value is shorter than
@@ -301,6 +309,62 @@ it").
    members don't match. Not for `+` and `#`, which write `k=v` for both
    the hash and the list `["k=v"]`.
 
+16. **A processor's pattern covers only the value in `;`, `?` and `&`
+    (decided 2026-11-20; build later).** In both engines the pattern
+    replaces the whole `name=value` text, so `{?n}` with `[0-9]+` for
+    `n` doesn't match `?n=12`, and matches `?12` as
+    `{"n" => nil, "12" => ""}`; only a pattern that writes the name
+    (`n=[0-9]+`) gives `{"n" => "12"}`. The machine should match the
+    name as written, then the pattern against the value alone: `{?n}`
+    with `[0-9]+` on `?n=12` gives `{"n" => "12"}`, and `?12` doesn't
+    match. `:regexp` keeps its results, so this is a new row for the
+    processor differences. Notes for building it:
+    - For `;`, the value is left out with its `=` (`;n`) only where the
+      pattern matches an empty value, and `;n=` never matches, so the
+      pattern state needs a way to refuse an empty value.
+    - `Expression#read` can then take the variable's name off the
+      front of the text, where it now splits at every `=` and gives
+      the value under whatever name the text has.
+    - A variable with a pattern becomes one an exploded value stops
+      before (`Expression#named_texts` leaves those out today), so
+      `{?a*,n}` gives `n` its own pair.
+    - An exploded variable's pattern still covers all its members'
+      text, names included; decide that with this.
+    - It breaks a caller who wrote the name into the pattern as a
+      workaround (`n=[0-9]+`). Say so in the changelog.
+
+17. **A long prefix is slow where its run starts in many places
+    (revisit; accepted for now, 2026-11-20).** `CappedRun` has to know
+    where its value started, so it hands over every end from each
+    start, and the time grows with the URI's length times the
+    prefix's. That's linear in the URI and small for a short prefix
+    (`{x}{a:3}!` rejects 16 KB in 50 ms, `{x}{a:100}!` in 0.45 s), but
+    not for the longest (Ruby 3.3.1, 16 KB that doesn't match):
+
+    | Template | URI | Time |
+    |---|---|---|
+    | `{x}{a:9999}!` | `aaa…?!` | 25 s |
+    | `{a:9999}{b:9999}!` | `aaa…?!` | 21 s |
+    | `{a:9999}{b:9999}{c:9999}!` | `aaa…?!` | 116 s |
+    | `{x}.{a:9999}!` | `a.a.a.…?!` | 12 s |
+    | `{+x}/{+a:9999}!` | `a/a/a/… !` | 13 s |
+    | `{a:9999}{x}!`, `{/x}{/a:9999}!`, `{x}/{a:9999}!` | | under 25 ms |
+
+    The linear-time specs run the short prefixes, not these. Ways in:
+    - Item 5 removes `{x}{a:9999}`: `x` can hold everything `a` can, so
+      `a` never takes anything.
+    - The same argument thins `{a:N}{b:N}`: if `a` stops short of its
+      length and `b` then takes a character, `a` could have taken it,
+      and the earlier variable wins. So `b` only needs to start where
+      `a` is full, or took its whole run.
+    - That leaves a value that stops in many places before a literal
+      it could hold (`{x}.{a:9999}`). There the ends from one start
+      overlap those from the last, and only the new ones need trying:
+      a running count of decoded characters gives each start's last end
+      without walking to it, and the run can skip ends it already
+      handed over. Skipping is only sound where no later state reads a
+      capture (a name written again does), as with the memo.
+
 ### Memory
 
 On a URI that doesn't match, the search tries every state at every
@@ -319,8 +383,9 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
    `Machine::Slots` does for an exploded variable after another, would
    shrink these to one variable's states. `Slots` only looks at the
    slot before in the same expression today; this needs the one before
-   in the template. It depends on item 1: a capped prefix
-   (`{a:3}{b}`) leaves text for the next variable.
+   in the template. A prefix is capped now, so it leaves text for the
+   next variable (`{a:3}{b}`) and can't absorb it; a variable with a
+   prefix after one without is absorbed like any other (item 17).
 6. **Shrink the memo and the capture lists.** Notes from reading
    `Search` and `Matcher#match` (2026-11-20, not yet measured; measure
    each with `ObjectSpace.memsize_of` or `memory_profiler`, which runs
@@ -439,10 +504,8 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
     (`Parser#names_in_invalid_token`, `Machine::Invalid#names`) goes
     once `Template` fixes it. `Matching.match_data` only serves
     `:regexp`, and goes with it. `Expression#read` still copies one of
-    its quirks: an unexploded `;`, `?` or `&` value goes under the name
-    its text has, cut at the next `=`, which only a processor's pattern
-    can make differ from the variable's (`{?n}` capturing `12` gives
-    `"12" => ""`).
+    its quirks, until item 16: an unexploded `;`, `?` or `&` value goes
+    under the name its text has, cut at the next `=`.
 15. **Round-trip coverage of repeated names.** The round-trip spec's
     generator gives each name one use, and `template_match_spec.rb`'s
     soundness check skips patterns that reuse a name. Both could now

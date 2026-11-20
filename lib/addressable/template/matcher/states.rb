@@ -354,6 +354,114 @@ module Addressable
         end
       end
 
+      ##
+      # A run of at most a number of characters, for a value with a prefix
+      # modifier: as many as it can take first, then fewer. With
+      # delimiters_first, it tries stopping at each "?" or "#" in it
+      # before that, the first one first, as DelimiterRun does.
+      #
+      # A prefix is cut from the value before it's pct-encoded, so the
+      # length counts decoded characters: a character as it is, or the
+      # pct-encoded triplets of one UTF-8 character, is one. So is a
+      # triplet that isn't part of such a character, as + and # expansion
+      # count it. The run can still stop after any triplet.
+      #
+      # Unlike GreedyRun, it has to know where it started, so it hands
+      # over every end from there at once, and the search remembers it by
+      # its start. From each start it takes up to its length in steps, so
+      # the time grows with the URI's length times the prefix's.
+      class CappedRun < Run
+        def initialize(index, set, length, at_least_one, delimiters_first)
+          super(index, set)
+          @length = length
+          @at_least_one = at_least_one
+          @delimiters_first = delimiters_first
+        end
+
+        def possible_first_bytes
+          return @set.first_bytes if @at_least_one
+          super
+        end
+
+        def branches?
+          true
+        end
+
+        # It can stop inside its run, so the run before it can't be
+        # skipped.
+        def bytes_after_taking_run(_set)
+          nil
+        end
+
+        def description
+          parts = ["#{super}, at most #{@length}"]
+          parts << "at least 1" if @at_least_one
+          parts << "stopping at the first \"?\" or \"#\"" if @delimiters_first
+          parts.join(", ")
+        end
+
+        def follow(search, start, captures)
+          ends = ends_from(search.text, start)
+          ends.shift if @at_least_one
+          ends.select! { |finish| @next.first_bytes.allow?(search, finish) }
+          # Handed over shortest first, so that the longest is tried first.
+          ends.each { |finish| search.try(@next, finish, captures) }
+          return unless @delimiters_first
+          # Then the delimiters, last first, so that the first is tried
+          # before everything else.
+          ends.reverse_each do |finish|
+            byte = search.text.getbyte(finish)
+            search.try(@next, finish, captures) if byte == 63 || byte == 35
+          end
+        end
+
+        private
+
+        # The start, then every place after it the run can end, in order:
+        # after each of the set's characters, up to the length.
+        def ends_from(text, position)
+          ends = [position]
+          count = 0
+          # How many more triplets belong to the UTF-8 character begun.
+          continuing = 0
+          while (after = @set.character_end(text, position))
+            octet = triplet_octet(text, position, after)
+            if octet && continuing > 0 && octet >= 0x80 && octet < 0xC0
+              continuing -= 1
+            else
+              count += 1
+              continuing = octet ? continuation_octets(octet) : 0
+            end
+            break if count > @length
+            ends << after
+            position = after
+          end
+          ends
+        end
+
+        # The octet a pct-encoded triplet at the position stands for, or
+        # nil if the character there is written as it is.
+        def triplet_octet(text, position, after)
+          return nil unless text.getbyte(position) == 37 &&
+            after == position + 3
+          text.byteslice(position + 1, 2).hex
+        end
+
+        # How many more octets a UTF-8 character that starts with this one
+        # has.
+        def continuation_octets(octet)
+          if octet >= 0xF0
+            3
+          elsif octet >= 0xE0
+            2
+          elsif octet >= 0xC0
+            1
+          else
+            0
+          end
+        end
+      end
+
       # Every character of the set that follows, with no other choice.
       class PossessiveRun < Run
         def follow(search, position, captures)

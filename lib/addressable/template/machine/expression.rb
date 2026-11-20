@@ -613,9 +613,7 @@ module Addressable
 
         # A variable's value: exploded, with the joiner between its members,
         # or as its operator takes a value. An exploded value stops before
-        # the first of the names (#named_texts) where the rest can match. A
-        # + or # value before the last stops at the next comma, which
-        # expansion writes between values; only the last can hold one.
+        # the first of the names (#named_texts) where the rest can match.
         def variable_steps(matcher, variable, names = [])
           if variable.explode && !names.empty?
             matcher.repeat_stopping_before(self.class.joiner, names) do
@@ -625,8 +623,6 @@ module Addressable
             matcher.repeat(self.class.joiner) do
               member_steps(matcher)
             end
-          elsif self.class.allows_reserved? && !variable.equal?(variables.last)
-            matcher.reserved_run(:reserved_no_comma)
           else
             value_steps(matcher, variable)
           end
@@ -636,8 +632,18 @@ module Addressable
         # and & operators write the variable's name first, so they need it;
         # an exploded value's member, which has no variable, reuses this
         # for the others.
-        def value_steps(matcher, _variable = nil)
-          matcher.greedy_run(:unreserved)
+        def value_steps(matcher, variable = nil)
+          value_run(matcher, variable, :unreserved)
+        end
+
+        # A run of a set's characters for a value, as many as can be first:
+        # at most its prefix's length, for a variable with one.
+        def value_run(matcher, variable, set)
+          if variable && variable.prefix
+            matcher.capped_run(set, variable.prefix)
+          else
+            matcher.greedy_run(set)
+          end
         end
 
         # An exploded value's member.

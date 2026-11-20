@@ -40,8 +40,13 @@ module Addressable
           matcher.exact(variable.name)
           matcher.optional do
             matcher.exact("=")
-            matcher.one_character(:unreserved)
-            matcher.greedy_run(:unreserved)
+            if variable.prefix
+              matcher.capped_run(:unreserved, variable.prefix,
+                at_least_one: true)
+            else
+              matcher.one_character(:unreserved)
+              matcher.greedy_run(:unreserved)
+            end
           end
         end
 
