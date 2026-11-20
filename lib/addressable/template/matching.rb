@@ -222,6 +222,8 @@ module Addressable
 
         captured = matched.captures
         index = 0
+        # The names whose value so far is a prefix's.
+        prefixed = {}
         expansions.each do |expansion|
           _, operator, varlist = *expansion.match(EXPRESSION)
           varspecs = varlist.split(',')
@@ -254,8 +256,15 @@ module Addressable
             end
             value = restore(name, value, processor)
             # A name that appears again keeps its first value, unless that
-            # was nil.
-            mapping[name] = value if mapping[name].nil?
+            # was nil. On the machine, which checks that a prefix's value is
+            # the start of the whole one, the whole value replaces it:
+            # {/var:1,var} gives "/v/value" var "value".
+            prefix = !modifier.nil? && modifier.start_with?(':')
+            if mapping[name].nil? ||
+                (joiners_required && prefixed[name] && !prefix && !value.nil?)
+              mapping[name] = value
+              prefixed[name] = prefix
+            end
             index += 1
           end
         end

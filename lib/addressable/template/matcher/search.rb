@@ -67,12 +67,23 @@ module Addressable
         end
 
         # Whether this is the first time the search reaches the state at
-        # the position. The captures don't change whether the rest can
-        # match, so they're left out.
-        def first_time?(state, position)
+        # the position, with the groups it depends on (State#depends_on)
+        # captured in the same places. Other captures don't change whether
+        # the rest can match, so they're left out.
+        def first_time?(state, position, captures)
           key = state.index * (@size + 1) + position
+          unless state.depends_on.empty?
+            key = [key] + state.depends_on.map { |group| span(group, captures) }
+          end
           return false if @tried[key]
           @tried[key] = true
+        end
+
+        # The group's text, from the latest start and end noted for it, or
+        # nil if it took no part.
+        def captured(group, captures)
+          start, finish = span(group, captures)
+          @text.byteslice(start, finish - start) if finish
         end
 
         # Where the longest run of the set starting at the position ends.
@@ -112,6 +123,22 @@ module Addressable
             found.from = place && place + 1
           end
           found.places.bsearch { |at| at >= position }
+        end
+
+        # Where the group's latest capture starts and ends, or nil if it
+        # took no part.
+        def span(group, captures)
+          start = finish = nil
+          list = captures
+          while list && !(start && finish)
+            if list.slot == group * 2
+              start ||= list.position
+            elsif list.slot == group * 2 + 1
+              finish ||= list.position
+            end
+            list = list.rest
+          end
+          [start, finish] if start && finish
         end
 
         # How many bytes the pattern matches at the position, or nil if it

@@ -81,6 +81,10 @@ module Addressable
         @required_text = []
         @last_required_literal = nil
         @required_text_ends_uri = false
+        # For each group a later state reads, the states that end its
+        # capture and those that read it.
+        @capture_ends = Hash.new { |hash, group| hash[group] = [] }
+        @readers = Hash.new { |hash, group| hash[group] = [] }
       end
 
       ##
@@ -178,6 +182,50 @@ module Addressable
         add(ProcessorPattern, source)
       end
 
+      ##
+      # A value that has to be an earlier group's: the writer says how much
+      # of the URI is that value, written for this place.
+      #
+      # @param [Integer] group The earlier group.
+      # @param [#length_at, #left_out?] writer
+      #   #length_at takes the search, a position and the earlier group's
+      #   text (nil if it took no part), and gives the length taken, or nil.
+      def same_value(group, writer)
+        reads(group, add(SameValue, group, writer))
+      end
+
+      ##
+      # Goes on only where the writer says the group's value agrees with
+      # the earlier group's.
+      #
+      # @param [Integer] earlier The earlier group.
+      # @param [Integer] group The group just captured.
+      # @param [#starts_with_first?] writer
+      #   Takes the earlier group's text (nil if it took no part) and this
+      #   group's, and says whether they agree.
+      def starts_with(earlier, group, writer)
+        reads(earlier, add(StartsWith, earlier, group, writer))
+      end
+
+      ##
+      # The block's states, or nothing where the writer allows the value
+      # that has to be the earlier group's to be left out, tried in that
+      # order.
+      #
+      # @param [Integer] group The earlier group.
+      # @param [#left_out?] writer
+      #   Takes the earlier group's text (nil if it took no part), and says
+      #   whether the value can be left out.
+      def optional_same_value(group, writer)
+        choice = add(Choice)
+        choice.first = @states.size
+        inside_optional { yield }
+        to_end = jump_ahead
+        choice.second = @states.size
+        reads(group, add(LeftOut, group, writer))
+        land([to_end])
+      end
+
       # The block's states, or nothing, tried in that order.
       def optional
         choice = add(Choice)
@@ -214,7 +262,7 @@ module Addressable
       def capture(group)
         add(Capture, group * 2)
         yield
-        add(Capture, group * 2 + 1)
+        @capture_ends[group] << add(Capture, group * 2 + 1)
       end
 
       # Goes on if the value being captured has taken something, and
@@ -288,6 +336,7 @@ module Addressable
         @required_text.freeze
         add(Done)
         @states.each { |state| state.link(@states) }
+        note_dependencies
         changed = true
         while changed
           changed = false
@@ -330,7 +379,7 @@ module Addressable
           # and the first time it failed, or we'd have stopped. Only states
           # that branch are remembered: the others have one way on, which
           # reaches a state that branches within a few steps.
-          next if state.branches? && !search.first_time?(state, position)
+          next if state.branches? && !search.first_time?(state, position, list)
           if state.is_a?(Done) && position == search.size
             return captures(text, list)
           end
@@ -390,6 +439,32 @@ module Addressable
         state = type.new(@states.size, *arguments)
         @states << state
         state
+      end
+
+      # Notes that the state reads the group's capture.
+      def reads(group, state)
+        @readers[group] << state
+        state
+      end
+
+      ##
+      # Gives each state that branches the groups whether the rest can
+      # match from it depends on: those whose capture has ended before it
+      # and that a state at or after it reads (SameValue, LeftOut). The
+      # search remembers such a state at a position once for each place
+      # those groups were captured (Search#first_time?), since a later
+      # value may only match one of them. A template with no name written
+      # twice has none, so this costs it nothing.
+      def note_dependencies
+        @readers.each do |group, readers|
+          ends = @capture_ends[group]
+          next if ends.empty?
+          from = ends.map(&:index).min
+          to = readers.map(&:index).max
+          @states[(from + 1)..to].each do |state|
+            state.depends_on += [group] if state.branches?
+          end
+        end
       end
 
       # The latest position noted for each slot.

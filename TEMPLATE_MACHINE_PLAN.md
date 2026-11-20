@@ -185,6 +185,21 @@ Decided on 2026-11-19:
   either one a pattern). Across expressions the next leader rule still
   applies: `{;a*}{;b*}` on `;x=1;y=2` gives `b` `{"y" => "2"}`, as
   `{/a*}{/b*}` gives `b` the last segment.
+- **A name written again matches the earlier value** (decided
+  2026-11-20), where that value's place in the URI is decided: it and
+  every variable before it end at their run's end, as what follows each
+  is a character it can't hold, and no other value comes between the
+  two. The later varspec then matches that value as it writes it
+  (written as the earlier one is, or as expansion writes it), and is
+  left out only where the earlier one is, or where it writes nothing
+  for the value. A prefix is the start of the value: `{/var:1,var}` on
+  `/v/value` gives `var` `"value"`. Elsewhere (`{a}{a}`, `{a}{b}{a}`)
+  the name matches as if written once, the first value winning, as
+  `:regexp` does: the earlier value could end at every position, and
+  checking each costs the value's length, so the search would grow with
+  the square of the URI's length. `RepeatedNames` decides which
+  qualify; the search remembers the states between the two once for
+  each place the earlier value took (`Matcher#note_dependencies`).
 - **Names in `;`, `?` and `&` expressions are matched as written.**
 - **A variable with a processor pattern is optional like any other**, so
   the earlier variable can take text the pattern could match: `{a}{b}`
@@ -248,6 +263,11 @@ What changes, `:regexp`'s result first (2.9.2 and this branch's
   `first=foo` give `first` `nil` and `hash` all four pairs; they will
   give `first` `"foo"`. `template_spec.rb`'s own note on this example
   says a separate key is the more likely reading.
+- **A name written again has one value.** `{a}/{a}` on `x/y`,
+  `/{lang}/page{?lang}` on `/en/page?lang=fr` and on `/en/page`, and
+  `{?a,a}` on `?a=1&a=2` give the first value (`"x"`, `"en"`, `"1"`),
+  which doesn't expand back to the URI; they won't match.
+  `{/var:1,var}` on `/v/value` gives `"v"`, and will give `"value"`.
 - **No `nil => ""` key.** `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to
   `""`, since `b`'s empty capture has no name. Inside an exploded `;`
   value, an empty member is a `""` key, as expansion writes one:
@@ -265,15 +285,16 @@ Still to decide:
 
 - **Prefix lengths.** `{a:3}` matches `abcdef` as `{"a" => "abcdef"}`,
   though expanding `{a:3}` never writes more than three characters.
-  Taking at most three would reject it and bound the run.
-- **A variable written twice.** `{a}/{a}` matches `x/y` as
-  `{"a" => "x"}`, and `{?a,a}` matches `?a=1&a=2` as `{"a" => "1"}`.
-  The machine could compare the two captures (a regexp needs a
-  backreference) and reject both. Templates that reuse a name stay
-  valid: RFC 6570's own examples include `{.who,who}` and
-  `{/var:1,var}`, and `/{lang}/docs{?lang}` is common. Using a name
-  both exploded and not is valid too: `{/a}{/a*}` with `["x", "y"]`
-  writes `/x,y/x/y`.
+  Taking at most three would reject it and bound the run. It would also
+  fix a known wrong result: `{a:1}{a:2}` on `xy` gives `"xy"`, which
+  writes `xxy`. With bounded prefixes, two prefixes of a name can be
+  compared (the shorter is the start of the longer), and it won't
+  match.
+- **A variable written twice where its place isn't decided**
+  (`{a}{a}`, `{a}{b}{a}`, `{a}.{a}`), or exploded in one varspec and not
+  another (`{/a}{/a*}` with `["x", "y"]` writes `/x,y/x/y`): matched as
+  if written once. Templates that reuse a name stay valid: RFC 6570's
+  own examples include `{.who,who}` and `{/var:1,var}`.
 - **A list or hash in an unexploded variable.** `{/a}` with
   `["x", "y"]` writes `/x,y`, but an unexploded value can't hold a
   comma outside `+` and `#`, so `{/a}` on `/x,y` gives `nil`, and so
@@ -329,6 +350,13 @@ no steps), `{;a*}{;b*}{;c}!` 2.1 → 4.2 MB (the next leader rule tries
 each `;` value twice), and `{+v1,…,v10}` unchanged at nothing. The
 named-variable rule's shapes stay small: `{;a*,b}!` 0.9 MB,
 `{;a*}{;b}{;c}!` 2.1 MB.
+
+Names written again (2026-11-20): every shape grows linearly at 1, 4 and
+16 KB. `/{lang}/p{?lang}` and `{/v:3,v}` take under 1 ms at 16 KB.
+Comparing at every place the earlier value could end was quadratic
+(`{a}{a}` 1.0 s, `{a}{+a}` on `%41`s 3.1 s at 16 KB) and, with a value
+between (`{a}{b}{a}`), close to cubic (4.7 s at 1 KB), which is why only
+decided places qualify.
 
 ## What's left
 
@@ -450,6 +478,48 @@ cover the shapes in 3 and 4. What's left, in order:
      processor patterns handled apart; and it's a second matcher core.
      Prototype it in a scratch file against the profile before
      deciding.
+   - **Notes on where the memory goes (2026-11-20, from reading
+     `Search` and `Matcher#match`, not yet measured).** Of the 47 MB
+     for `{a}`×12`!`, the two big pieces are likely the memo and the
+     capture lists. Both can shrink without a second matcher core, and
+     neither changes a result. Measure each with
+     `ObjectSpace.memsize_of` or `memory_profiler` (it runs on 2.3)
+     before deciding.
+     - *The memo is a Hash of Integers.* `Search#first_time?` already
+       computes a dense key (`state.index * (@size + 1) + position`),
+       so the only cost left is the Hash: about 30–40 bytes an entry
+       on 3.3, plus the spare space a Hash keeps as it grows, so 544k
+       entries are likely over 20 MB. A bit-packed memo is then a
+       handful of lines rather than fiddly: a binary String of
+       `(states * (size + 1) + 7) / 8` zero bytes, read and set with
+       `getbyte` and `setbyte` (Ruby 1.9+). That's one bit an entry,
+       about 1/250th of the Hash. To keep it small on long URIs, number
+       only the states that branch (`State#branches?`) and use that
+       number in the key. A state with `depends_on` also keys on
+       captures, so it can't use a bit. Keep the Hash for those states
+       only; a template with no repeated name has none of them.
+     - *A `CaptureList` for every capture state reached.* Each is a
+       Struct, so an object on the heap, and `Capture` isn't memoized,
+       so one is made every time the search reaches it, including on
+       paths that fail. That's likely the 336k objects. The other way
+       to give each attempt its captures without copying is an undo
+       log on the stack you already have. Keep one mutable `slots`
+       Array. When `Capture#follow` sets a slot, it first pushes a
+       restore entry (the slot and its old value, as three flat
+       entries like the others) and then the next attempt. When
+       `Matcher#match` pops a restore entry, the attempts above it
+       have all failed, so it puts the old value back. Attempts pushed
+       earlier then see the captures as they were when they were
+       pushed. `Done` copies `slots`. That allocates nothing per
+       capture. `LeftOut`'s `captures.rest` becomes clearing the
+       slot's start (with its own restore entry), and `captured` reads
+       `slots`.
+     - *Already covered, from a general list of NFA memory costs:*
+       states as flat records (the stack's three entries, no
+       `Attempt`), character classes as one run pattern per set rather
+       than per-character edges, no DFA, and building the matcher once
+       per template (except with a processor that has `match`; see
+       finding 5).
    - Then the smaller ones in 5: an Array for `FirstBytes`, fewer
      allocations per step, runs that jump rather than step.
 2. **Decisions for the maintainer (7, 9):** changelog entries now or

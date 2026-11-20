@@ -1309,7 +1309,17 @@ describe Addressable::Template, "with the :machine engine, #match" do
     ["{;a*}{;b*}{;c}!", ";a=1" * 4_000 + "?!"],
     # a's value is followed by "=", which b's name needs next, so it has
     # to try stopping at each of its characters.
-    ["{?a,b,c}!", "?a=" + "x" * 16_000 + "=?!"]
+    ["{?a,b,c}!", "?a=" + "x" * 16_000 + "=?!"],
+    # A name written again: compared with the earlier value where its
+    # place is decided, and otherwise matched as if written once, since
+    # comparing at every place the earlier value could end would grow
+    # with the square of the URI's length.
+    ["/{lang}/p{?lang}", "/" + "a" * 16_000 + "/p?lang=" + "a" * 16_000 + "?!"],
+    ["{;a}{;a}", ";a=" + "x" * 16_000 + ";a=" + "x" * 15_999 + "?!"],
+    ["{/v:3,v}", "/aaa/" + "a" * 16_000 + "?!"],
+    ["{a}{a}{a}!", "a" * 16_000 + "?!"],
+    ["{a}{b}{a}!", "a" * 16_000 + "?!"],
+    ["{a}{+a}!", "%41" * 5_000 + " !"]
   ].each do |pattern, uri|
     it "rejects a URI ending in #{uri[-2, 2].inspect} that doesn't match " \
       "#{pattern} in linear time" do
@@ -1841,6 +1851,55 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
     "a leader comes with a value" => [
       ["{#a*}x", "#x", {"a" => nil}, {"a" => [""]}],
       ["{?a}x", "?x", {"a" => nil}, nil]
+    ],
+    "a name written again matches the earlier value, where its place is " \
+    "decided" => [
+      ["{a}/{a}", "x/y", {"a" => "x"}, nil],
+      ["/{lang}/page{?lang}", "/en/page?lang=fr", {"lang" => "en"}, nil],
+      ["/{lang}/page{?lang}", "/en/page", {"lang" => "en"}, nil],
+      ["{?a,a}", "?a=1&a=2", {"a" => "1"}, nil],
+      ["{.who,who}", ".fred.x", {"who" => "fred"}, nil],
+      ["{;a}{;a}", ";a=1;a=2", {"a" => "1"}, nil],
+      ["/{org}{/lang}/docs{?lang}", "/o/en/docs?lang=fr",
+        {"org" => "o", "lang" => "en"}, nil],
+      # Written as the earlier value is, or as expansion writes it.
+      ["{a}/{a}", "%41/A", {"a" => "A"}, {"a" => "A"}],
+      ["{a}/{+a}", "a%2Fb/a/b", {"a" => "a/b"}, {"a" => "a/b"}],
+      ["{+a}/{a}", "a/b/a%2Fb", {"a" => "a/b"}, {"a" => "a/b"}],
+      ["{a}/{a}", "é/%C3%A9", {"a" => "é"}, {"a" => "é"}],
+      # Left out in both, or where one writes nothing for an empty value.
+      ["{a}/{a}", "/", {"a" => nil}, {"a" => nil}],
+      ["{?a}/{a}", "?a=/", {"a" => ""}, {"a" => ""}],
+      ["{a}/{?a}", "/?a=", {"a" => ""}, {"a" => ""}],
+      ["{a}/{?a}", "/?a=x", {"a" => "x"}, nil],
+      ["{?a}/{?a}", "/", {"a" => nil}, {"a" => nil}],
+      ["{?a}/{?a}", "?a=1/", {"a" => "1"}, nil],
+      ["{;a},{;a}", ";a,;a", {"a" => ""}, {"a" => ""}],
+      # A prefix is the start of the value, which the whole one gives.
+      ["{/var:1,var}", "/v/value", {"var" => "v"}, {"var" => "value"}],
+      ["{/var:1,var}", "/x/value", {"var" => "x"}, nil],
+      ["{/var:1,var}", "/v", {"var" => ""}, nil],
+      ["{a:1},{a}", "x,", {"a" => "x"}, nil],
+      ["{a:1},{a}", ",", {"a" => nil}, {"a" => ""}],
+      ["{/var,var:1}", "/value/v", {"var" => "value"}, {"var" => "value"}],
+      ["{/var,var:1}", "/value/x", {"var" => "value"}, nil],
+      # Where the earlier value could end in many places, or another value
+      # comes between, as if the name were written once.
+      ["{a}{a}", "xy", {"a" => "xy"}, {"a" => "xy"}],
+      ["{a}{b}{a}", "xyx", {"a" => "xyx", "b" => nil},
+        {"a" => "xyx", "b" => nil}],
+      ["{a}{?b}/{a}", "x/y", {"a" => "x", "b" => nil},
+        {"a" => "x", "b" => nil}],
+      # Known wrong: no value expands to "xy" (a = "xy" writes "xxy"), so
+      # it shouldn't match. It waits on prefix lengths: once {a:1} takes
+      # at most one character, the two prefixes can be compared (the
+      # plan's "Still to decide").
+      ["{a:1}{a:2}", "xy", {"a" => "xy"}, {"a" => "xy"}],
+      # A literal the value could hold, or one that starts with "%", or a
+      # "#" that may be written "%23", doesn't decide where it ends.
+      ["{a}.{a}", "x.y", {"a" => "x"}, {"a" => "x"}],
+      ["{a}%2F{a}", "x%2Fy", {"a" => "x"}, {"a" => "x"}],
+      ["\#{a}\#{a}", "#x#y", {"a" => "x"}, {"a" => "x"}]
     ]
   }.each do |fix, examples|
     context "where #{fix}" do

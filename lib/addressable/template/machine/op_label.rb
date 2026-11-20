@@ -27,6 +27,11 @@ module Addressable
         def self.leader; "."; end
         def self.joiner; "."; end
 
+        # A label's value holds "." only where label_dots allows it.
+        def value_set(_variable)
+          label_dots ? :unreserved : :unreserved_no_dot
+        end
+
         private
 
         # --- Matching ---

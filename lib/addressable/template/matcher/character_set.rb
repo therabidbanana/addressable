@@ -71,6 +71,15 @@ module Addressable
           end
         end
 
+        # Whether the character is one of the set's as it is: an ASCII
+        # character in the set, or any non-ASCII one.
+        #
+        # @param [String] character One character.
+        def holds?(character)
+          byte = character.getbyte(0)
+          byte >= 0x80 || @ascii[byte]
+        end
+
         private
 
         def hex?(byte)

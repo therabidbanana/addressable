@@ -165,7 +165,8 @@ module Addressable
       # patterns, if any.
       def build_matcher(processor = nil)
         matcher = Matcher.new(expression_texts)
-        @nodes.each { |node| node.add_match_steps(matcher, processor) }
+        names = Machine::RepeatedNames.new
+        @nodes.each { |node| node.add_match_steps(matcher, processor, names) }
         matcher.finish
       end
 

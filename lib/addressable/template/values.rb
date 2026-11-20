@@ -226,6 +226,23 @@ module Addressable
       end
 
       ##
+      # A string value as a varspec writes it: its prefix, if it has one,
+      # pct-encoded for its operator.
+      #
+      # @param [String] value The value.
+      # @param [Boolean] allow_reserved
+      #   Whether reserved characters and pct-encoded triplets are kept.
+      # @param [Integer, nil] length The prefix's length, if any.
+      #
+      # @return [String] The encoded value.
+      def self.encode_string(value, allow_reserved, length)
+        value = prefix(value, length, allow_reserved) if length
+        Addressable::URI.encode_component(
+          value, allow_reserved ? RESERVED_ENCODE : UNRESERVED_ENCODE
+        )
+      end
+
+      ##
       # Drops the undefined (nil) members of a list or associative array
       # value. RFC 6570 treats a list or associative array with no defined
       # members as undefined, as it does nil.
@@ -355,12 +372,10 @@ module Addressable
             variable.tag(pairs.join(','), nil, true)
           end
         else
-          if variable.prefix
-            value = Values.prefix(value, variable.prefix,
-              variable.allows_reserved?)
-          end
           variable.tag(
-            Addressable::URI.encode_component(value, encode_map), nil, false
+            Values.encode_string(value, variable.allows_reserved?,
+              variable.prefix),
+            nil, false
           )
         end
       end

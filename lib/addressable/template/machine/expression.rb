@@ -17,6 +17,7 @@
 #++
 
 require "addressable/template/machine/tagged_value"
+require "addressable/template/machine/repeated_value"
 
 module Addressable
   class Template
@@ -173,11 +174,17 @@ module Addressable
         # makes the joiners optional and tries the shortest values first
         # (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine").
         #
+        # A variable whose name an earlier varspec has matches only that
+        # one's value (RepeatedValue).
+        #
         # @param [Matcher] matcher The matcher.
         # @param [#match, nil] processor
         #   A processor whose match method may give a variable's value a
         #   pattern of its own, which then has to match.
-        def add_match_steps(matcher, processor = nil)
+        # @param [RepeatedNames] names
+        #   The varspecs so far, for the template's later expressions.
+        def add_match_steps(matcher, processor = nil,
+                            names = RepeatedNames.new)
           # Asked for every variable before any steps, as :regexp asks.
           patterns = variables.map do |variable|
             processor && processor.match(variable.name)
@@ -186,17 +193,24 @@ module Addressable
           positions = variables.each_index.reject do |position|
             absorbed?(position, patterns)
           end
+          repeats = variables.each_with_index.map do |variable, position|
+            names.note(self, variable, groups[position], patterns[position])
+          end
           # Adds a variable's value, by its position: as its steps take it,
           # or, with :empty, nothing. With an array, a value that takes
           # nothing is left out instead, at the place the array's states are
           # later landed (Matcher#leave_out_if_empty).
           value = lambda do |position, how = nil|
+            repeated = repeats[position]
+            extends = repeated && repeated.extends?
             matcher.capture(groups[position]) do
               variable = variables[position]
               leaders = next_leaders.select { |text| may_hold?(variable, text) }
               names = named_texts(position, positions, patterns,
                 self.class.joiner)
-              if how == :empty
+              if repeated && !extends
+                matcher.same_value(repeated.first_group, repeated)
+              elsif how == :empty
                 # Nothing to add.
               elsif patterns[position]
                 matcher.processor_pattern(patterns[position].to_s)
@@ -212,16 +226,28 @@ module Addressable
                   variable_steps(matcher, variable, names)
                 end
               end
-              how << matcher.leave_out_if_empty if how.is_a?(Array)
+              # A value of its own that has to agree with an earlier one
+              # is checked even when it's empty, so it isn't left out.
+              if how.is_a?(Array) && !extends
+                how << matcher.leave_out_if_empty
+              end
+            end
+            if extends
+              matcher.starts_with(repeated.first_group, groups[position],
+                repeated)
             end
           end
           # Adds the block's steps for a variable, which may be left out. An
           # exploded variable is left out first where a later variable's
           # name follows (#named_texts); prefix is the text before that
-          # name.
+          # name. A name written again is left out only where its first
+          # varspec allows it (RepeatedValue#left_out?).
           optional = lambda do |position, prefix, &steps|
             names = named_texts(position, positions, patterns, prefix)
-            if names.empty?
+            repeated = repeats[position]
+            if repeated
+              matcher.optional_same_value(repeated.first_group, repeated, &steps)
+            elsif names.empty?
               matcher.optional(&steps)
             else
               matcher.optional_unless_followed_by(names, &steps)
@@ -297,6 +323,31 @@ module Addressable
         # Whether the expression is one variable that isn't exploded.
         def single_value?
           variables.size == 1 && !variables.first.explode
+        end
+
+        # The set of characters a variable's value can hold as it is, as
+        # its steps match it (Matcher::SETS). A + or # value before the
+        # last can't hold a comma.
+        def value_set(variable)
+          return :unreserved unless self.class.allows_reserved?
+          variable.equal?(variables.last) ? :reserved : :reserved_no_comma
+        end
+
+        ##
+        # Whether a variable's value, once it starts, can only end at the
+        # end of its run of characters: whatever can follow it starts with
+        # a character it can't hold, or ends the template. That's the joiner
+        # (a later variable in the expression can follow; no value holds
+        # its joiner), and what follows the expression (#starts_outside?).
+        # Only for an unexploded value that isn't + or #: those stop at a
+        # "?" or "#" in their run.
+        #
+        # @param [Variable] variable The variable.
+        #
+        # @return [TrueClass, FalseClass]
+        def end_decided?(variable)
+          return false if variable.explode || self.class.allows_reserved?
+          starts_outside?(following, Matcher::SETS.fetch(value_set(variable)))
         end
 
         private
@@ -432,6 +483,27 @@ module Addressable
             end
           end
           matcher.land(ahead[positions.size])
+        end
+
+        ##
+        # Whether the text from the node on starts with a character outside
+        # the set, or is the end of the template. An expression may match
+        # nothing, so its leader and what follows it both have to. A
+        # literal or leader written "#" that may be "%23", one that starts
+        # with "%", and a default or + expression, which has no leader, can
+        # all start with what the set holds.
+        #
+        # @param [Literal, Expression, nil] node The node.
+        # @param [Matcher::CharacterSet] set The set.
+        #
+        # @return [TrueClass, FalseClass]
+        def starts_outside?(node, set)
+          return true if node.nil?
+          text = node.is_a?(Literal) ? node.pattern_text : node.class.leader
+          return false if text.empty? || text.start_with?("%")
+          return false if text.start_with?("#") && node.fragment
+          return false if set.holds?(text[0])
+          node.is_a?(Literal) || starts_outside?(node.following, set)
         end
 
         ##

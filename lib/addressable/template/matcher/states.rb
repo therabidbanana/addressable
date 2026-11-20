@@ -41,17 +41,23 @@ module Addressable
         end
       end
 
+      NO_GROUPS = [].freeze
+
       # A state in the graph. Each one moves on to the state added after it
       # unless it says otherwise.
       class State
         attr_reader :index
         # See FirstBytes. Matcher#finish works them out.
         attr_accessor :first_bytes
+        # The groups whose captures decide whether the rest can match from
+        # here (Matcher#note_dependencies).
+        attr_accessor :depends_on
 
         def initialize(index)
           @index = index
           @first_bytes = NOTHING
           @bytes_after_run = {}
+          @depends_on = NO_GROUPS
         end
 
         # Points the state at the states it moves on to, once all of them
@@ -389,6 +395,62 @@ module Addressable
           end
           # Handed over last first, so that the first is tried first.
           ends.reverse_each { |finish| search.try(@next, finish, captures) }
+        end
+      end
+
+      # A value that has to be an earlier group's, which the writer reads
+      # (Matcher#same_value). It has one way on, if any: once the earlier
+      # value is known, so is this one.
+      class SameValue < State
+        def initialize(index, group, writer)
+          super(index)
+          @group = group
+          @writer = writer
+        end
+
+        # The value can start with anything, or be empty.
+        def possible_first_bytes
+          ANYTHING
+        end
+
+        def follow(search, position, captures)
+          earlier = search.captured(@group, captures)
+          length = @writer.length_at(search, position, earlier)
+          search.try(@next, position + length, captures) if length
+        end
+      end
+
+      # Goes on, taking nothing, only where the value just captured agrees
+      # with an earlier group's, which the writer says (Matcher#starts_with).
+      class StartsWith < State
+        def initialize(index, earlier, group, writer)
+          super(index)
+          @earlier = earlier
+          @group = group
+          @writer = writer
+        end
+
+        def follow(search, position, captures)
+          earlier = search.captured(@earlier, captures)
+          text = search.captured(@group, captures)
+          return unless @writer.starts_with_first?(earlier, text)
+          search.try(@next, position, captures)
+        end
+      end
+
+      # Goes on, taking nothing, only where a value that has to be an
+      # earlier group's can be left out, which the writer says
+      # (Matcher#optional_same_value).
+      class LeftOut < State
+        def initialize(index, group, writer)
+          super(index)
+          @group = group
+          @writer = writer
+        end
+
+        def follow(search, position, captures)
+          return unless @writer.left_out?(search.captured(@group, captures))
+          search.try(@next, position, captures)
         end
       end
 
