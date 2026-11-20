@@ -188,6 +188,13 @@ What changes, `:regexp`'s result first (2.9.2 and this branch's
   `+`, `#`, `/` and `;` give a variable that takes nothing
   (`{+a*,b*}` on `x,y` gives `b` `[]`). A value that is in the URI
   but empty keeps its empty value: `{/a*}` on `/` gives `[""]`.
+- **An exploded `+` or `#` value can be followed by text.** Its
+  members are possessive runs of every reserved character but the
+  comma, so the last member takes whatever follows the expression up
+  to the next comma, and the match fails: `{+a*}!` on `y!`,
+  `{+a*}/{+b*}` on `x/y` and `{#a*}!` on `#y!` give `nil`, as does
+  2.9.2. The machine will take members greedily, giving back what the
+  rest needs: `{+a*}!` on `y!` gives `{"a" => ["y"]}`.
 - **No `nil => ""` key.** `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to
   `""`, since `b`'s empty capture has no name.
 - **No empty member out of nowhere.** `{a*}{b}` on `x,y` gives
@@ -212,11 +219,14 @@ expressions (strings for unexploded variables, lists and hashes for
 exploded ones), on the machine as it is, failed 9,914: 2,715 only
 because a variable left out came back as `""`, `[]` or `{}`, 5,322
 with other values (mostly names in `;`, `?` and `&`, and the exploded
-splits above), and 1,877 didn't match at all. The ones that didn't
-match mostly reuse a name across expressions with values of different
-types, or put a `+` or `#` expression before a literal with reserved
-characters (`{+a*}!{+a}` with `a = ["x"]` writes `x!x`, which doesn't
-match); triage them before writing the spec.
+splits above), and 1,877 didn't match at all. Rerun with each name used
+once (40,000 templates), 1,387 didn't match, every one an exploded `+`
+or `#` value followed by text (see above); without exploded `+` and `#`
+values, none failed to match. The first run also reused names across
+expressions with values of different types (a hash for `{;a*}` and
+`{a}`), which can't round-trip; the spec's generator should give each
+name values every use of it can match. The "other values" class still
+needs sorting by cause.
 
 ## What's left
 
