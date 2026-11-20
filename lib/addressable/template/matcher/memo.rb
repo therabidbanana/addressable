@@ -24,17 +24,22 @@ module Addressable
       # in the URI. The search gives each state that branches a row
       # (State#memo_row), and asks #first_time? before it follows one.
       #
-      # A row is kept as one bit for each position, in a String of bytes
-      # made the first time the row is used: an eighth of the URI's length
-      # for each state reached, where a Hash of positions takes about 35
-      # bytes for each one tried. Nothing outside this class reads the
-      # bits: #positions and #to_s list what's noted, for specs and for
-      # reading a search that went wrong.
+      # A row is a String used as a list of small numbers, one byte for
+      # each position in the URI: NOT_TRIED until the position is noted,
+      # and TRIED after. It's made the first time the row is used. That's
+      # one byte for each position, for each state reached. An Array of
+      # true and nil takes eight, which is no less than one Hash of every
+      # state and position tried (about 35 bytes each) where a state is
+      # tried at a few positions in each stretch. #positions and #to_s
+      # list what's noted, for specs and for reading a search that went
+      # wrong.
       #
       # @api private
       class Memo
-        # A zero byte, to make rows of.
-        NO_BYTE = "\0".b.freeze
+        NOT_TRIED = 0
+        TRIED = 1
+        # One position not yet tried, to make rows of.
+        BLANK = NOT_TRIED.chr.b.freeze
 
         # @param [Integer] size
         #   The URI's length in bytes. Positions run from 0 to the size,
@@ -52,25 +57,20 @@ module Addressable
         #
         # @return [TrueClass, FalseClass]
         #   Whether this is the first time the position is noted in the row.
+        #
+        # @raise [IndexError] For a position past the end of the URI.
         def first_time?(row, position)
-          unless position >= 0 && position <= @size
-            raise IndexError, "position #{position} outside 0..#{@size}"
-          end
-          bytes = (@rows[row] ||= NO_BYTE * ((@size >> 3) + 1))
-          byte = bytes.getbyte(position >> 3)
-          bit = 1 << (position & 7)
-          return false if byte & bit != 0
-          bytes.setbyte(position >> 3, byte | bit)
+          tried = (@rows[row] ||= BLANK * (@size + 1))
+          return false if tried.getbyte(position) == TRIED
+          tried.setbyte(position, TRIED)
           true
         end
 
         # The positions noted in the row, in order.
         def positions(row)
-          bytes = @rows[row]
-          return [] unless bytes
-          (0..@size).select do |position|
-            bytes.getbyte(position >> 3) & (1 << (position & 7)) != 0
-          end
+          tried = @rows[row]
+          return [] unless tried
+          (0..@size).select { |position| tried.getbyte(position) == TRIED }
         end
 
         # The rows used, a row to a line, each with its positions.

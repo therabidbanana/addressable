@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (4,924 and 4,810 examples), and
+full suite passes in both IDNA modes (4,931 and 4,817 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -106,8 +106,8 @@ at 3,000 iterations, two runs, 2026-11-20):
 1.4–1.7× (reserved, fragment 2.1×). Every adversarial shape in the
 profile and in `template_machine_spec.rb`'s linear-time checks grows
 linearly, but the absolute cost can be far above `:regexp`'s: at
-n=2,000, `{;a*}{;b*}{;c}!` (ending `?!`) takes 54 ms and 0.67 MB
-(3.3 MB before the memo became bits), against 3 ms for `:regexp`. `{a}`×12`!` took 46 ms and 3.1 MB until its
+n=2,000, `{;a*}{;b*}{;c}!` (ending `?!`) takes 52 ms and 0.46 MB
+(3.3 MB before item 6), against 3 ms for `:regexp`. `{a}`×12`!` took 46 ms and 3.1 MB until its
 later variables lost their states (`Slots`, `empty_only`); it now takes
 0.06 ms, as `:regexp` does.
 
@@ -371,13 +371,12 @@ it").
 On a URI that doesn't match, the search tries every state at every
 position it can reach, and remembers each branching one, so memory
 grows with the URI's length times the template's branching states: a
-bit for each, and a `CaptureList` for each capture it passes.
+byte for each position, for each state reached.
 What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
-`{a}{b,c}!` 1.44 MB, `{;a*}{;b*}{;c}!` 1.31 MB, `{+a}/{b}!` 0.93 MB,
-nearly all of it `CaptureList`s (16,000 to 32,000 of them; item 6),
-and under 0.35 MB for the rest. The memo is under 0.06 MB for each.
-`:regexp` allocates well under 0.1 MB. Before items 5 and 6, the memo
-alone was 16.8 MB for `{a}`×12`!` and 4.2 MB for `{;a*}{;b*}{;c}!`.
+`{;a*}{;b*}{;c}!` 0.90 MB, of which the memo is 0.43 MB, and under
+0.4 MB for the other shapes measured. `:regexp` allocates well under
+0.1 MB. Before items 5 and 6, the memo alone was 16.8 MB for
+`{a}`×12`!` and 4.2 MB for `{;a*}{;b*}{;c}!`.
 
 5. **Prune variables that can never take a character (built).** The
    first variable of a default expression right after a default or `+`
@@ -402,41 +401,54 @@ alone was 16.8 MB for `{a}`×12`!` and 4.2 MB for `{;a*}{;b*}{;c}!`.
       isn't known from the text alone, so it needs a state that reads
       `a`'s capture, or a second copy of the states after `a`. Item
       17's general fix may cover it; decide there.
-6. **Shrink the memo and the capture lists.** Notes from reading
-   `Search` and `Matcher#match` (2026-11-20, not yet measured; measure
-   each with `ObjectSpace.memsize_of` or `memory_profiler`, which runs
-   on 2.3, before deciding). Neither changes a result.
-   - *The memo was a Hash of Integers (built).* `Matcher::Memo` keeps
-     one bit for each position, in a row of bytes for each state that
-     branches (`State#memo_row`), made when the state is first reached.
-     The bits stay inside the class: `Memo#positions` and `#to_s` list
+6. **Shrink the memo and the capture lists (built).** Neither changes
+   a result: 43,202 generated templates and texts give the same output.
+   What one match allocates rejecting 16 KB went from 6.55 MB to
+   0.90 MB for `{;a*}{;b*}{;c}!`, 3.52 to 0.23 MB for `{a}{b,c}!`,
+   1.83 to 0.37 MB for `{+a}/{b}!` and 1.06 to 0.21 MB for
+   `{/a*,b*,c*}!`.
+   - *The memo was one Hash of every state and position.*
+     `Matcher::Memo` keeps a row for each state that branches
+     (`State#memo_row`): a String with one byte for each position, 0
+     until it's tried and 1 after. `Memo#positions` and `#to_s` list
      what a search tried, and `Matcher#match` takes a `Search` so a
      caller can read its memo afterwards. A state with `depends_on`
-     also keys on captures, so those stay in a Hash. Rejecting 16 KB
-     with `{;a*}{;b*}{;c}!` went from 6.55 MB allocated (4.19 MB of it
-     the Hash) to 1.31 MB, and `{/a*,b*,c*}!` from 1.06 MB to 0.15 MB.
-     A typical match makes a few more objects (a row for each state
-     reached: 3 to 15 more), and takes the same time within the
-     profile's noise. `FollowedBy` also stopped making a String for
-     each look (28,000 of them in that match).
-   - *A `CaptureList` for every capture state reached.* Each is a
-     Struct, so an object on the heap, and `Capture` isn't memoized, so
-     one is made every time the search reaches it, including on paths
-     that fail. The other way to give each attempt its captures without
-     copying is an undo log on the stack the search already has. Keep
-     one mutable `slots` Array. When `Capture#follow` sets a slot, it
-     first pushes a restore entry (the slot and its old value, as three
-     flat entries like the others) and then the next attempt. When
-     `Matcher#match` pops a restore entry, the attempts above it have
-     all failed, so it puts the old value back. Attempts pushed earlier
-     then see the captures as they were when they were pushed. `Done`
-     copies `slots`. That allocates nothing per capture.
-     `LeaveOutIfEmpty`'s `captures.rest` becomes clearing the slot's
-     start (with its own restore entry), and `Search#captured` and
-     `Search#span` (used by `SameValue`, `LeftOut`, `StartsWith` and
-     the memo key) read `slots`.
-   - *Already covered:* states as flat records (the stack's three
-     entries, no `Attempt` objects), character classes as one run
+     also keys on captures, so those stay in a Hash. Measured apart
+     from the search (16 KB, 40 rows, every position asked twice):
+
+     | Memo | Memory | Time |
+     |---|---|---|
+     | Hash | 33.6 MB | 123 ms |
+     | Array of `true` for each row | 5.1 MB | 74 ms |
+     | a byte for each position (built) | 0.64 MB | 87 ms |
+     | a bit for each position | 0.08 MB | 138 ms |
+
+     The Array reads best, but saves nothing where a state is tried
+     at a few positions in each stretch: 3.9 MB against the Hash's
+     4.2 MB for `{;a*}{;b*}{;c}!`, where the bytes take 0.43 MB. The
+     bits were built first and replaced: they need shifts and masks,
+     and are the slowest. If memory matters more later, they're a
+     change inside `Memo` alone.
+   - *A `CaptureList` was made for every capture state reached*
+     (16,000 to 32,000 a match in the shapes above). The captures are
+     now one array of slots in `Search`, and a capture is undone, not
+     copied: setting a slot first adds an entry under the attempts
+     that follow, which puts the old value back when the search comes
+     down to it (`Search#run`). Only `Search` numbers the slots; the
+     states name a group (`start_capture`, `end_capture`, `leave_out`,
+     `start_of`, `span`). A search that fails leaves every slot nil,
+     which a spec checks.
+   - *What it costs.* The search alone (`Matcher#match`) is about 5 to
+     10% slower than before this item on typical URIs, measured best
+     of seven on a noisy machine (simple 6.9 to 7.6 µs, API 23.1 to
+     25.6 µs). The search is about a quarter of a match, so the
+     profile's match ratios don't show it. Accepted for the memory
+     (2026-11-20), and not tracked down; the memo alone is faster than
+     the Hash was.
+   - `FollowedBy` also stopped making a String each time it looks
+     (28,000 of them in one match).
+   - *Already covered:* states as flat records (the stack's two
+     entries for an attempt, no `Attempt` objects), character classes as one run
      pattern per set rather than per-character edges, no DFA, and
      building the matcher once per template (except with a processor
      that has `match`; see item 8).

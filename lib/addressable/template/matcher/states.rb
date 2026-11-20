@@ -206,9 +206,9 @@ module Addressable
           end.join(" ")
         end
 
-        def follow(search, position, captures)
+        def follow(search, position)
           length = search.skip(@pattern, position)
-          search.try(@next, position + length, captures) if length
+          search.try(@next, position + length) if length
         end
       end
 
@@ -272,7 +272,7 @@ module Addressable
           end
         end
 
-        def follow(search, position, captures)
+        def follow(search, position)
           if @bytes_after_run_end
             # What follows can only start inside this run of the set's
             # characters if one of these bytes comes after the run, so
@@ -292,7 +292,7 @@ module Addressable
           stop = @next if @next.first_bytes.allow?(search, position)
           after = @set.character_end(search.text, position)
           more = self if after
-          search.try_in_order(more, after, stop, position, captures)
+          search.try_in_order(more, after, stop, position)
         end
       end
 
@@ -313,9 +313,9 @@ module Addressable
           @texts.map(&:inspect).join("|")
         end
 
-        def follow(search, position, captures)
+        def follow(search, position)
           return unless search.skip(@pattern, position)
-          search.try(@next, position, captures)
+          search.try(@next, position)
         end
       end
 
@@ -330,9 +330,9 @@ module Addressable
           nil
         end
 
-        def follow(search, position, captures)
+        def follow(search, position)
           after = @set.character_end(search.text, position)
-          search.try(@next, after, captures) if after
+          search.try(@next, after) if after
         end
       end
 
@@ -349,7 +349,7 @@ module Addressable
           nil
         end
 
-        def follow(search, position, captures)
+        def follow(search, position)
           run_end = search.run_end(@set, position)
           place = [
             search.next_occurrence("?", position),
@@ -357,7 +357,7 @@ module Addressable
           ].compact.min
           return unless place && place < run_end
           stop = @next if @next.first_bytes.allow?(search, place)
-          search.try_in_order(stop, place, self, place + 1, captures)
+          search.try_in_order(stop, place, self, place + 1)
         end
       end
 
@@ -407,18 +407,18 @@ module Addressable
           parts.join(", ")
         end
 
-        def follow(search, start, captures)
+        def follow(search, start)
           ends = ends_from(search.text, start)
           ends.shift if @at_least_one
           ends.select! { |finish| @next.first_bytes.allow?(search, finish) }
           # Handed over shortest first, so that the longest is tried first.
-          ends.each { |finish| search.try(@next, finish, captures) }
+          ends.each { |finish| search.try(@next, finish) }
           return unless @delimiters_first
           # Then the delimiters, last first, so that the first is tried
           # before everything else.
           ends.reverse_each do |finish|
             byte = search.text.getbyte(finish)
-            search.try(@next, finish, captures) if byte == 63 || byte == 35
+            search.try(@next, finish) if byte == 63 || byte == 35
           end
         end
 
@@ -471,8 +471,8 @@ module Addressable
 
       # Every character of the set that follows, with no other choice.
       class PossessiveRun < Run
-        def follow(search, position, captures)
-          search.try(@next, search.run_end(@set, position), captures)
+        def follow(search, position)
+          search.try(@next, search.run_end(@set, position))
         end
       end
 
@@ -507,10 +507,10 @@ module Addressable
           "#{first} or #{second}"
         end
 
-        def follow(search, position, captures)
+        def follow(search, position)
           first = @first_state if @first_state.first_bytes.allow?(search, position)
           second = @second_state if @second_state.first_bytes.allow?(search, position)
-          search.try_in_order(first, position, second, position, captures)
+          search.try_in_order(first, position, second, position)
         end
       end
 
@@ -551,7 +551,7 @@ module Addressable
           "/#{@source}/"
         end
 
-        def follow(search, start, captures)
+        def follow(search, start)
           rest = search.text.byteslice(start, search.size - start)
           # Without a first choice, the pattern can't match here at all.
           return unless @first_choice =~ rest
@@ -564,7 +564,7 @@ module Addressable
               @whole_value =~ search.text.byteslice(start, finish - start)
           end
           # Handed over last first, so that the first is tried first.
-          ends.reverse_each { |finish| search.try(@next, finish, captures) }
+          ends.reverse_each { |finish| search.try(@next, finish) }
         end
       end
 
@@ -587,10 +587,10 @@ module Addressable
           "as group #{@group}"
         end
 
-        def follow(search, position, captures)
-          earlier = search.captured(@group, captures)
+        def follow(search, position)
+          earlier = search.captured(@group)
           length = @writer.length_at(search, position, earlier)
-          search.try(@next, position + length, captures) if length
+          search.try(@next, position + length) if length
         end
       end
 
@@ -608,11 +608,11 @@ module Addressable
           "group #{@group} with group #{@earlier}"
         end
 
-        def follow(search, position, captures)
-          earlier = search.captured(@earlier, captures)
-          text = search.captured(@group, captures)
+        def follow(search, position)
+          earlier = search.captured(@earlier)
+          text = search.captured(@group)
           return unless @writer.starts_with_first?(earlier, text)
-          search.try(@next, position, captures)
+          search.try(@next, position)
         end
       end
 
@@ -630,17 +630,20 @@ module Addressable
           "as group #{@group}"
         end
 
-        def follow(search, position, captures)
-          return unless @writer.left_out?(search.captured(@group, captures))
-          search.try(@next, position, captures)
+        def follow(search, position)
+          return unless @writer.left_out?(search.captured(@group))
+          search.try(@next, position)
         end
       end
 
       # Notes the position, as the start or the end of a variable's value.
       class Capture < State
-        def initialize(index, slot)
+        # @param [Integer] group The variable's group.
+        # @param [Symbol] edge :start or :end.
+        def initialize(index, group, edge)
           super(index)
-          @slot = slot
+          @group = group
+          @edge = edge
         end
 
         # It takes nothing, so what follows it decides.
@@ -654,22 +657,32 @@ module Addressable
 
         # The group, and whether this is its start or its end.
         def description
-          "group #{@slot / 2} #{@slot.even? ? 'start' : 'end'}"
+          "group #{@group} #{@edge}"
         end
 
-        def follow(search, position, captures)
-          search.try(@next, position, CaptureList.new(@slot, position, captures))
+        def follow(search, position)
+          if @edge == :start
+            search.start_capture(@group, position)
+          else
+            search.end_capture(@group, position)
+          end
+          search.try(@next, position)
         end
       end
 
       # Goes on if the value being captured has taken something, and
       # otherwise leaves the value out: the start of its capture is dropped,
-      # and the search goes on where the steps that leave it out go on. The
-      # latest capture noted is where the value started.
+      # and the search goes on where the steps that leave it out go on.
       class LeaveOutIfEmpty < State
         # The index of the state where a value left out goes on, set once
         # it's added (Matcher#land).
         attr_writer :target
+
+        # @param [Integer] group The group of the value being captured.
+        def initialize(index, group)
+          super(index)
+          @group = group
+        end
 
         def link(states)
           super
@@ -685,11 +698,12 @@ module Addressable
           "to #{@target}"
         end
 
-        def follow(search, position, captures)
-          if position > captures.position
-            search.try(@next, position, captures)
+        def follow(search, position)
+          if position > search.start_of(@group)
+            search.try(@next, position)
           else
-            search.try(@left_out, position, captures.rest)
+            search.leave_out(@group)
+            search.try(@left_out, position)
           end
         end
       end
@@ -718,8 +732,8 @@ module Addressable
           "to #{@target}"
         end
 
-        def follow(search, position, captures)
-          search.try(@next, position, captures)
+        def follow(search, position)
+          search.try(@next, position)
         end
       end
 
@@ -733,7 +747,7 @@ module Addressable
         end
 
         # Nothing follows; Matcher#match checks for the end of the URI.
-        def follow(_search, _position, _captures)
+        def follow(_search, _position)
         end
       end
     end

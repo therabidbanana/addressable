@@ -447,8 +447,7 @@ describe Addressable::Template::Matcher, "builder methods" do
   end
 
   def captures(matcher, text)
-    matched = matcher.match(text)
-    matched && matched.captures
+    matcher.match(text)
   end
 
   it "#greedy_run takes as much as it can, and gives back what the " \
@@ -815,35 +814,28 @@ describe Addressable::Template::Matcher::Memo do
     expect(memo.first_time?(0, 7)).to be(true)
   end
 
-  it "takes every position from 0 to the end of the URI" do
-    [0, 1, 7, 8, 9, 15, 16, 17, 1000].each do |size|
+  it "takes every position from 0 to the end of the URI, and no further" do
+    [0, 1, 8, 1000].each do |size|
       memo = described_class.new(size)
       expect(memo.first_time?(0, 0)).to be(true)
       expect(memo.first_time?(0, size)).to be(size != 0)
       expect(memo.first_time?(0, size)).to be(false)
+      expect { memo.first_time?(0, size + 1) }.to raise_error(IndexError)
       expect(memo.positions(0)).to eq([0, size].uniq)
     end
   end
 
-  it "raises for a position outside the URI, and notes nothing" do
-    memo = described_class.new(8)
-    expect { memo.first_time?(0, 9) }.to raise_error(
-      IndexError, "position 9 outside 0..8"
-    )
-    expect { memo.first_time?(0, -1) }.to raise_error(IndexError)
-    expect(memo.to_s).to eq("")
-  end
-
   it "lists the positions noted in a row, in order" do
     memo = described_class.new(40)
-    [33, 2, 40, 8, 2, 7].each { |position| memo.first_time?(1, position) }
-    expect(memo.positions(1)).to eq([2, 7, 8, 33, 40])
+    [33, 2, 40, 8, 2, 7, 0].each { |position| memo.first_time?(1, position) }
+    expect(memo.positions(1)).to eq([0, 2, 7, 8, 33, 40])
     expect(memo.positions(0)).to eq([])
     expect(memo.positions(5)).to eq([])
   end
 
   it "lists the rows used, each with its positions" do
     memo = described_class.new(12)
+    expect(memo.to_s).to eq("")
     memo.first_time?(2, 12)
     memo.first_time?(0, 3)
     memo.first_time?(2, 0)
@@ -869,6 +861,118 @@ describe Addressable::Template::Matcher::Memo do
   end
 end
 
+describe Addressable::Template::Matcher::Search, "captures" do
+  let(:search) { described_class.new("abcdef") }
+  let(:log) { [] }
+
+  # A state that notes its name, its position and the slots as they are
+  # when the search makes its attempt.
+  def probe(name)
+    made = log
+    state = Object.new
+    state.define_singleton_method(:branches?) { false }
+    state.define_singleton_method(:follow) do |search, position|
+      made << [name, position, search.slots.dup]
+    end
+    state
+  end
+
+  it "makes the attempts in order, the last added first" do
+    search.try(probe(:first), 1)
+    search.try_in_order(probe(:second), 2, probe(:third), 3)
+    search.try_in_order(nil, 0, probe(:fourth), 4)
+    search.try_in_order(probe(:fifth), 5, nil, 0)
+    expect(search.run(probe(:done))).to be(false)
+    expect(log.map { |name, position, _| [name, position] }).to eq(
+      [[:fifth, 5], [:fourth, 4], [:second, 2], [:third, 3], [:first, 1]]
+    )
+  end
+
+  it "stops at the end state at the end of the URI" do
+    done = probe(:done)
+    search.try(probe(:never), 0)
+    search.try(done, 6)
+    search.try(done, 3)
+    expect(search.run(done)).to be(true)
+    expect(log).to eq([[:done, 3, []]])
+  end
+
+  it "keeps a capture for the attempts added after it" do
+    search.start_capture(1, 1)
+    search.end_capture(1, 3)
+    done = probe(:done)
+    search.try(done, 6)
+    expect(search.run(done)).to be(true)
+    expect(search.start_of(1)).to eq(1)
+    expect(search.span(1)).to eq([1, 3])
+    expect(search.captured(1)).to eq("bc")
+    expect(search.captures(3)).to eq([nil, "bc", nil])
+    expect(search.slots).to eq([nil, nil, 1, 3])
+  end
+
+  it "undoes a capture before an attempt added earlier is made" do
+    search.try(probe(:outer), 0)
+    search.start_capture(0, 1)
+    search.try(probe(:inner), 2)
+    search.end_capture(0, 4)
+    search.start_capture(1, 4)
+    search.try(probe(:innermost), 5)
+    expect(search.run(probe(:done))).to be(false)
+    expect(log).to eq([
+      [:innermost, 5, [1, 4, 4]],
+      [:inner, 2, [1, nil, nil]],
+      [:outer, 0, [nil, nil, nil]]
+    ])
+  end
+
+  it "undoes leaving a value out" do
+    search.start_capture(0, 2)
+    search.try(probe(:kept), 2)
+    search.leave_out(0)
+    search.try(probe(:left_out), 2)
+    expect(search.run(probe(:done))).to be(false)
+    expect(log).to eq([[:left_out, 2, [nil]], [:kept, 2, [2]]])
+    expect(search.slots).to eq([nil])
+  end
+
+  # A value is left out before its end is noted. Were an end there all the
+  # same, the group would still take no part: nothing reads an end without
+  # a start.
+  it "has no span or text for a group left out, whatever its end" do
+    search.start_capture(0, 1)
+    search.end_capture(0, 3)
+    search.leave_out(0)
+    expect(search.start_of(0)).to be_nil
+    expect(search.span(0)).to be_nil
+    expect(search.captured(0)).to be_nil
+    expect(search.captures(1)).to eq([nil])
+  end
+
+  it "has no span or text for a group without both a start and an end" do
+    search.start_capture(1, 1)
+    expect(search.span(1)).to be_nil
+    expect(search.captured(1)).to be_nil
+    expect(search.span(0)).to be_nil
+    expect(search.captures(2)).to eq([nil, nil])
+  end
+
+  # Every capture a failed search made has been undone by the time it
+  # gives up.
+  it "leaves every slot empty after a search that fails" do
+    {
+      "{a,b}{+c}{+d}!" => "a,b/c?d" * 20 + " !",
+      "{/a*}{/b}!" => "/x/y/z" * 20 + "?!",
+      "{a}/{a}!" => "xy/xz!",
+      "{;a:2,b}{?c*}!" => ";a=xy;b=1?k=v&j=w" + " !"
+    }.each do |pattern, text|
+      matcher = Addressable::Template::ParsedTemplate.new(pattern).matcher
+      failed = described_class.new(text)
+      expect(matcher.match(text, failed)).to be_nil
+      expect(failed.slots.compact).to eq([]), "for #{pattern}"
+    end
+  end
+end
+
 describe Addressable::Template::Matcher, "what a search tried" do
   matcher_class = Addressable::Template::Matcher
 
@@ -883,7 +987,7 @@ describe Addressable::Template::Matcher, "what a search tried" do
     expect(matcher("{/a}!").match("/xy?!", search)).to be_nil
     expect(search.memo.to_s).to eq("0: 0\n1: 1")
     search = matcher_class::Search.new("/xy!")
-    expect(matcher("{/a}!").match("/xy!", search).captures).to eq(["xy"])
+    expect(matcher("{/a}!").match("/xy!", search)).to eq(["xy"])
     expect(search.memo.to_s).to eq("0: 0\n1: 1")
   end
 

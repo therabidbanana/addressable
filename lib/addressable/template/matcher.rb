@@ -76,6 +76,8 @@ module Addressable
         # How many optional parts and repeats the states being added are
         # inside. Text outside all of them is required text.
         @optional_depth = 0
+        # The groups whose captures the states being added are inside.
+        @capturing = []
         @required_text = []
         @last_required_literal = nil
         @required_text_ends_uri = false
@@ -267,15 +269,18 @@ module Addressable
       # be captured in more than one place, since a value can be reached
       # more than one way; a match only passes through one of them.
       def capture(group)
-        add(Capture, group * 2)
+        add(Capture, group, :start)
+        @capturing << group
         yield
-        @capture_ends[group] << add(Capture, group * 2 + 1)
+        @capturing.pop
+        @capture_ends[group] << add(Capture, group, :end)
       end
 
       # Goes on if the value being captured has taken something, and
-      # otherwise leaves it out, going on where #land points it.
+      # otherwise leaves it out, going on where #land points it. It's
+      # added inside #capture's block.
       def leave_out_if_empty
-        add(LeaveOutIfEmpty)
+        add(LeaveOutIfEmpty, @capturing.last)
       end
 
       # Goes on to a state that hasn't been added yet, which #land marks.
@@ -371,7 +376,9 @@ module Addressable
       #   What the search keeps. A caller that gives its own can read what
       #   was tried afterwards (Search#memo).
       #
-      # @return [Captures, NilClass] The captures, or nil if it doesn't match.
+      # @return [Array<String, nil>, NilClass]
+      #   The text each group captured, in order, with nil for a group
+      #   that took no part; or nil if the URI doesn't match.
       def match(text, search = Search.new(text))
         if @encoding && @encoding != text.encoding && !text.ascii_only?
           raise Encoding::CompatibilityError,
@@ -379,25 +386,8 @@ module Addressable
             "#{text.encoding} string)"
         end
         return nil unless holds_required_text?(text)
-        search.try(@states.first, 0, nil)
-        to_try = search.to_try
-        until to_try.empty?
-          # Search#try adds each attempt as three entries. They're taken
-          # off one at a time, since pop(3) would make an array for each.
-          state = to_try.pop
-          position = to_try.pop
-          list = to_try.pop
-          # The same state at the same position always ends the same way,
-          # and the first time it failed, or we'd have stopped. Only states
-          # that branch are remembered: the others have one way on, which
-          # reaches a state that branches within a few steps.
-          next if state.branches? && !search.first_time?(state, position, list)
-          if state.is_a?(Done) && position == search.size
-            return captures(text, list)
-          end
-          state.follow(search, position, list)
-        end
-        nil
+        search.try(@states.first, 0)
+        search.captures(@groups) if search.run(@states.last)
       end
 
       ##
@@ -491,16 +481,6 @@ module Addressable
             state.depends_on += [group] if state.branches?
           end
         end
-      end
-
-      # The latest position noted for each slot.
-      def captures(text, list)
-        slots = Array.new(@groups * 2)
-        while list
-          slots[list.slot] = list.position if slots[list.slot].nil?
-          list = list.rest
-        end
-        Captures.new(text, slots)
       end
     end
   end

@@ -89,14 +89,14 @@ module Addressable
         return nil if uri == false
         compiled = compiled_for(processor)
         # A nil URI raises NoMethodError here.
-        captures = compiled.matcher.match(uri.to_str)
-        return nil unless captures
+        texts = compiled.matcher.match(uri.to_str)
+        return nil unless texts
         if uri.to_str == template.pattern
           mapping = {}
         elsif compiled.slots.size.zero?
           return nil
         else
-          mapping = compiled.slots.mapping(captures.captures, processor)
+          mapping = compiled.slots.mapping(texts, processor)
         end
         Addressable::Template::MatchData.new(uri, template, mapping)
       end

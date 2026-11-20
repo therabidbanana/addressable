@@ -22,33 +22,47 @@ require "addressable/template/matcher/memo"
 module Addressable
   class Template
     class Matcher
-      # The captures, as a list from the latest back to the first, so an
-      # attempt adds one without copying the others.
-      CaptureList = Struct.new(:slot, :position, :rest)
-
       # Where a piece of literal text occurs in the URI: the places found
       # so far, in order, and where to look for the next one, or nil once
       # there are no more.
       Occurrences = Struct.new(:places, :from)
 
+      ##
       # What the search keeps for one URI: the text, the attempts to make
-      # and those tried, where runs of each set end, and where literal text
-      # occurs.
+      # and those tried, the captures, where runs of each set end, and
+      # where literal text occurs.
+      #
+      # The captures are one array of slots, two for each group: where its
+      # value starts and where it ends, or nil. Only this class numbers
+      # them; the states name a group (#start_capture, #end_capture,
+      # #leave_out, #start_of, #span). Every attempt on the list has to
+      # see the captures as they were when it was added, though the
+      # attempts made before it change them. So a capture is undone rather
+      # than copied: setting a slot first adds an entry that holds its old
+      # value, under the attempts that follow from the capture. By the
+      # time the search comes back down to that entry, every one of those
+      # attempts has failed, and #run puts the old value back before it
+      # makes the attempt below. A search that fails leaves every slot as
+      # it started, nil.
       class Search
         attr_reader :text, :size
         # The states and positions tried so far, for the states that
         # depend on no group (#first_time?).
         attr_reader :memo
-        # The attempts still to make, the next one last. Each is a state, a
-        # position in the URI and the captures so far, kept as three
-        # entries rather than an object of its own, so that making one
-        # allocates nothing. Matcher#match takes them off.
-        attr_reader :to_try
+        # The captures as they are for the attempt being made, for reading
+        # a search afterwards: for each group in turn, where its value
+        # starts, then where it ends, as byte offsets, or nil.
+        attr_reader :slots
 
         def initialize(text)
           @text = text
           @size = text.bytesize
+          # The attempts still to make, the next one last, each as two
+          # entries, its position then its state, so that making one
+          # allocates nothing. A capture to undo is three: the slot's old
+          # value, the slot, then nil where a state would be.
           @to_try = []
+          @slots = []
           @memo = Memo.new(@size)
           @tried_with_captures = {}
           @run_ends = {}
@@ -58,17 +72,80 @@ module Addressable
         end
 
         # Adds an attempt to make next: the state, at the position, with
-        # the captures so far.
-        def try(state, position, captures)
-          @to_try.push(captures, position, state)
+        # the captures as they are now.
+        def try(state, position)
+          @to_try.push(position, state)
         end
 
-        # Adds two attempts with the same captures, to be made in order.
-        # A nil state is left out.
-        def try_in_order(first, first_position, second, second_position,
-          captures)
-          try(second, second_position, captures) if second
-          try(first, first_position, captures) if first
+        # Adds two attempts, to be made in order. A nil state is left out.
+        def try_in_order(first, first_position, second, second_position)
+          try(second, second_position) if second
+          try(first, first_position) if first
+        end
+
+        # Notes where the group's value starts, for the attempts added
+        # after this. It's undone before any attempt added earlier is made,
+        # as #end_capture and #leave_out are.
+        def start_capture(group, position)
+          set_slot(group * 2, position)
+        end
+
+        # Notes where the group's value ends.
+        def end_capture(group, position)
+          set_slot(group * 2 + 1, position)
+        end
+
+        # Drops where the group's value started, so that it takes no part.
+        def leave_out(group)
+          set_slot(group * 2, nil)
+        end
+
+        # Where the group's value starts, as captured now, or nil.
+        def start_of(group)
+          @slots[group * 2]
+        end
+
+        # Where the group's capture starts and ends now, or nil if it took
+        # no part.
+        def span(group)
+          start = @slots[group * 2]
+          finish = @slots[group * 2 + 1]
+          [start, finish] if start && finish
+        end
+
+        ##
+        # Makes the attempts on the list, the last added first, until one
+        # reaches the end state at the end of the URI. Each attempt's
+        # state adds the attempts that follow from it (State#follow).
+        # Coming back down the list to a capture's entry, every attempt
+        # above it has failed, so the capture is undone.
+        #
+        # The same state at the same position always ends the same way,
+        # and the first time it failed, or the search would have stopped.
+        # So a state that branches is only followed the first time
+        # (#first_time?). The others have one way on, which reaches a
+        # state that branches within a few steps.
+        #
+        # @param [State] done The end state.
+        #
+        # @return [TrueClass, FalseClass]
+        #   Whether an attempt got there. If so, the captures are that
+        #   attempt's (#captures).
+        def run(done)
+          to_try = @to_try
+          until to_try.empty?
+            state = to_try.pop
+            if state.nil?
+              slot = to_try.pop
+              @slots[slot] = to_try.pop
+              next
+            end
+            position = to_try.pop
+            next if state.branches? && !first_time?(state, position)
+            return true if state.equal?(done) && position == @size
+            state.follow(self, position)
+          end
+          false
         end
 
         ##
@@ -84,22 +161,31 @@ module Addressable
         #
         # @param [State] state A state that branches.
         # @param [Integer] position A byte offset.
-        # @param [CaptureList, nil] captures The captures so far.
-        def first_time?(state, position, captures)
+        def first_time?(state, position)
           if state.depends_on.empty?
             return @memo.first_time?(state.memo_row, position)
           end
           key = [state.index, position] +
-            state.depends_on.map { |group| span(group, captures) }
+            state.depends_on.map { |group| span(group) }
           return false if @tried_with_captures[key]
           @tried_with_captures[key] = true
         end
 
-        # The group's text, from the latest start and end noted for it, or
-        # nil if it took no part.
-        def captured(group, captures)
-          start, finish = span(group, captures)
-          @text.byteslice(start, finish - start) if finish
+        # The group's text as captured now, or nil if it took no part.
+        def captured(group)
+          start = @slots[group * 2]
+          finish = @slots[group * 2 + 1]
+          @text.byteslice(start, finish - start) if start && finish
+        end
+
+        # The text each of the groups captured, or nil for one that took
+        # no part, as they are now: for the attempt that reached the end.
+        #
+        # @param [Integer] groups How many groups the template has.
+        #
+        # @return [Array<String, nil>]
+        def captures(groups)
+          Array.new(groups) { |group| captured(group) }
         end
 
         # Where the longest run of the set starting at the position ends.
@@ -141,22 +227,6 @@ module Addressable
           found.places.bsearch { |at| at >= position }
         end
 
-        # Where the group's latest capture starts and ends, or nil if it
-        # took no part.
-        def span(group, captures)
-          start = finish = nil
-          list = captures
-          while list && !(start && finish)
-            if list.slot == group * 2
-              start ||= list.position
-            elsif list.slot == group * 2 + 1
-              finish ||= list.position
-            end
-            list = list.rest
-          end
-          [start, finish] if start && finish
-        end
-
         # How many bytes the pattern matches at the position, or nil if it
         # doesn't match there.
         def skip(pattern, position)
@@ -185,22 +255,15 @@ module Addressable
           end
           ends
         end
-      end
 
-      # A match's captures: the text each group took, for
-      # Machine::Slots#mapping. The slots are byte offsets.
-      class Captures
-        def initialize(text, slots)
-          @text = text
-          @slots = slots
-        end
+        private
 
-        def captures
-          (0...(@slots.size / 2)).map do |group|
-            first = @slots[group * 2]
-            last = @slots[group * 2 + 1]
-            first && last ? @text.byteslice(first, last - first) : nil
-          end
+        # Sets a slot, after adding the entry that undoes it. This and the
+        # methods above it that call it are the only code that knows how
+        # the slots are numbered.
+        def set_slot(slot, position)
+          @to_try.push(@slots[slot], slot, nil)
+          @slots[slot] = position
         end
       end
     end
