@@ -184,9 +184,9 @@ What changes, `:regexp`'s result first (2.9.2 and this branch's
   gives.
 - **A variable the URI leaves out is `nil`.** `{a,b}` on `y` gives
   `{"a" => "", "b" => "y"}`, and expanding that writes `,y`; it will
-  give `{"a" => nil, "b" => "y"}`. Likewise for the `[]` and `{}` that
-  `+`, `#`, `/` and `;` give a variable that takes nothing
-  (`{+a*,b*}` on `x,y` gives `b` `[]`). A value that is in the URI
+  give `{"a" => "y", "b" => nil}`. Likewise for the `[]` and `{}` that
+  `+`, `#`, `/` and `;` give a variable that takes nothing:
+  `{+a*,b*}` on `x,y` gives `b` `[]`, and will give `nil`. A value that is in the URI
   but empty keeps its empty value: `{/a*}` on `/` gives `[""]`.
 - **An exploded `+` or `#` value can be followed by text.** Its
   members are possessive runs of every reserved character but the

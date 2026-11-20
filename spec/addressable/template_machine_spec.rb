@@ -1625,3 +1625,149 @@ describe Addressable::Template, "with the :machine engine, #named_captures" do
     expect(template.named_captures).to eq("a" => [1], "b" => [2])
   end
 end
+
+# Where the :machine engine's #match fixes a result of the :regexp engine's
+# (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine"). Each example
+# pins both: :regexp keeps its result, and :machine gives the fixed one.
+describe Addressable::Template, "with the :machine engine, matching fixes" do
+  def mapping(engine, pattern, uri)
+    match = Addressable::Template.new(pattern, engine: engine).match(uri)
+    match && match.mapping
+  end
+
+  {
+    "the earlier variable takes text both could take" => [
+      ["{a}{b}", "xyz", {"a" => nil, "b" => "xyz"}, {"a" => "xyz", "b" => nil}],
+      ["{a,b}", "x", {"a" => "", "b" => "x"}, {"a" => "x", "b" => nil}],
+      ["{/a*}{/b*}", "/x/y", {"a" => nil, "b" => ["x", "y"]},
+        {"a" => ["x", "y"], "b" => nil}],
+      ["{/a*,b*}", "/x/y", {"a" => [], "b" => ["x", "y"]},
+        {"a" => ["x", "y"], "b" => nil}],
+      ["{a*}{b}", "x,y", {"a" => ["x", ""], "b" => "y"},
+        {"a" => ["x", "y"], "b" => nil}]
+    ],
+    "a variable the URI leaves out is nil" => [
+      ["{+a*,b*}", "x,y", {"a" => ["x", "y"], "b" => []},
+        {"a" => ["x", "y"], "b" => nil}],
+      ["{;a*,b*}", ";x=1", {"a" => {"x" => "1"}, "b" => {}},
+        {"a" => {"x" => "1"}, "b" => nil}]
+    ],
+    "joiners between values are required" => [
+      ["{?a,b}", "?a=1b=2", {"a" => "", "b" => nil, "1b" => "2"}, nil]
+    ],
+    "names in ;, ? and & expressions are matched as written" => [
+      ["{?a}", "?x=1", {"a" => nil, "x" => "1"}, nil],
+      ["{;c,b}", ";c=xy", {"c" => "", "b" => nil, "xy" => ""},
+        {"c" => "xy", "b" => nil}],
+      ["{;a,b*}", ";x=1;y=2",
+        {"a" => nil, "x" => "", "b" => {"1" => "", "y" => "2"}},
+        {"a" => nil, "b" => {"x" => "1", "y" => "2"}}],
+      ["{?a,b}", "?a=1&a=2", {"a" => "1", "b" => nil}, nil],
+      ["{;a*,b}", ";x=1;y=2;b=3",
+        {"a" => {"x" => "1", "y" => "2", "b" => "3"}, "b" => nil, nil => ""},
+        {"a" => {"x" => "1", "y" => "2", "b" => "3"}, "b" => nil}]
+    ],
+    "an exploded + or # value can be followed by text" => [
+      ["{+a*}!", "y!", nil, {"a" => ["y"]}],
+      ["{+a*}/{+b*}", "x/y", nil, {"a" => ["x"], "b" => ["y"]}],
+      ["{#a*}!", "#y!", nil, {"a" => ["y"]}]
+    ],
+    "a leader comes with a value" => [
+      ["{#a*}x", "#x", {"a" => nil}, {"a" => [""]}],
+      ["{?a}x", "?x", {"a" => nil}, nil]
+    ]
+  }.each do |fix, examples|
+    context "where #{fix}" do
+      examples.each do |pattern, uri, regexp_mapping, machine_mapping|
+        it "keeps the :regexp engine's result for #{pattern} on #{uri}" do
+          expect(mapping(:regexp, pattern, uri)).to eq(regexp_mapping)
+        end
+
+        it "gives #{machine_mapping.inspect} for #{pattern} on #{uri}" do
+          pending "the matcher change for this fix"
+          expect(mapping(:machine, pattern, uri)).to eq(machine_mapping)
+        end
+      end
+    end
+  end
+
+  it "keeps an empty value that the URI holds" do
+    expect(mapping(:machine, "{/a*}", "/")).to eq("a" => [""])
+    expect(mapping(:machine, "{#a}x", "#x")).to eq("a" => "")
+  end
+end
+
+# Expanding what #match gives back writes the URI again, for any URI
+# written by expanding some values. Templates and values are generated
+# from a fixed seed. Left out, as the plan accepts that they don't round
+# trip: a name used twice, a list or hash in an unexploded variable,
+# repeated names in an exploded ;, ? or & value, and prefixes.
+describe Addressable::Template, "with the :machine engine, a match" do
+  # Methods rather than constants, which a describe block would define at
+  # the top level.
+  def operators
+    ["", "+", "#", ".", "/", ";", "?", "&"]
+  end
+
+  def strings
+    ["", "x", "xy", "x/y", "x,y", "a=1", "é"]
+  end
+
+  def separators
+    ["", "/", "!", "x"]
+  end
+
+  # Values for one template, each name used once. Exploded values in ;,
+  # ? and & are hashes whose keys aren't used anywhere else.
+  def generate(random)
+    names = ("a".."z").to_a
+    keys = 0
+    values = {}
+    expressions = Array.new(random.rand(1..2)) do
+      operator = operators.sample(random: random)
+      varspecs = Array.new(random.rand(1..3)) do
+        name = names.shift
+        explode = random.rand(2).zero?
+        values[name] =
+          if random.rand(4).zero?
+            nil
+          elsif !explode
+            strings.sample(random: random)
+          elsif %w(; ? &).include?(operator)
+            Array.new(random.rand(1..2)) do
+              keys += 1
+              ["k#{keys}", strings.sample(random: random)]
+            end.each_with_object({}) { |(key, value), hash| hash[key] = value }
+          else
+            Array.new(random.rand(1..3)) { strings.sample(random: random) }
+          end
+        explode ? "#{name}*" : name
+      end
+      "{#{operator}#{varspecs.join(',')}}"
+    end
+    [expressions.join(separators.sample(random: random)), values]
+  end
+
+  it "expands back to the URI it matched" do
+    pending "the matcher changes in the plan's matching fixes"
+    random = Random.new(6570)
+    failures = []
+    2000.times do
+      pattern, values = generate(random)
+      template = Addressable::Template.new(pattern, engine: :machine)
+      uri = template.expand(values).to_s
+      match = template.match(uri)
+      back =
+        begin
+          match && template.expand(match.mapping).to_s
+        rescue TypeError => error
+          # Expanding a mapping with a nil key, which an empty capture with
+          # no name gives, raises.
+          error
+        end
+      next if back == uri
+      failures << [pattern, values, uri, match && match.mapping]
+    end
+    expect(failures.first(5)).to eq([]), "#{failures.size} failed"
+  end
+end
