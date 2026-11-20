@@ -195,6 +195,12 @@ What changes, `:regexp`'s result first (2.9.2 and this branch's
   `{+a*}/{+b*}` on `x/y` and `{#a*}!` on `#y!` give `nil`, as does
   2.9.2. The machine will take members greedily, giving back what the
   rest needs: `{+a*}!` on `y!` gives `{"a" => ["y"]}`.
+- **A leader comes with a value.** `{#a*}x` on `#x` gives
+  `{"a" => nil}`, matching the `#` without a value, though `{#a}x`
+  gives `""` and `{/a*}` on `/` gives `[""]`; expanding `nil` drops the
+  `#`. It will give `[""]`. `{?a}x` on `?x` gives `{"a" => nil}`, but
+  no value of `a` expands to a bare `?`; it won't match. (2.9.2 gives
+  the same.)
 - **No `nil => ""` key.** `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to
   `""`, since `b`'s empty capture has no name.
 - **No empty member out of nowhere.** `{a*}{b}` on `x,y` gives
@@ -209,7 +215,24 @@ Still to decide:
 - **A variable written twice.** `{a}/{a}` matches `x/y` as
   `{"a" => "x"}`, and `{?a,a}` matches `?a=1&a=2` as `{"a" => "1"}`.
   The machine could compare the two captures (a regexp needs a
-  backreference) and reject both.
+  backreference) and reject both. Templates that reuse a name stay
+  valid: RFC 6570's own examples include `{.who,who}` and
+  `{/var:1,var}`, and `/{lang}/docs{?lang}` is common. Using a name
+  both exploded and not is valid too: `{/a}{/a*}` with `["x", "y"]`
+  writes `/x,y/x/y`.
+- **A list or hash in an unexploded variable.** `{/a}` with
+  `["x", "y"]` writes `/x,y`, but an unexploded value can't hold a
+  comma outside `+` and `#`, so `{/a}` on `/x,y` gives `nil`, and so
+  does `{/a}{/a*}` on `/x,y/x/y`. Matching it as a string `"x,y"`
+  would be a new result where there was none.
+- **Repeated names in an exploded `;`, `?` or `&` value.** Pairs that
+  all repeat the variable's name are a list, and any others a hash, so
+  `{?a*,b*}` on `?a=x&a=y&k0=y` gives `a` `{"a" => "y", "k0" => "y"}`,
+  dropping `a=x`. With the earlier variable winning, `a` takes every
+  pair, so a hash can lose pairs whose names repeat. Decided: accept
+  it. The round trip holds only for values without repeated names,
+  and the spec's generator leaves them out; such URIs can't come from
+  expanding one hash.
 - **Exploded associative arrays outside `;`, `?` and `&`.** Expanding
   `{a*}` with `{"k" => "v"}` writes `k=v`, which `{a*}` doesn't match.
   Matching it as a hash needs a rule for when members are pairs.
@@ -225,8 +248,12 @@ or `#` value followed by text (see above); without exploded `+` and `#`
 values, none failed to match. The first run also reused names across
 expressions with values of different types (a hash for `{;a*}` and
 `{a}`), which can't round-trip; the spec's generator should give each
-name values every use of it can match. The "other values" class still
-needs sorting by cause.
+name values every use of it can match. Sorting the wrong values
+(40,000 templates, each name used once): 9,348 were only a variable
+left out coming back as `""`, `[]` or `{}`, 5,451 had a `;`, `?` or `&`
+expression (unchecked names, and repeated names in exploded values),
+and the other 198 were earlier-wins splits combined with empty values,
+plus the bare `#` leader above. None had a cause outside this list.
 
 ## What's left
 
