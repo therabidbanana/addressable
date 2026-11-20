@@ -300,8 +300,20 @@ cover the shapes in 3 and 4. What's left, in order:
      and `{/a*,b*,c*}!` (`?!`) 11 MB each, `{?a,b,c}!` 7 MB and
      `{a}{b}{c}` 6 MB; `:regexp` allocates well under 0.1 MB for each.
      The profile now reports KB per call for every operation, and MB
-     per adversarial match at its largest size. Two ways to shrink
-     it: a bit-packed memo (one bit per branching state and
+     per adversarial match at its largest size. The fix to try first
+     is `:regexp`'s pruning rules in `add_match_steps` (`absorbs?`,
+     the `group_regexp_source` rules): they don't change any result,
+     and they remove the states these shapes spend their memory on.
+     Matching each payload against only what survives pruning:
+     `{a}`×12`!` 47 MB against 0.2 MB for `{a}!`, `{a}{b}{c}` 6.3 MB
+     against 0.1 MB for `{c}`, `{;foo*,bar*,baz*}` 11.1 against 0.4 MB
+     for `{;foo*}`, `{/a*,b*,c*}!` 11.1 against 1.1 MB for `{/a*}!`.
+     The matching changes help less: on a URI that doesn't match, the
+     search tries every state at every position it can reach, so
+     changes that only reorder choices save nothing, and only
+     checking names would shrink shapes like `{?a,b,c}!`. If pruning
+     isn't enough, two ways to shrink the memo itself: a bit-packed
+     memo (one bit per branching state and
      position, in a String), or a thread list (a Pike VM, as RE2 and
      Rust's regex use for captures): walk the URI a byte at a time
      with every live thread, in priority order, keeping only the first
@@ -317,9 +329,14 @@ cover the shapes in 3 and 4. What's left, in order:
 2. **Decisions for the maintainer (7, 9):** changelog entries now or
    at release N; where this plan lives; subclass overrides of
    `Template`'s private methods once `:machine` is the default.
-3. **Other runtimes:** read the non-blocking CI job's results for Ruby
-   2.3, 3.1, JRuby and TruffleRuby, including the processor pattern
-   check.
+3. **Other runtimes:** on 2026-11-19 (run 44642534313, commit
+   `017e0a1`), the machine-mode job passed on Ruby 2.3, 3.1, JRuby
+   10.0, TruffleRuby and current Ruby, and the full suite passed on
+   every runtime in the matrix. Ruby 2.4 and 2.5 failed only the
+   suite's warnings check: a block parameter in
+   `Search#next_occurrence` shadowed a local, which Rubies before 2.6
+   warn about (fixed after that run). The `gemspec` job fails by
+   design until the branch merges.
 
 ### Review findings to fix
 

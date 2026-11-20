@@ -111,7 +111,7 @@ module Addressable
             found.places << place if place
             found.from = place && place + 1
           end
-          found.places.bsearch { |place| place >= position }
+          found.places.bsearch { |at| at >= position }
         end
 
         # How many bytes the pattern matches at the position, or nil if it
