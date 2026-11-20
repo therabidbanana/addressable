@@ -283,16 +283,25 @@ cover the shapes in 3 and 4. What's left, in order:
        the same, objects per match fall further (long path 74 → 13,
        reserved, fragment 62 → 48), and new-template matching is 0–5%
        slower from compiling the pattern's own literals.
-     - Next, measured one at a time: a run's next character with a
-       one-unit pattern, and the pruning rules, if adversarial shapes
-       still need them. Reserved, fragment `extract` is still about
-       2.1×.
+     - Not worth it: a run's next character with a one-unit pattern.
+       `CharacterSet#character_end` is 2–9% of matcher time, even with
+       instrumentation's overhead counted (1–60 calls per profile
+       match), and a scanner's `pos=` and `skip` cost about as much as
+       the byte checks it would replace.
+     - Left for later: the pruning rules, if adversarial shapes still
+       need them, and reserved, fragment `extract` (about 2.1×; see
+       the literal search's note above).
    - **Memory on adversarial input.** Finding 3 measured a 33 MB memo
      hash (608k entries, 1.5M objects) for `{/a*,b*,c*}!` on 16 KB.
-     Remeasure it for every adversarial shape now that only branching
-     states are remembered and runs skip, and add memory to the
-     profile's adversarial table. If it's still large, two ways to
-     shrink it: a bit-packed memo (one bit per branching state and
+     Remeasured on 2026-11-19 at about 16 KB per payload: that payload
+     is now rejected before any search, but `{a}`×12`!` ending `?!`
+     allocates 47 MB in one match (544k memo entries, 34 a byte, and
+     336k objects, mostly capture-list entries), `{;foo*,bar*,baz*}`
+     and `{/a*,b*,c*}!` (`?!`) 11 MB each, `{?a,b,c}!` 7 MB and
+     `{a}{b}{c}` 6 MB; `:regexp` allocates well under 0.1 MB for each.
+     The profile now reports KB per call for every operation, and MB
+     per adversarial match at its largest size. Two ways to shrink
+     it: a bit-packed memo (one bit per branching state and
      position, in a String), or a thread list (a Pike VM, as RE2 and
      Rust's regex use for captures): walk the URI a byte at a time
      with every live thread, in priority order, keeping only the first

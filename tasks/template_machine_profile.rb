@@ -145,11 +145,14 @@ module TemplateMachineProfile
 
   def compare_operations(iterations)
     puts format(
-      "%-20s %-15s %-7s %-9s %12s %12s %7s %12s %12s",
+      "%-20s %-15s %-7s %-9s %12s %12s %7s %12s %12s %10s %10s",
       "case", "operation", "template", "output",
-      "regexp", "machine", "ratio", "regexp", "machine"
+      "regexp", "machine", "ratio", "regexp", "machine", "regexp", "machine"
     )
-    puts format("%-55s %25s %7s %25s", "", "µs per call", "", "objects per call")
+    puts format(
+      "%-55s %25s %7s %25s %21s",
+      "", "µs per call", "", "objects per call", "KB per call"
+    )
     CASES.each do |c|
       OPERATIONS.each do |op_name, op|
         ["new", "reused"].each do |mode|
@@ -181,24 +184,29 @@ module TemplateMachineProfile
 
     times = []
     objects = []
+    kilobytes = []
     calls.each_with_index do |(engine, call), i|
       if outputs[i][1]
         times << nil
         objects << nil
+        kilobytes << nil
         next
       end
       times << time_per_call(call, iterations)
-      objects << objects_per_call(
+      count, bytes = allocations_per_call(
         call, [iterations / 20, 100].max,
         "#{c[:name]}-#{op_name}-#{mode}-#{engine}"
       )
+      objects << count
+      kilobytes << bytes / 1000
     end
 
     puts format(
-      "%-20s %-15s %-7s %-9s %12s %12s %7s %12s %12s",
+      "%-20s %-15s %-7s %-9s %12s %12s %7s %12s %12s %10s %10s",
       c[:name], op_name, mode, status,
       number(times[0]), number(times[1]), ratio(times[1], times[0]),
-      number(objects[0]), number(objects[1])
+      number(objects[0]), number(objects[1]),
+      number(kilobytes[0]), number(kilobytes[1])
     )
   end
 
@@ -248,23 +256,28 @@ module TemplateMachineProfile
     seconds * 1_000_000 / iterations
   end
 
-  def objects_per_call(call, iterations, name)
+  # The objects and bytes one call allocates, on average.
+  def allocations_per_call(call, iterations, name)
     report = MemoryProfiler.report { iterations.times { call.call } }
     report.pretty_print(
       to_file: File.join(REPORT_DIR, name.tr(" ,", "_") + ".txt"),
       scale_bytes: true, normalize_paths: true
     )
-    report.total_allocated.to_f / iterations
+    [
+      report.total_allocated.to_f / iterations,
+      report.total_allocated_memsize.to_f / iterations
+    ]
   end
 
   def compare_adversarial
     sizes = ADVERSARIAL_SIZES
     puts "Adversarial match (no payload matches). Time for one call, in ms; " \
       "x#{sizes.last / sizes.first} input should take about " \
-      "x#{sizes.last / sizes.first} time if it's linear."
+      "x#{sizes.last / sizes.first} time if it's linear. MB: what one call " \
+      "allocates at n=#{sizes.last}."
     puts format(
-      "%-36s %-6s %-12s %10s %10s %7s",
-      "pattern", "ends", "", *sizes.map { |n| "n=#{n}" }, "growth"
+      "%-36s %-6s %-12s %10s %10s %7s %8s",
+      "pattern", "ends", "", *sizes.map { |n| "n=#{n}" }, "growth", "MB"
     )
     ADVERSARIAL.each do |pattern, payload|
       ending = payload.call(2)[-2, 2].inspect
@@ -278,13 +291,28 @@ module TemplateMachineProfile
           else
             ""
           end
+        # Only measured if the call finished in time.
+        megabytes =
+          if times.last.is_a?(Float)
+            adversarial_megabytes(engine, pattern, payload.call(sizes.last))
+          end
         puts format(
-          "%-36s %-6s %-12s %10s %10s %7s",
+          "%-36s %-6s %-12s %10s %10s %7s %8s",
           pattern, ending, engine,
-          *times.map { |t| t.is_a?(Float) ? number(t) : t }, growth
+          *times.map { |t| t.is_a?(Float) ? number(t) : t }, growth,
+          number(megabytes)
         )
       end
     end
+  end
+
+  # What one match allocates, in MB, on a template that has matched once
+  # already, so building it isn't counted.
+  def adversarial_megabytes(engine, pattern, payload)
+    template = Addressable::Template.new(pattern, engine: engine)
+    template.match(payload)
+    report = MemoryProfiler.report { template.match(payload) }
+    report.total_allocated_memsize / 1_000_000.0
   end
 
   # The fastest of three calls, in ms, or why there's no time.
