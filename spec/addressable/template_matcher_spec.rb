@@ -790,6 +790,35 @@ describe Addressable::Template::Matcher, "builder methods" do
     expect(captures(needs_digit, "123")).to eq(["12", "3"])
   end
 
+  context "#match with a block" do
+    let(:matcher) do
+      build(2) do |m|
+        m.capture(0) { m.greedy_run(:unreserved) }
+        m.capture(1) { m.greedy_run(:unreserved) }
+      end
+    end
+
+    it "offers each way through in turn until the block takes one" do
+      offered = []
+      result = matcher.match("abc") do |texts|
+        offered << texts
+        texts[1] == "bc"
+      end
+      expect(offered).to eq([["abc", ""], ["ab", "c"], ["a", "bc"]])
+      expect(result).to eq(["a", "bc"])
+    end
+
+    it "doesn't match where the block takes none" do
+      offered = []
+      result = matcher.match("ab") do |texts|
+        offered << texts
+        false
+      end
+      expect(offered).to eq([["ab", ""], ["a", "b"], ["", "ab"]])
+      expect(result).to be_nil
+    end
+  end
+
   it "gives nil for a group nothing captured" do
     matcher = build(3) do |m|
       m.capture(1) { m.greedy_run(:unreserved) }

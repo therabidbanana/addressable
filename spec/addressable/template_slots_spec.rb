@@ -179,11 +179,14 @@ describe Addressable::Template::Machine::Slots do
   end
 end
 
-describe Addressable::Template::Machine::Slots, "#mapping" do
+describe Addressable::Template::Machine::Slots, "#read and #mapping" do
   # The mapping for the text each of the pattern's groups captured.
+  # nil where a name's values disagree.
   def mapping(pattern, texts, processor = nil)
     nodes = Addressable::Template::Parser.new.parse_nodes(pattern)
-    described_class.new(nodes).mapping(texts, processor)
+    slots = described_class.new(nodes)
+    values = slots.read(texts)
+    values && slots.mapping(values, processor)
   end
 
   {
@@ -220,16 +223,46 @@ describe Addressable::Template::Machine::Slots, "#mapping" do
     ["{;a*}", ["x;"]] => {"a" => {"x" => "", "" => ""}},
     ["{?a*}", [nil]] => {"a" => nil},
     # A name written again keeps its first value, unless that was nil.
-    ["{a}{a}", ["x", "y"]] => {"a" => "x"},
-    ["{a}{a}", [nil, "y"]] => {"a" => "y"},
+    ["{a}{a}", ["x", "x"]] => {"a" => "x"},
+    ["{a}{a}", [nil, ""]] => {"a" => ""},
     ["{a}{a}", [nil, nil]] => {"a" => nil},
     # A whole value replaces a prefix's.
     ["{/var:1,var}", ["v", "value"]] => {"var" => "value"},
-    ["{/var:1,var}", ["v", nil]] => {"var" => "v"},
-    ["{/var:1,var}", [nil, "value"]] => {"var" => "value"},
+    ["{/var:1,var}", ["v", nil]] => nil,
+    ["{/var:1,var}", [nil, "value"]] => nil,
     ["{/var,var:1}", ["value", "v"]] => {"var" => "value"},
-    ["{/a:1,a:2}", ["x", "xy"]] => {"a" => "x"},
-    ["{/a:1,a,a}", ["x", "xy", "z"]] => {"a" => "xy"}
+    # A longer prefix replaces a shorter one.
+    ["{/a:1,a:2}", ["x", "xy"]] => {"a" => "xy"},
+    ["{/a:2,a:1}", ["xy", "x"]] => {"a" => "xy"},
+    ["{/a:1,a:2}", ["x", "x"]] => {"a" => "x"},
+    ["{/a:1,a,a}", ["x", "xy", "xy"]] => {"a" => "xy"},
+    # No mapping where a name's values disagree.
+    ["{a}{a}", ["x", "y"]] => nil,
+    ["{a}{a}", ["x", nil]] => nil,
+    ["{a}{a}", [nil, "x"]] => nil,
+    ["{/a}{/a}", ["", nil]] => nil,
+    ["{/a:1,a:2}", ["x", "yz"]] => nil,
+    ["{/a:1,a}", ["x", "yz"]] => nil,
+    ["{/a,a:1}", ["xy", "y"]] => nil,
+    ["{/a:1,a,a}", ["x", "xy", "z"]] => nil,
+    ["{/a:2,a:2}", ["xy", "x"]] => nil,
+    ["{?a}{&a}", ["a=1", "a=2"]] => nil,
+    ["{/a*}{/a*}", ["x/y", "x/z"]] => nil,
+    ["{/a}{/a*}", ["x", "x/y"]] => nil,
+    ["{/a}{/a*}", ["x", "y"]] => nil,
+    ["{?a*}{&a*}", ["k=v", "k=w"]] => nil,
+    ["{?a*}{/a}", ["k=v", "v"]] => nil,
+    # They're compared decoded, and a slot left out agrees with an empty
+    # value where it writes nothing for one.
+    ["{a}{+a}", ["%41%2F", "A/"]] => {"a" => "A/"},
+    ["{?a}{a}", ["a=", nil]] => {"a" => ""},
+    ["{a}{?a}", [nil, "a="]] => {"a" => ""},
+    ["{a}{?a}", [nil, nil]] => {"a" => nil},
+    ["{/a}{/a*}", ["x", "x"]] => {"a" => "x"},
+    ["{/a*}{/a}", ["x", "x"]] => {"a" => ["x"]},
+    ["{/a*}{/a*}", ["x/y", "x/y"]] => {"a" => ["x", "y"]},
+    ["{?a*}{&a*}", ["k=v", "k=v"]] => {"a" => {"k" => "v"}},
+    ["{a:1}{a*}", ["x", "xy"]] => {"a" => ["xy"]}
   }.each do |(pattern, texts), expected|
     it "gives #{pattern} with #{texts.inspect} #{expected.inspect}" do
       expect(mapping(pattern, texts)).to eq(expected)
@@ -237,7 +270,7 @@ describe Addressable::Template::Machine::Slots, "#mapping" do
   end
 
   it "keeps the names in the order the pattern writes them" do
-    expect(mapping("{b}{?a}{/b}", [nil, nil, "x"]).keys).to eq(%w(b a))
+    expect(mapping("{b}{?a}{/b}", ["x", nil, "x"]).keys).to eq(%w(b a))
   end
 
   it "gives a ;, ? or & value the name its text has, which a " \

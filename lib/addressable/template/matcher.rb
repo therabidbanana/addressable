@@ -376,6 +376,12 @@ module Addressable
       #   What the search keeps. A caller that gives its own can read what
       #   was tried afterwards (Search#memo).
       #
+      # @yield [texts]
+      #   Without a block, the first way through the graph is the match.
+      #   With one, each way found is offered to it in turn, as the text
+      #   each group captured, until it takes one (Search#run).
+      # @yieldreturn [Boolean] Whether to stop at this way through.
+      #
       # @return [Array<String, nil>, NilClass]
       #   The text each group captured, in order, with nil for a group
       #   that took no part; or nil if the URI doesn't match.
@@ -387,7 +393,10 @@ module Addressable
         end
         return nil unless holds_required_text?(text)
         search.try(@states.first, 0)
-        search.captures(@groups) if search.run(@states.last)
+        found = search.run(@states.last) do
+          !block_given? || yield(search.captures(@groups))
+        end
+        search.captures(@groups) if found
       end
 
       ##

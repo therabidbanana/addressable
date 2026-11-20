@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (4,931 and 4,817 examples), and
+full suite passes in both IDNA modes (5,010 and 4,896 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -213,12 +213,19 @@ The machine's rules:
   later varspec matches the value written as the earlier one is, or as
   expansion writes it, and is left out only where the earlier one is.
   A prefix is the start of the value: `{/var:1,var}` on `/v/value`
-  gives `"value"`. Elsewhere (`{a}{a}`, `{a}{b}{a}`) the name matches as
-  if written once, the first value winning: comparing at every place
-  the earlier value could end was quadratic (`{a}{a}` 1.0 s at 16 KB)
-  and, with a value between, close to cubic. The search remembers the
+  gives `"value"`, and a longer prefix gives more of it than a shorter
+  one (`{a:1}{a:2}` on `xxy` gives `"xy"`). The search remembers the
   states between the two once for each place the earlier value took
-  (`Matcher#note_dependencies`).
+  (`Matcher#note_dependencies`). Elsewhere (`{a}.{a}`, `{a}/{b}/{a}`,
+  a name exploded in one place and not another) the values are
+  compared once a split is found: equal when decoded, a prefix the
+  start of the whole, an exploded list of one member the same as the
+  member, and left out only where it would write nothing. If they
+  disagree the search goes on to the next split, up to eight of them:
+  comparing at every place the earlier value could end was quadratic
+  (`{a}{a}` 1.0 s at 16 KB) and, with a value between, close to cubic.
+  So a URI can go unmatched though some split of it agrees (see "Next
+  work", item 2).
 
 Examples of where the machine's results differ from `:regexp`'s
 (2.9.2 gives the same as `:regexp`), generated from both engines on
@@ -244,6 +251,10 @@ Examples of where the machine's results differ from `:regexp`'s
 | `{a}/{a}` | `x/y` | `"a" => "x"` (writes `x/x`) | no match | Name written again |
 | `/{lang}/page{?lang}` | `/en/page?lang=fr` | `"lang" => "en"` | no match | Name written again |
 | `{/var:1,var}` | `/v/value` | `"var" => "v"` (writes `/v/v`) | `"var" => "value"` | Name written again |
+| `{a}/{b}/{a}` | `x/y/z` | `"a" => "x", "b" => "y"` (writes `x/y/x`) | no match | Name written again |
+| `{a}.{a}` | `x.x.x.x` | `"a" => "x"` (writes `x.x`) | `"a" => "x.x"` | Name written again |
+| `{a:1}{a:2}` | `xy` | `"a" => "xy"` (writes `xxy`) | no match | Name written again |
+| `{a}{a}` | `xx` | `"a" => "xx"` (writes `xxxx`) | no match (`"x"` would write it) | Name written again |
 
 `template_spec.rb`'s own note on the `{;hash*,first}` example calls a
 separate key the more likely reading.
@@ -266,28 +277,38 @@ it").
 
 ### Matching results
 
-1. **Compare two prefixes of one name (decided; the cap is built).**
-   A prefix varspec now takes at most its length (`Matcher::CappedRun`;
-   see "Matching rules"), so `{a:3}` on `abcdef` doesn't match. What's
-   left: `{a:1}{a:2}` on `xy` gives `"x"`, which writes `xx` (pinned in
-   `template_machine_spec.rb` with a "Known wrong" note). With bounded
-   prefixes, two prefixes of one name can be compared (the shorter is
-   the start of the longer, and the same if the value is shorter than
-   both), so it won't match; and a prefix's end is near enough to
-   decided that `Machine::Slots` can accept shapes like `{a:1}{a}`.
-2. **Reject repeated names whose values disagree (decided; worth more
-   exploration).** `{a}{a}`, `{a}{b}{a}`, `{a}.{a}` and a name
-   exploded in one varspec and not another (`{/a}{/a*}`) aren't
-   converted by `Machine::Slots`, and give the first value, which can
-   fail to expand back. For now, once the search finds a match, check
-   each such name's varspecs (decoded values equal, a prefix the start
-   of the whole, left out only where it writes nothing) and give `nil`
-   if they disagree. That's linear and never gives a wrong value, but
-   it can miss a split that agrees: `{a}{a}` on `xx` finds `"xx"` and
-   `nil` first, and gives `nil` rather than `"x"`. Keep the open
-   question in the plan: a check that finds the agreeing split and
-   stays linear would replace this. Leave the round trip's generator
-   out of these shapes until then.
+1. **Compare a prefix as the search goes (the rest is built).** A
+   prefix varspec takes at most its length (`Matcher::CappedRun`; see
+   "Matching rules"), so `{a:3}` on `abcdef` doesn't match, and two
+   prefixes of one name are compared once a split is found (item 2):
+   `{a:1}{a:2}` doesn't match `xy`. What's left: a prefix's end is near
+   enough to decided that `Machine::Slots` could give shapes like
+   `{a:1}{a}` a `RepeatedValue`, which compares during the search and
+   so finds splits the check after it can miss.
+2. **Find more of the splits where repeated names agree (the check is
+   built).** A split where a name's varspecs took values that disagree
+   isn't a match now (`Slots#read`; see "Matching rules"), and
+   `ParsedTemplate#match` asks the search for the next split, up to
+   `SPLITS_TO_TRY` (8) of them. On 12,196 generated templates that
+   write a name more than once, matched against their own expansions:
+
+   | | Right | Wrong values | Mapping that can't expand | No match |
+   |---|---|---|---|---|
+   | Before | 7,643 | 2,210 | 2,084 | 259 |
+   | Rejecting at the first split | 7,133 | 20 | 1,091 | 3,952 |
+   | Trying up to 8 (built) | 7,734 | 22 | 1,268 | 3,172 |
+
+   Trying every split finds one more than 8 does. What's left:
+   - A quarter of these expansions still don't match, since the search
+     can't reach the split that agrees: a state it passed on the way
+     to a split turned down isn't tried again with other captures (the
+     memo), and `{a}{a}` gives its second `a` no states (item 18).
+     These are generated worst cases; a shape like
+     `/{lang}/docs{?lang}` is compared as the search goes
+     (`RepeatedValue`).
+   - 22 still match with values that don't write the URI, and 1,268
+     with a mapping `expand` raises for. Not looked into.
+   - The round trip's generator still gives each name one use.
 3. **Match a list in an unexploded variable (decided).** `{/a}` with
    `["x", "y"]` writes `/x,y`, but `{/a}` on `/x,y` gives `nil`.
    Outside `+` and `#` a string's comma is written `%2C`, so a raw

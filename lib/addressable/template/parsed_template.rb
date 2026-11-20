@@ -36,6 +36,14 @@ module Addressable
       # from them.
       Compiled = Struct.new(:slots, :matcher)
 
+      # How many ways to split a URI #match looks at for one where every
+      # name written more than once has the same value. Each one costs a
+      # comparison of those values, so a fixed number keeps matching
+      # linear. Of 12,196 generated templates that write a name twice,
+      # matched against their own expansions, 8 finds all but one of the
+      # matches that looking at every way would.
+      SPLITS_TO_TRY = 8
+
       # Keeps the nodes Parser parses the pattern into. This never raises
       # for a pattern that isn't valid: the first invalid token's error is
       # raised by the first operation that needs a valid pattern.
@@ -89,14 +97,24 @@ module Addressable
         return nil if uri == false
         compiled = compiled_for(processor)
         # A nil URI raises NoMethodError here.
-        texts = compiled.matcher.match(uri.to_str)
+        slots = compiled.slots
+        values = nil
+        tries = SPLITS_TO_TRY
+        # A way to split the URI where a name written more than once took
+        # values that disagree isn't a match (Slots#read), so the search
+        # is asked for the next way, a few times over.
+        texts = compiled.matcher.match(uri.to_str) do |found|
+          tries -= 1
+          values = slots.read(found)
+          !values.nil? || tries.zero?
+        end
         return nil unless texts
         if uri.to_str == template.pattern
           mapping = {}
-        elsif compiled.slots.size.zero?
+        elsif slots.size.zero? || values.nil?
           return nil
         else
-          mapping = compiled.slots.mapping(texts, processor)
+          mapping = slots.mapping(values, processor)
         end
         Addressable::Template::MatchData.new(uri, template, mapping)
       end

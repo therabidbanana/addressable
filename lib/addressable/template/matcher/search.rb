@@ -126,11 +126,22 @@ module Addressable
         # (#first_time?). The others have one way on, which reaches a
         # state that branches within a few steps.
         #
+        # With a block, an attempt that gets there is offered to it, with
+        # the captures as that attempt has them. If the block turns it
+        # down, the search goes on to the next way through, as if the
+        # attempt had failed. What the block decides can depend on the
+        # captures, which the memo doesn't know about, so a state the
+        # search passed on the way to an attempt turned down isn't tried
+        # again with other captures: the block sees some of the ways
+        # through, in order, not all of them.
+        #
         # @param [State] done The end state.
         #
+        # @yieldreturn [Boolean] Whether to stop at this attempt.
+        #
         # @return [TrueClass, FalseClass]
-        #   Whether an attempt got there. If so, the captures are that
-        #   attempt's (#captures).
+        #   Whether an attempt got there, and the block took it. If so,
+        #   the captures are that attempt's (#captures).
         def run(done)
           to_try = @to_try
           until to_try.empty?
@@ -142,7 +153,10 @@ module Addressable
             end
             position = to_try.pop
             next if state.branches? && !first_time?(state, position)
-            return true if state.equal?(done) && position == @size
+            if state.equal?(done) && position == @size
+              return true if !block_given? || yield
+              next
+            end
             state.follow(self, position)
           end
           false

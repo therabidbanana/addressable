@@ -236,9 +236,11 @@ module TemplateMatchSpec
     ["{+v1,v2,v3}", "a"] => {"v1" => "a", "v2" => nil, "v3" => nil},
     ["{+v1,v2,v3}", "a,b"] => {"v1" => "a", "v2" => "b", "v3" => nil},
     ["{+v1,v2,v3}x", "a,bx"] => {"v1" => "a", "v2" => "b", "v3" => nil},
-    # A name written twice keeps its first value, so this doesn't expand
-    # back to its URI (the plan's "a variable written twice").
-    ["{+v1,v2,v1}", "a,b,c"] => {"v1" => "a", "v2" => "b"},
+    # A name written again has one value, so these don't match: v1 would
+    # be "a" and "c", and the first a* takes every member, which leaves
+    # the others none.
+    ["{+v1,v2,v1}", "a,b,c"] => nil,
+    ["{?a*,a*,a*}", "?a=aba=ab&a=ab"] => nil,
     ["{;b*,c*}", ";n=ak=ab;c=a2Cb"] => {
       "b" => {"n" => "ak=ab", "c" => "a2Cb"}, "c" => nil
     },

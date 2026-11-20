@@ -378,7 +378,6 @@ module Addressable
           Addressable::URI.unencode_component(value)
         end
       end
-      private_class_method :decode
     end
   end
 end

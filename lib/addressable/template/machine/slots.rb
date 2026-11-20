@@ -135,6 +135,11 @@ module Addressable
             before = expression
           end
           @all = @by_expression.values.flatten.freeze
+          # The slots of each name written more than once, to check that
+          # their values agree (#mapping). A processor's pattern can give
+          # a slot any text, so a name with one isn't checked.
+          @written_again = @all.group_by { |slot| slot.variable.name }.values.
+            select { |slots| slots.size > 1 && slots.none?(&:pattern) }.freeze
         end
 
         # The node's slots, in order. A literal has none.
@@ -143,39 +148,111 @@ module Addressable
         end
 
         ##
-        # The mapping a match gives: each name with its value, read from
-        # what its slot's group captured (Expression#read) and restored
+        # Reads each slot's value from what its group captured
+        # (Expression#read), for one way of splitting the URI, if that way
+        # can be a match.
+        #
+        # Expansion writes one value everywhere a name is, so a split
+        # where a name's varspecs took values that disagree (#agree?)
+        # isn't one: {a}.{a} doesn't match "x.y". Where the search could
+        # compare them as it went, it already has (RepeatedValue). This
+        # checks the rest. ParsedTemplate#match asks the search for
+        # another split when this turns one down, but the search can't
+        # reach every split, so a URI can go unmatched though some split
+        # of it agrees: {a}{a} doesn't match "xx", since nothing gives
+        # the second a a value.
+        #
+        # @param [Array<String, nil>] texts
+        #   The text each group captured, or nil if it took no part.
+        #
+        # @return [Array<Array>, nil]
+        #   Each slot's name and value, in order, for #mapping; or nil if
+        #   a name's values disagree.
+        def read(texts)
+          values = @all.map do |slot|
+            slot.expression.read(slot.variable, texts[slot.group])
+          end
+          values if @written_again.all? { |slots| agree?(slots, values) }
+        end
+
+        ##
+        # The mapping a match gives: each name with its value, restored
         # (Matching.restore). Every varspec's name is in it, even without
         # a value.
         #
         # A name written again keeps its first value, unless that was nil.
-        # A whole value replaces a prefix's, which is only its start:
-        # {/var:1,var} gives "/v/value" var "value".
+        # A value replaces one that's less of it: a whole value replaces a
+        # prefix's, which is only its start, and a longer prefix's
+        # replaces a shorter one's. {/var:1,var} gives "/v/value" var
+        # "value", and {a:1}{a:2} gives "xxy" a "xy".
         #
-        # @param [Array<String, nil>] texts
-        #   The text each group captured, or nil if it took no part.
+        # @param [Array<Array>] values Each slot's name and value (#read).
         # @param [#restore, nil] processor The processor, if any.
         #
         # @return [Hash] The mapping.
-        def mapping(texts, processor = nil)
+        def mapping(values, processor = nil)
           mapping = {}
-          # The names whose value so far is a prefix's.
-          prefixed = {}
+          # How much of each name's value its value so far is: a prefix's
+          # length, or everything.
+          widths = {}
           @all.each do |slot|
             variable = slot.variable
             mapping[variable.name] ||= nil
-            name, value = slot.expression.read(variable, texts[slot.group])
+            name, value = values[slot.group]
             value = Matching.restore(name, value, processor)
-            prefix = !variable.prefix.nil?
-            if mapping[name].nil? || (prefixed[name] && !prefix && !value.nil?)
+            width = variable.prefix || Float::INFINITY
+            if mapping[name].nil? || (!value.nil? && width > widths[name])
               mapping[name] = value
-              prefixed[name] = prefix
+              widths[name] = width
             end
           end
           mapping
         end
 
         private
+
+        ##
+        # Whether one value could have written what each of a name's slots
+        # took. They're compared decoded, each with the widest: a whole
+        # value if a slot has one, and otherwise the longest prefix.
+        #
+        # @param [Array<Slot>] slots The slots with the name.
+        # @param [Array<Array>] read
+        #   The name and value read for each of the template's slots.
+        def agree?(slots, read)
+          values = slots.map { |slot| Matching.decode(read[slot.group].last) }
+          widest = slots.each_index.reject { |index| values[index].nil? }.
+            max_by { |index| slots[index].variable.prefix || Float::INFINITY }
+          return true if widest.nil?
+          slots.each_index.all? do |index|
+            same_value?(slots[index], values[index], values[widest])
+          end
+        end
+
+        ##
+        # Whether a slot's value is the widest one's, as far as the slot
+        # goes: the same, or its start for a slot with a prefix. An
+        # exploded list of one member writes what the member alone does,
+        # so the two are the same. A slot left out agrees only where it
+        # would write nothing: an empty value, in an expression with no
+        # leader.
+        #
+        # @param [Slot] slot The slot.
+        # @param [String, Array, Hash, nil] value Its value, decoded.
+        # @param [String, Array, Hash] widest The widest value, decoded.
+        def same_value?(slot, value, widest)
+          widest = widest.first if widest.is_a?(Array) && widest.size == 1
+          if value.nil?
+            return widest == "" && slot.expression.class.leader.empty?
+          end
+          value = value.first if value.is_a?(Array) && value.size == 1
+          prefix = slot.variable.prefix
+          if prefix && widest.is_a?(String)
+            widest[0, prefix] == value
+          else
+            widest == value
+          end
+        end
 
         # The next slot. Previous is the slot before it in its expression,
         # if any.

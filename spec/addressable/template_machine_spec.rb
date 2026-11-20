@@ -1475,7 +1475,7 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
 
     it "calls match once per varspec, in order, like :regexp" do
-      expect_same_with("{a,b}/{a}{?c}", "x,y/z?c=1", {})
+      expect_same_with("{a,b}/{a}{?c}", "x,y/x?c=1", {})
     end
 
     it "doesn't call match for text that isn't valid UTF-8, like :regexp" do
@@ -1933,23 +1933,58 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       ["{a:1},{a}", ",", {"a" => nil}, {"a" => ""}],
       ["{/var,var:1}", "/value/v", {"var" => "value"}, {"var" => "value"}],
       ["{/var,var:1}", "/value/x", {"var" => "value"}, nil],
+    ],
+    "a name written again has one value, wherever its place is decided " \
+    "or not" => [
       # Where the earlier value could end in many places, or another value
-      # comes between, as if the name were written once.
-      ["{a}{a}", "xy", {"a" => "xy"}, {"a" => "xy"}],
-      ["{a}{b}{a}", "xyx", {"a" => "xyx", "b" => nil},
-        {"a" => "xyx", "b" => nil}],
-      ["{a}{?b}/{a}", "x/y", {"a" => "x", "b" => nil},
-        {"a" => "x", "b" => nil}],
-      # Known wrong: no value expands to "xy" (a = "x" writes "xx"), so it
-      # shouldn't match. Each prefix now takes at most its length, so the
-      # two can be compared; that's the rest of the plan's "Next work",
-      # item 1.
-      ["{a:1}{a:2}", "xy", {"a" => "xy"}, {"a" => "x"}],
+      # comes between, the values are compared once a match is found.
+      ["{a}/{b}/{a}", "x/y/x", {"a" => "x", "b" => "y"},
+        {"a" => "x", "b" => "y"}],
+      ["{a}/{b}/{a}", "x/y/z", {"a" => "x", "b" => "y"}, nil],
+      ["{a}/{b}/{a}", "%41/y/A", {"a" => "A", "b" => "y"},
+        {"a" => "A", "b" => "y"}],
+      ["{a}/{b}/{a}", "x/y/", {"a" => "x", "b" => "y"}, nil],
+      ["{a}/{b}/{a}", "/y/", {"a" => nil, "b" => "y"},
+        {"a" => nil, "b" => "y"}],
+      ["{a}{?b}/{a}", "x/y", {"a" => "x", "b" => nil}, nil],
+      ["{a}{?b}/{a}", "x?b=1/x", {"a" => "x", "b" => "1"},
+        {"a" => "x", "b" => "1"}],
+      ["{?a,b,a}", "?a=1&b=2&a=1", {"a" => "1", "b" => "2"},
+        {"a" => "1", "b" => "2"}],
+      ["{?a,b,a}", "?a=1&b=2", {"a" => "1", "b" => "2"}, nil],
+      ["{a}/{b}{?a}", "/y?a=", {"a" => "", "b" => "y"},
+        {"a" => "", "b" => "y"}],
       # A literal the value could hold, or one that starts with "%", or a
       # "#" that may be written "%23", doesn't decide where it ends.
-      ["{a}.{a}", "x.y", {"a" => "x"}, {"a" => "x"}],
-      ["{a}%2F{a}", "x%2Fy", {"a" => "x"}, {"a" => "x"}],
-      ["\#{a}\#{a}", "#x#y", {"a" => "x"}, {"a" => "x"}]
+      ["{a}.{a}", "x.y", {"a" => "x"}, nil],
+      ["{a}.{a}", "x.x", {"a" => "x"}, {"a" => "x"}],
+      ["{a}%2F{a}", "x%2Fy", {"a" => "x"}, nil],
+      ["\#{a}\#{a}", "#x#y", {"a" => "x"}, nil],
+      ["\#{a}\#{a}", "#x#x", {"a" => "x"}, {"a" => "x"}],
+      # Prefixes are the start of one value, and the longest gives the
+      # most of it.
+      ["{a:1}{a:2}", "xy", {"a" => "xy"}, nil],
+      ["{a:1}{a:2}", "xxy", {"a" => "xxy"}, {"a" => "xy"}],
+      ["{a:1}{a:2}", "xx", {"a" => "xx"}, {"a" => "x"}],
+      ["{a:2}/{b}/{a}", "xy/z/xyz", {"a" => "xy", "b" => "z"},
+        {"a" => "xyz", "b" => "z"}],
+      ["{a:2}/{b}/{a}", "xy/z/xzz", {"a" => "xy", "b" => "z"}, nil],
+      ["{a}/{b}/{a:2}", "xyz/z/x", {"a" => "xyz", "b" => "z"}, nil],
+      # An exploded list of one member writes what the member alone does.
+      ["{/a}{/a*}", "/x/x", {"a" => ["x", "x"]}, {"a" => "x"}],
+      ["{/a}{/a*}", "/x/y", {"a" => ["x", "y"]}, nil],
+      ["{/a*}/{/a*}", "/x/y//x/y", {"a" => ["x", "y"]}, {"a" => ["x", "y"]}],
+      ["{/a*}/{/a*}", "/x/y//x/z", {"a" => ["x", "y"]}, nil],
+      # Where the first split found disagrees, the search goes on to the
+      # next: {a}.{a} gives "x.x.x" to the first a, then "x.x".
+      ["{a}.{a}", "x.x.x.x", {"a" => "x"}, {"a" => "x.x"}],
+      ["{+a,a}x{a}!", "x.y,x.yxx.y!", {"a" => ""}, {"a" => "x.y"}],
+      # It can't reach every split, so a URI whose values agree only in
+      # one it can't reach doesn't match: nothing gives the second a of
+      # {a}{a} a value (the plan's "Next work", item 2).
+      ["{a}{a}", "xx", {"a" => "xx"}, nil],
+      ["{a}{a}", "", {"a" => nil}, {"a" => nil}],
+      ["{a}{b}{a}", "xyx", {"a" => "xyx", "b" => nil}, nil]
     ]
   }.each do |fix, examples|
     context "where #{fix}" do
@@ -1961,6 +1996,51 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
         it "gives #{machine_mapping.inspect} for #{pattern} on #{uri}" do
           expect(mapping(:machine, pattern, uri)).to eq(machine_mapping)
         end
+      end
+    end
+  end
+
+  # {a}.{a} tries the first a at each "." from the last back, so the split
+  # that agrees is the one at the middle ".".
+  context "where a name written again agrees only in a later split" do
+    tries = Addressable::Template::ParsedTemplate::SPLITS_TO_TRY
+
+    def uri_with_dots(dots_in_value)
+      value = Array.new(dots_in_value + 1, "x").join(".")
+      [value, "#{value}.#{value}"]
+    end
+
+    it "finds it within the splits it tries" do
+      value, uri = uri_with_dots(tries - 2)
+      expect(mapping(:machine, "{a}.{a}", uri)).to eq("a" => value)
+    end
+
+    it "finds it at the last split it tries" do
+      value, uri = uri_with_dots(tries - 1)
+      expect(mapping(:machine, "{a}.{a}", uri)).to eq("a" => value)
+    end
+
+    it "doesn't match where it's one split further" do
+      _, uri = uri_with_dots(tries)
+      expect(mapping(:machine, "{a}.{a}", uri)).to be_nil
+    end
+
+    it "restores only the values of the split it takes" do
+      restored = []
+      processor = Object.new
+      processor.define_singleton_method(:restore) do |name, value|
+        restored << [name, value]
+        value
+      end
+      template = Addressable::Template.new("{a}.{a}", engine: :machine)
+      expect(template.match("x.x.x.x", processor).mapping).to eq("a" => "x.x")
+      expect(restored).to eq([["a", "x.x"], ["a", "x.x"]])
+    end
+
+    it "gives up in linear time where none agrees" do
+      template = Addressable::Template.new("{a}.{a}", engine: :machine)
+      ["x." * 8_000 + "y", "%41." * 4_000 + "y"].each do |uri|
+        expect(Timeout.timeout(5) { template.match(uri) }).to be_nil
       end
     end
   end
