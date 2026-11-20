@@ -122,6 +122,20 @@ module Addressable
         def leading_text
           nil
         end
+
+        # The state as Matcher#to_s lists it: its kind, what it holds, and
+        # the groups it depends on, if any.
+        def to_s
+          parts = [self.class.name.split("::").last, description]
+          unless depends_on.empty?
+            parts << "(once for each place of group #{depends_on.join(', ')})"
+          end
+          parts.compact.join(" ")
+        end
+
+        # What the state holds, for #to_s. Nothing, unless its class says.
+        def description
+        end
       end
 
       # Text that has to come next.
@@ -181,6 +195,13 @@ module Addressable
           raw unless raw =~ /\A[0-9A-Fa-f]/
         end
 
+        # Each unit's text, with both forms of one that has two.
+        def description
+          @units.map do |unit|
+            [unit.raw, unit.encoded].compact.map(&:inspect).join("|")
+          end.join(" ")
+        end
+
         def follow(search, position, captures)
           length = search.skip(@pattern, position)
           search.try(@next, position + length, captures) if length
@@ -211,6 +232,11 @@ module Addressable
         def takes_whole_run?
           @set.first_bytes.disjoint?(@next.first_bytes)
         end
+
+        # The set's name.
+        def description
+          SETS.key(@set).to_s
+        end
       end
 
       # A run as long as possible first: take one more character and ask
@@ -225,6 +251,21 @@ module Addressable
 
         def branches?
           true
+        end
+
+        # The set's name, and where #prepare found the run can stop, if
+        # that isn't anywhere.
+        def description
+          if @bytes_after_run_end == NOTHING
+            "#{super}, stopping at its end"
+          elsif @bytes_after_run_end
+            "#{super}, stopping at its end, or anywhere if " \
+              "#{@bytes_after_run_end} follows it"
+          elsif @text_after
+            "#{super}, stopping before #{@text_after.inspect}"
+          else
+            super
+          end
         end
 
         def follow(search, position, captures)
@@ -256,6 +297,10 @@ module Addressable
         def initialize(index, texts)
           super(index)
           @texts = texts
+        end
+
+        def description
+          @texts.map(&:inspect).join("|")
         end
 
         def follow(search, position, captures)
@@ -342,6 +387,11 @@ module Addressable
           first | second if first && second
         end
 
+        # The two states it goes on to, in order.
+        def description
+          "#{first} or #{second}"
+        end
+
         def follow(search, position, captures)
           first = @first_state if @first_state.first_bytes.allow?(search, position)
           second = @second_state if @second_state.first_bytes.allow?(search, position)
@@ -367,6 +417,7 @@ module Addressable
       class ProcessorPattern < State
         def initialize(index, source)
           super(index)
+          @source = source
           # Compiled now, so a pattern that isn't valid raises RegexpError
           # before any matching, as it does in :regexp.
           @first_choice = Regexp.new("\\A(?:#{source})")
@@ -379,6 +430,10 @@ module Addressable
 
         def branches?
           true
+        end
+
+        def description
+          "/#{@source}/"
         end
 
         def follow(search, start, captures)
@@ -413,6 +468,10 @@ module Addressable
           ANYTHING
         end
 
+        def description
+          "as group #{@group}"
+        end
+
         def follow(search, position, captures)
           earlier = search.captured(@group, captures)
           length = @writer.length_at(search, position, earlier)
@@ -428,6 +487,10 @@ module Addressable
           @earlier = earlier
           @group = group
           @writer = writer
+        end
+
+        def description
+          "group #{@group} with group #{@earlier}"
         end
 
         def follow(search, position, captures)
@@ -446,6 +509,10 @@ module Addressable
           super(index)
           @group = group
           @writer = writer
+        end
+
+        def description
+          "as group #{@group}"
         end
 
         def follow(search, position, captures)
@@ -470,6 +537,11 @@ module Addressable
           @next.leading_text
         end
 
+        # The group, and whether this is its start or its end.
+        def description
+          "group #{@slot / 2} #{@slot.even? ? 'start' : 'end'}"
+        end
+
         def follow(search, position, captures)
           search.try(@next, position, CaptureList.new(@slot, position, captures))
         end
@@ -491,6 +563,11 @@ module Addressable
 
         def possible_first_bytes
           @next.first_bytes | @left_out.first_bytes
+        end
+
+        # Where a value left out goes on.
+        def description
+          "to #{@target}"
         end
 
         def follow(search, position, captures)
@@ -520,6 +597,10 @@ module Addressable
         # It takes nothing, so the state it goes back to decides.
         def bytes_after_taking_run(set)
           @next.bytes_after_run(set)
+        end
+
+        def description
+          "to #{@target}"
         end
 
         def follow(search, position, captures)

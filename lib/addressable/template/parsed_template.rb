@@ -135,6 +135,13 @@ module Addressable
         @regexp ||= build_regexp
       end
 
+      # The matcher #match uses, with the processor's patterns, if any, for
+      # reading how the template matches (Matcher#to_s).
+      def matcher(processor = nil)
+        raise_if_invalid
+        matcher_for(processor)
+      end
+
       private
 
       # Renders the nodes as the regexp's source. It starts as UTF-8, as

@@ -386,6 +386,20 @@ module Addressable
         nil
       end
 
+      ##
+      # The graph, a state to a line: its number, its kind and what it
+      # holds (State#to_s). A state goes on to the next one unless its line
+      # names others. For reading how a template matches, and for the
+      # specs that pin it.
+      #
+      # @return [String]
+      def to_s
+        width = (@states.size - 1).to_s.size
+        @states.map do |state|
+          "#{state.index.to_s.rjust(width)} #{state}"
+        end.join("\n")
+      end
+
       private
 
       # Adds the block's states as ones a match can leave out or repeat.

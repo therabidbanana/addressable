@@ -362,6 +362,18 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
    `%23` occurs") would likely fix it, at the cost of a harder idea to
    explain. `{+a}/{b}` over 50 directories is 2.9×, as the value can
    stop at every `/`.
+
+   Two gaps the printed graphs show (2026-11-20, not yet measured). A
+   run only skips to where the text after it occurs
+   (`State#leading_text`) when a literal follows it directly, or
+   through a `Capture`. `Jump`, `LeaveOutIfEmpty` and `FollowedBy`
+   don't pass the text on, so:
+   - A value with no leader before a literal it could hold steps
+     through every character: `{a}.json` and `x{a}y` list a plain
+     `GreedyRun unreserved`, where `{/a}.json` lists `stopping before
+     ".json"`.
+   - The first pass of rule 3 (`/{name}{.ext}`) could stop only where
+     the leader occurs, but its run is followed by a `FollowedBy`.
 8. **Processor patterns.** A pattern whose next state can start
    anywhere checks every end: `{a}{b}` with `a*` on 2,001 characters
    that don't match takes 17.8 ms (`:regexp` 0.24 ms), and grows
@@ -498,6 +510,9 @@ TEMPLATE_MODE=machine bundle exec rspec spec/addressable/template*_spec.rb
 
 # :regexp vs :machine: time, objects, agreement, adversarial growth
 ITERATIONS=3000 bundle exec rake profile:template_machine
+
+# The states the machine matches a template with
+PATTERN='/{name}{.ext}' bundle exec rake template:graph
 ```
 
 - `TEMPLATE_MODE` only switches the engine inside the specs. In a
@@ -505,8 +520,13 @@ ITERATIONS=3000 bundle exec rake profile:template_machine
   pass `engine: :machine`; otherwise you're looking at `:regexp`.
 - Machine specs: `template_machine_spec.rb` (each operation against
   `:regexp`, the matching fixes, the round trip and the linear-time
-  checks), `template_engine_spec.rb`, `template_parser_spec.rb` and
-  `template_slots_spec.rb`.
+  checks), `template_engine_spec.rb`, `template_parser_spec.rb`,
+  `template_slots_spec.rb` and `template_matcher_spec.rb`, which pins
+  the printed graph (`Matcher#to_s`) of one small template per shape
+  and tries the matcher's builder methods on hand-built matchers. A
+  change that's meant to alter a graph updates its pinned lines; start
+  an edge case there, as a hand-built matcher, before touching the
+  operators.
 - Where the code is: `lib/addressable/template/parsed_template.rb`
   (the engine), `machine/` (the nodes: `slots.rb` decides how each
   varspec matches before any steps are added, `expression.rb` builds

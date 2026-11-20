@@ -66,6 +66,20 @@ module Addressable
         def disjoint?(other)
           (mask & other.mask).zero?
         end
+
+        # The bytes, for Matcher#to_s: the visible ASCII characters as they
+        # are, then whether there are others, and the end of the URI.
+        def to_s
+          visible = (33..126).select { |byte| mask[byte] == 1 }
+          others = (0...END_OF_URI).any? do |byte|
+            mask[byte] == 1 && !(33..126).cover?(byte)
+          end
+          parts = []
+          parts << visible.map(&:chr).join.inspect unless visible.empty?
+          parts << "other bytes" if others
+          parts << "the end" if mask[END_OF_URI] == 1
+          parts.empty? ? "nothing" : parts.join(", ")
+        end
       end
 
       # Every state's first bytes before Matcher#finish works them out.
