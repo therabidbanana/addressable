@@ -66,16 +66,10 @@ module Addressable
     #
     # @api private
     class Matcher
-      # The template's expressions as the pattern writes them, for
-      # Matching.match_data.
-      attr_reader :expansions
-
-      # @param [Array<String>] expansions The template's expressions.
       # @param [Integer] groups
       #   How many groups the template has: one for each varspec's value,
       #   numbered in order from 0 (Machine::Slots).
-      def initialize(expansions, groups)
-        @expansions = expansions
+      def initialize(groups)
         @encoding = nil
         @states = []
         @groups = groups

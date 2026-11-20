@@ -54,9 +54,15 @@ Decisions that shape the code:
 - **Matching is a state graph** (`Template::Matcher`): a depth-first
   search that never tries the same branching state at the same position
   twice, which keeps it linear. The nodes add the states in the shape
-  expansion writes (see "Matching rules"), and
-  `Template::Matching.match_data` turns captures into the same
-  `MatchData` for both engines.
+  expansion writes (see "Matching rules").
+- **The machine decides how each varspec matches before it adds any
+  state, and reads its values itself** (`Machine::Slots`). One pass
+  over the varspecs gives each a slot: its group, its processor
+  pattern, whether it can never take anything, and the earlier value
+  it has to repeat. The expressions add their states from the slots,
+  and after a match `Slots#mapping` turns what each group captured into
+  the mapping (`Expression#read`). `Matching.match_data` only serves
+  `:regexp`; the engines share `Matching.restore`.
 - **The machine builds the template's regexp only for `to_regexp` and
   `source`**, from its nodes, byte-for-byte what `Template`'s builder
   writes. It builds it once, on first use or in `freeze`. The matcher
@@ -75,7 +81,7 @@ All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 full suite passes in both IDNA modes (4,700 and 4,582 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
-coverage of the machine's files is complete except `matching.rb:142`,
+coverage of the machine's files is complete except `matching.rb:143`,
 the branch for Ruby 2.3 and earlier.
 
 On 2026-11-19 (run 44642534313, commit `017e0a1`) the machine-mode CI
@@ -431,10 +437,12 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
     messages.
 14. **Simplification.** Code that only copies a `Template` bug
     (`Parser#names_in_invalid_token`, `Machine::Invalid#names`) goes
-    once `Template` fixes it. `Matching.match_data`'s old quirks (an
-    unexploded `;`, `?` or `&` value under the name the URI gives,
-    dropping empty members, `drop_joiners_before_later_values`) now
-    only serve `:regexp`, and go with it.
+    once `Template` fixes it. `Matching.match_data` only serves
+    `:regexp`, and goes with it. `Expression#read` still copies one of
+    its quirks: an unexploded `;`, `?` or `&` value goes under the name
+    its text has, cut at the next `=`, which only a processor's pattern
+    can make differ from the variable's (`{?n}` capturing `12` gives
+    `"12" => ""`).
 15. **Round-trip coverage of repeated names.** The round-trip spec's
     generator gives each name one use, and `template_match_spec.rb`'s
     soundness check skips patterns that reuse a name. Both could now

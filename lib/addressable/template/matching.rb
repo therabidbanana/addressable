@@ -20,9 +20,10 @@ require "addressable/uri"
 
 module Addressable
   class Template
-    # What both engines' #match share: reading the URI, and turning the
-    # values captured for each varspec into a MatchData. The engines differ
-    # only in how they split the URI between the varspecs.
+    # What both engines' #match share: reading the URI, how literal text
+    # matches, and restoring a value. It also turns what :regexp's regexp
+    # captured into a MatchData; the :machine engine reads its captures
+    # from its own nodes (Machine::Slots#mapping).
     #
     # @api private
     class Matching
@@ -191,29 +192,27 @@ module Addressable
       end
 
       ##
-      # The MatchData for a URI that the template matched.
+      # The MatchData for a URI that the :regexp engine's regexp matched.
+      # The :machine engine reads its values from its nodes
+      # (Machine::Slots#mapping), and shares only .restore.
+      #
+      # :regexp's regexp makes joiners optional, so an empty exploded
+      # value after the first varspec can be a joiner that a later value
+      # started after, and has no members.
       #
       # @param [Addressable::Template] template The template.
       # @param [Addressable::URI] uri The URI, from parse_uri.
       # @param [Array<String>] expansions The template's expressions, in order.
       # @param [#captures, #begin, #end] matched
-      #   The value captured for each varspec, in order, as a regular
-      #   expression's MatchData gives them. Without joiners_required, it
-      #   also needs where each one begins and ends, with group 1 for the
-      #   first varspec.
+      #   The value captured for each varspec, in order, and where each one
+      #   begins and ends, with group 1 for the first varspec, as a regular
+      #   expression's MatchData gives them.
       # @param [#restore, nil] processor The processor, if any.
-      # @param [TrueClass, FalseClass] joiners_required
-      #   Whether every value captured came after its leader or joiner, as
-      #   the :machine engine matches them. :regexp's regexp makes joiners
-      #   optional, so there an empty exploded value after the first
-      #   varspec can be a joiner that a later value started after, and has
-      #   no members.
       #
       # @return [Addressable::Template::MatchData, NilClass]
       #   The match, or nil if the template has no expressions and the URI
       #   isn't the pattern as written.
-      def self.match_data(template, uri, expansions, matched, processor,
-                          joiners_required: false)
+      def self.match_data(template, uri, expansions, matched, processor)
         mapping = {}
         if uri.to_str == template.pattern
           return Addressable::Template::MatchData.new(uri, template, mapping)
@@ -222,8 +221,6 @@ module Addressable
 
         captured = matched.captures
         index = 0
-        # The names whose value so far is a prefix's.
-        prefixed = {}
         expansions.each do |expansion|
           _, operator, varlist = *expansion.match(EXPRESSION)
           varspecs = varlist.split(',')
@@ -234,37 +231,18 @@ module Addressable
             value = captured[index]
             case operator
             when nil, '+', '#', '/', '.'
-              if value && modifier == '*' && joiners_required
-                # An empty value came after its leader or joiner, so it's
-                # one empty member.
-                value = value.split(JOINERS.fetch(operator, ','), -1)
-                value = [''] if value.empty?
-              elsif value && modifier == '*'
+              if value && modifier == '*'
                 value = exploded_members(operator, value, position == 0)
                 drop_joiners_before_later_values(value,
                   varspecs.drop(position + 1), captured, matched, index + 1)
               end
             when ';', '?', '&'
-              if value && modifier == '*' && joiners_required
-                # Every member came after its leader or joiner, so an empty
-                # one is an empty name, which expansion writes for a ""
-                # key. :regexp drops it, or gives it a nil key.
-                value = named_members(operator, name, value, true)
-              else
-                name, value = named_value(operator, name, modifier == '*', value)
-              end
+              name, value = named_value(operator, name, modifier == '*', value)
             end
             value = restore(name, value, processor)
             # A name that appears again keeps its first value, unless that
-            # was nil. On the machine, which checks that a prefix's value is
-            # the start of the whole one, the whole value replaces it:
-            # {/var:1,var} gives "/v/value" var "value".
-            prefix = !modifier.nil? && modifier.start_with?(':')
-            if mapping[name].nil? ||
-                (joiners_required && prefixed[name] && !prefix && !value.nil?)
-              mapping[name] = value
-              prefixed[name] = prefix
-            end
+            # was nil.
+            mapping[name] = value if mapping[name].nil?
             index += 1
           end
         end
@@ -350,17 +328,12 @@ module Addressable
       # @param [String] operator The expression's operator.
       # @param [String] name The varspec's name.
       # @param [String] value The value captured for the varspec.
-      # @param [TrueClass, FalseClass] keep_empty
-      #   Whether an empty member is an empty name, rather than dropped at
-      #   the end or a nil key elsewhere, as :regexp gives it.
       #
       # @return [Array<String>, Hash] The list or associative array.
-      def self.named_members(operator, name, value, keep_empty = false)
-        members = value.split(JOINERS[operator], keep_empty ? -1 : 0)
-        members = [''] if keep_empty && members.empty?
-        pairs = members.map do |pair|
+      def self.named_members(operator, name, value)
+        pairs = value.split(JOINERS[operator]).map do |pair|
           key, member = pair.split('=', 2)
-          [keep_empty ? key.to_s : key, member || ""]
+          [key, member || ""]
         end
         if !pairs.empty? && pairs.all? { |key, _| key == name }
           pairs.map { |_, member| member }
@@ -389,7 +362,6 @@ module Addressable
           value
         end
       end
-      private_class_method :restore
 
       # A value with its pct-encoded triplets decoded, and an associative
       # array's keys as well.

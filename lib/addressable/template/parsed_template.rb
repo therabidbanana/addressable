@@ -31,6 +31,11 @@ module Addressable
     #
     # @api private
     class ParsedTemplate
+      # What matching needs, built from the nodes: the slots, which say how
+      # each varspec matches and read its value, and the matcher built
+      # from them.
+      Compiled = Struct.new(:slots, :matcher)
+
       # Keeps the nodes Parser parses the pattern into. This never raises
       # for a pattern that isn't valid: the first invalid token's error is
       # raised by the first operation that needs a valid pattern.
@@ -40,7 +45,7 @@ module Addressable
         @pattern = pattern
         @nodes = Parser.new.parse_nodes(pattern)
         @invalid = @nodes.find { |node| node.is_a?(Machine::Invalid) }
-        @matcher = nil
+        @compiled = nil
         @regexp = nil
       end
 
@@ -67,8 +72,11 @@ module Addressable
       end
 
       # Matches the URI against the nodes' steps, which split it between
-      # the varspecs, and Matching.match_data turns what each varspec
-      # captured into the template's MatchData.
+      # the varspecs, and the slots turn what each varspec captured into
+      # the mapping of the template's MatchData.
+      #
+      # As :regexp does, a URI that is the pattern as written matches with
+      # no values, and a template with no expressions matches no other.
       #
       # @param [Addressable::Template] template The template, for its
       #   MatchData.
@@ -79,12 +87,18 @@ module Addressable
         raise_if_invalid
         uri = Matching.parse_uri(uri)
         return nil if uri == false
-        search = matcher_for(processor)
+        compiled = compiled_for(processor)
         # A nil URI raises NoMethodError here.
-        captures = search.match(uri.to_str)
+        captures = compiled.matcher.match(uri.to_str)
         return nil unless captures
-        Matching.match_data(template, uri, search.expansions, captures,
-          processor, joiners_required: true)
+        if uri.to_str == template.pattern
+          mapping = {}
+        elsif compiled.slots.size.zero?
+          return nil
+        else
+          mapping = compiled.slots.mapping(captures.captures, processor)
+        end
+        Addressable::Template::MatchData.new(uri, template, mapping)
       end
 
       # Builds the matcher and the regexp, so a frozen template can still
@@ -92,7 +106,7 @@ module Addressable
       # doesn't raise; every operation that would use them raises first.
       def freeze
         unless @invalid
-          @matcher ||= build_matcher
+          @compiled ||= compile
           @regexp ||= build_regexp
         end
         super
@@ -139,7 +153,7 @@ module Addressable
       # reading how the template matches (Matcher#to_s).
       def matcher(processor = nil)
         raise_if_invalid
-        matcher_for(processor)
+        compiled_for(processor).matcher
       end
 
       private
@@ -158,28 +172,23 @@ module Addressable
         raise @invalid.error_class, @invalid.message if @invalid
       end
 
-      # The matcher for a match with the processor. A processor's match
-      # method can give a variable's value a pattern of its own, and is
-      # asked on every call, so the matcher with its patterns is built for
-      # the call. Otherwise the pattern's matcher is built on first use, or
-      # by freeze, and kept.
-      def matcher_for(processor)
-        return build_matcher(processor) if processor.respond_to?(:match)
-        @matcher ||= build_matcher
+      # The slots and matcher for a match with the processor. A processor's
+      # match method can give a variable's value a pattern of its own, and
+      # is asked on every call, so they're built with its patterns for the
+      # call. Otherwise the pattern's are built on first use, or by freeze,
+      # and kept.
+      def compiled_for(processor)
+        return compile(processor) if processor.respond_to?(:match)
+        @compiled ||= compile
       end
 
       # Works out the template's slots, with the processor's patterns, if
       # any, then adds each node's steps to a new matcher.
-      def build_matcher(processor = nil)
+      def compile(processor = nil)
         slots = Machine::Slots.new(@nodes, processor)
-        matcher = Matcher.new(expression_texts, slots.size)
+        matcher = Matcher.new(slots.size)
         @nodes.each { |node| node.add_match_steps(matcher, slots.of(node)) }
-        matcher.finish
-      end
-
-      # Each expression as the pattern writes it, in order.
-      def expression_texts
-        @nodes.grep(Machine::Expression).map(&:pattern_text)
+        Compiled.new(slots, matcher.finish).freeze
       end
 
       # Raises the error for a pattern that isn't valid, then the values for

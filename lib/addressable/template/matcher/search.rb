@@ -171,8 +171,8 @@ module Addressable
         end
       end
 
-      # A match's captures, as a regular expression's MatchData gives them
-      # to Matching.match_data. The slots are byte offsets.
+      # A match's captures: the text each group took, for
+      # Machine::Slots#mapping. The slots are byte offsets.
       class Captures
         def initialize(text, slots)
           @text = text

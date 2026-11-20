@@ -383,7 +383,7 @@ end
 # what each one does can be read and tried apart from the operators.
 describe Addressable::Template::Matcher, "builder methods" do
   def build(groups)
-    matcher = described_class.new([], groups)
+    matcher = described_class.new(groups)
     yield matcher
     matcher.finish
   end

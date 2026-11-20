@@ -165,8 +165,8 @@ module Addressable
         # the first value present comes after the leader, and each later
         # one after the joiner. Each value is as long as can be first, so
         # where two variables could take the same text, the earlier one
-        # does. Each value is captured, for Matching.match_data, and a
-        # value left out is captured as nothing, so it's nil.
+        # does. Each value is captured, for #read, and a value left out is
+        # captured as nothing, so it's nil.
         #
         # This is where the machine differs from :regexp, whose regexp
         # makes the joiners optional and tries the shortest values first
@@ -193,6 +193,49 @@ module Addressable
             end
           else
             first_value_steps(matcher, slots)
+          end
+        end
+
+        ##
+        # The value a match gives a variable, from the text its group
+        # captured, before it's decoded, and the name it goes under.
+        # Every value came after its leader or joiner, so an exploded
+        # value's empty text is one empty member.
+        #
+        # A ;, ? or & value is captured with its name. Outside an exploded
+        # value the name is the text before the first "=", which is the
+        # variable's unless a processor's pattern matched other text; the
+        # value is what follows, up to the next "=". An exploded one's
+        # members are a list if every name is the variable's, as an
+        # exploded list repeats it, and an associative array otherwise,
+        # where an empty member is a "" key.
+        #
+        # @param [Variable] variable The variable.
+        # @param [String, nil] text
+        #   The text captured, or nil if the variable took no part.
+        #
+        # @return [Array] The name, and a String, Array, Hash or nil.
+        def read(variable, text)
+          name = variable.name
+          return [name, nil] if text.nil?
+          if variable.explode
+            members = text.split(self.class.joiner, -1)
+            members = [""] if members.empty?
+            return [name, members] unless self.class.names_values?
+            pairs = members.map do |pair|
+              key, member = pair.split("=", 2)
+              [key.to_s, member || ""]
+            end
+            if pairs.all? { |key, _| key == name }
+              [name, pairs.map { |_, member| member }]
+            else
+              [name, Hash[pairs]]
+            end
+          elsif self.class.names_values?
+            written_name, value = text.split("=")
+            [written_name, value || ""]
+          else
+            [name, text]
           end
         end
 

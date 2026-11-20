@@ -16,6 +16,7 @@
 #    limitations under the License.
 #++
 
+require "addressable/template/matching"
 require "addressable/template/machine/expression"
 require "addressable/template/machine/repeated_value"
 
@@ -42,7 +43,9 @@ module Addressable
       # A template's slots: one for each varspec, in order, worked out
       # before any of the matcher's states are added, so that each
       # expression adds its steps from what's already decided
-      # (Expression#add_match_steps).
+      # (Expression#add_match_steps). Once the matcher has split a URI
+      # between the groups, the slots turn what each captured into the
+      # match's mapping (#mapping).
       #
       # A varspec is absorbed if it's an exploded variable right after
       # another exploded one in its expression, which takes every member it
@@ -107,11 +110,45 @@ module Addressable
               previous = add(expression, variable, pattern, previous)
             end
           end
+          @all = @by_expression.values.flatten.freeze
         end
 
         # The node's slots, in order. A literal has none.
         def of(node)
           @by_expression.fetch(node, NONE)
+        end
+
+        ##
+        # The mapping a match gives: each name with its value, read from
+        # what its slot's group captured (Expression#read) and restored
+        # (Matching.restore). Every varspec's name is in it, even without
+        # a value.
+        #
+        # A name written again keeps its first value, unless that was nil.
+        # A whole value replaces a prefix's, which is only its start:
+        # {/var:1,var} gives "/v/value" var "value".
+        #
+        # @param [Array<String, nil>] texts
+        #   The text each group captured, or nil if it took no part.
+        # @param [#restore, nil] processor The processor, if any.
+        #
+        # @return [Hash] The mapping.
+        def mapping(texts, processor = nil)
+          mapping = {}
+          # The names whose value so far is a prefix's.
+          prefixed = {}
+          @all.each do |slot|
+            variable = slot.variable
+            mapping[variable.name] ||= nil
+            name, value = slot.expression.read(variable, texts[slot.group])
+            value = Matching.restore(name, value, processor)
+            prefix = !variable.prefix.nil?
+            if mapping[name].nil? || (prefixed[name] && !prefix && !value.nil?)
+              mapping[name] = value
+              prefixed[name] = prefix
+            end
+          end
+          mapping
         end
 
         private

@@ -141,3 +141,87 @@ describe Addressable::Template::Machine::Slots do
     )
   end
 end
+
+describe Addressable::Template::Machine::Slots, "#mapping" do
+  # The mapping for the text each of the pattern's groups captured.
+  def mapping(pattern, texts, processor = nil)
+    nodes = Addressable::Template::Parser.new.parse_nodes(pattern)
+    described_class.new(nodes).mapping(texts, processor)
+  end
+
+  {
+    # A value as it is, decoded; nil for a group that took no part.
+    ["{a}{/b}", ["x", nil]] => {"a" => "x", "b" => nil},
+    ["{a}", ["%41%2F"]] => {"a" => "A/"},
+    ["{+a}", ["a/b"]] => {"a" => "a/b"},
+    ["{a}", [""]] => {"a" => ""},
+    # An exploded value's members; empty text is one empty member.
+    ["{/a*}", ["x/y"]] => {"a" => ["x", "y"]},
+    ["{/a*}", ["x//"]] => {"a" => ["x", "", ""]},
+    ["{/a*}", [""]] => {"a" => [""]},
+    ["{/a*}", [nil]] => {"a" => nil},
+    ["{.a*}", ["x.%41"]] => {"a" => ["x", "A"]},
+    ["{a*}", ["x,y"]] => {"a" => ["x", "y"]},
+    ["{+a*}", ["x,y/z"]] => {"a" => ["x", "y/z"]},
+    ["{#a*}", ["x,y"]] => {"a" => ["x", "y"]},
+    # A ;, ? or & value comes with its name.
+    ["{?a}", ["a=1"]] => {"a" => "1"},
+    ["{?a}", ["a="]] => {"a" => ""},
+    ["{&a}", ["a=%41"]] => {"a" => "A"},
+    ["{;a}", ["a"]] => {"a" => ""},
+    ["{;a}", ["a=1"]] => {"a" => "1"},
+    ["{?a}", [nil]] => {"a" => nil},
+    # An exploded one is a list if every name is the variable's.
+    ["{?a*}", ["a=1&a=2"]] => {"a" => ["1", "2"]},
+    ["{?a*}", ["x=1&y=2"]] => {"a" => {"x" => "1", "y" => "2"}},
+    ["{&a*}", ["a=1&y=2"]] => {"a" => {"a" => "1", "y" => "2"}},
+    ["{;a*}", ["x;y=1"]] => {"a" => {"x" => "", "y" => "1"}},
+    ["{;a*}", ["a;a=1"]] => {"a" => ["", "1"]},
+    ["{?a*}", ["x=1=2"]] => {"a" => {"x" => "1=2"}},
+    ["{?a*}", ["%41=%42"]] => {"a" => {"A" => "B"}},
+    ["{?a*}", [""]] => {"a" => {"" => ""}},
+    ["{;a*}", ["x;"]] => {"a" => {"x" => "", "" => ""}},
+    ["{?a*}", [nil]] => {"a" => nil},
+    # A name written again keeps its first value, unless that was nil.
+    ["{a}{a}", ["x", "y"]] => {"a" => "x"},
+    ["{a}{a}", [nil, "y"]] => {"a" => "y"},
+    ["{a}{a}", [nil, nil]] => {"a" => nil},
+    # A whole value replaces a prefix's.
+    ["{/var:1,var}", ["v", "value"]] => {"var" => "value"},
+    ["{/var:1,var}", ["v", nil]] => {"var" => "v"},
+    ["{/var:1,var}", [nil, "value"]] => {"var" => "value"},
+    ["{/var,var:1}", ["value", "v"]] => {"var" => "value"},
+    ["{/a:1,a:2}", ["x", "xy"]] => {"a" => "x"},
+    ["{/a:1,a,a}", ["x", "xy", "z"]] => {"a" => "xy"}
+  }.each do |(pattern, texts), expected|
+    it "gives #{pattern} with #{texts.inspect} #{expected.inspect}" do
+      expect(mapping(pattern, texts)).to eq(expected)
+    end
+  end
+
+  it "keeps the names in the order the pattern writes them" do
+    expect(mapping("{b}{?a}{/b}", [nil, nil, "x"]).keys).to eq(%w(b a))
+  end
+
+  it "gives a ;, ? or & value the name its text has, which a " \
+     "processor's pattern can make another" do
+    expect(mapping("{?n}", ["12"])).to eq("n" => nil, "12" => "")
+    expect(mapping("{?n}", ["k=v=w"])).to eq("n" => nil, "k" => "v")
+  end
+
+  it "restores each value with the processor, under its name" do
+    processor = Class.new do
+      def self.restore(name, value)
+        [name, value]
+      end
+    end
+    expect(mapping("{a}{/b*}{?c}", ["%41", "x/y", nil], processor)).to eq(
+      "a" => ["a", "%41"], "b" => ["b", ["x", "y"]], "c" => ["c", nil]
+    )
+  end
+
+  it "leaves values as the URI has them for a processor that " \
+     "doesn't restore" do
+    expect(mapping("{a}", ["%41"], Object.new)).to eq("a" => "%41")
+  end
+end
