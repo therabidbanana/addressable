@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (4,910 and 4,796 examples), and
+full suite passes in both IDNA modes (4,924 and 4,810 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -106,8 +106,8 @@ at 3,000 iterations, two runs, 2026-11-20):
 1.4–1.7× (reserved, fragment 2.1×). Every adversarial shape in the
 profile and in `template_machine_spec.rb`'s linear-time checks grows
 linearly, but the absolute cost can be far above `:regexp`'s: at
-n=2,000, `{;a*}{;b*}{;c}!` (ending `?!`) takes 54 ms and 3.3 MB,
-against 3 ms for `:regexp`. `{a}`×12`!` took 46 ms and 3.1 MB until its
+n=2,000, `{;a*}{;b*}{;c}!` (ending `?!`) takes 54 ms and 0.67 MB
+(3.3 MB before the memo became bits), against 3 ms for `:regexp`. `{a}`×12`!` took 46 ms and 3.1 MB until its
 later variables lost their states (`Slots`, `empty_only`); it now takes
 0.06 ms, as `:regexp` does.
 
@@ -370,44 +370,55 @@ it").
 
 On a URI that doesn't match, the search tries every state at every
 position it can reach, and remembers each branching one, so memory
-grows with the URI's length times the template's branching states.
-Measured at 16 KB (memo only, `ObjectSpace.memsize_of`):
-`{;a*}{;b*}{;c}!` 4.2 MB, `{a}{b,c}!` 2.1 MB, `{+a}{b}{c}!` 0.5 MB.
-`:regexp` allocates well under 0.1 MB for each. Before item 5,
-`{a}`×12`!` was 16.8 MB and `{a}{b}{c}` 4.2 MB; both now remember two
-entries.
+grows with the URI's length times the template's branching states: a
+bit for each, and a `CaptureList` for each capture it passes.
+What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
+`{a}{b,c}!` 1.44 MB, `{;a*}{;b*}{;c}!` 1.31 MB, `{+a}/{b}!` 0.93 MB,
+nearly all of it `CaptureList`s (16,000 to 32,000 of them; item 6),
+and under 0.35 MB for the rest. The memo is under 0.06 MB for each.
+`:regexp` allocates well under 0.1 MB. Before items 5 and 6, the memo
+alone was 16.8 MB for `{a}`×12`!` and 4.2 MB for `{;a*}{;b*}{;c}!`.
 
-5. **Prune more variables that can never take a character (the first
-   case is built).** The first variable of a default expression right
-   after a default or `+` expression has no states for a value now
-   (`Slot#empty_only`; the conditions are in `Slots`' comment). It
-   changes no result: 43,202 generated templates and texts give the
-   same output with and without it. At 16 KB, `{a}`×12`!` went from
-   399 ms and 16.8 MB to 0.6 ms, and `{x}{a:9999}!` from 25 s to
-   0.5 ms. Left to do, each with the same check:
-   - In `{a}{b,c}`, `c` can't be the expression's first value with a
-     character either (it only takes one after its joiner), but still
-     has those states.
-   - An `empty_only` variable still counts as a value between two
-     varspecs with the same name, so `{a}{b}/{a}` isn't compared.
-     Not counting it would change results, for the better.
-   - `{a:N}{b:N}` (item 17).
+5. **Prune variables that can never take a character (built).** The
+   first variable of a default expression right after a default or `+`
+   expression has no states for a value (`Slot#empty_only`; the
+   conditions are in `Slots`' comment). It changes no result: 43,202
+   generated templates and texts give the same output with and without
+   it. At 16 KB, `{a}`×12`!` went from 399 ms and 16.8 MB to 0.6 ms,
+   and `{x}{a:9999}!` from 25 s to 0.5 ms. Item 18 lists the cases it
+   leaves.
+18. **More variables that can never take a character.** What item 5
+    left, each to check the same way (the same output on generated
+    templates and texts, unless it's meant to change):
+    - In `{a}{b,c}`, `c` can't be the expression's first value with a
+      character either: it only takes one after its joiner. It still
+      has the states for it (`{a}{b,c}!` remembers 64,000 places at
+      16 KB, where `{a}{b}{c}!` remembers two).
+    - An `empty_only` variable still counts as a value between two
+      varspecs with the same name, so `{a}{b}/{a}` isn't compared with
+      its earlier value. Not counting it changes results, for the
+      better, so decide it with item 2.
+    - `{a:N}{b:N}`: `b` only needs to start where `a` is full. That
+      isn't known from the text alone, so it needs a state that reads
+      `a`'s capture, or a second copy of the states after `a`. Item
+      17's general fix may cover it; decide there.
 6. **Shrink the memo and the capture lists.** Notes from reading
    `Search` and `Matcher#match` (2026-11-20, not yet measured; measure
    each with `ObjectSpace.memsize_of` or `memory_profiler`, which runs
    on 2.3, before deciding). Neither changes a result.
-   - *The memo is a Hash of Integers.* `Search#first_time?` already
-     computes a dense key (`state.index * (@size + 1) + position`), so
-     the only cost left is the Hash: about 30–40 bytes an entry on 3.3,
-     plus the spare space a Hash keeps as it grows. A bit-packed memo
-     is a handful of lines: a binary String of
-     `(states * (size + 1) + 7) / 8` zero bytes, read and set with
-     `getbyte` and `setbyte` (Ruby 1.9+). That's one bit an entry,
-     about 1/250th of the Hash. To keep it small on long URIs, number
-     only the states that branch (`State#branches?`) and use that
-     number in the key. A state with `depends_on` also keys on
-     captures, so it can't use a bit; keep the Hash for those states
-     only. A template with no repeated name has none of them.
+   - *The memo was a Hash of Integers (built).* `Matcher::Memo` keeps
+     one bit for each position, in a row of bytes for each state that
+     branches (`State#memo_row`), made when the state is first reached.
+     The bits stay inside the class: `Memo#positions` and `#to_s` list
+     what a search tried, and `Matcher#match` takes a `Search` so a
+     caller can read its memo afterwards. A state with `depends_on`
+     also keys on captures, so those stay in a Hash. Rejecting 16 KB
+     with `{;a*}{;b*}{;c}!` went from 6.55 MB allocated (4.19 MB of it
+     the Hash) to 1.31 MB, and `{/a*,b*,c*}!` from 1.06 MB to 0.15 MB.
+     A typical match makes a few more objects (a row for each state
+     reached: 3 to 15 more), and takes the same time within the
+     profile's noise. `FollowedBy` also stopped making a String for
+     each look (28,000 of them in that match).
    - *A `CaptureList` for every capture state reached.* Each is a
      Struct, so an object on the heap, and `Capture` isn't memoized, so
      one is made every time the search reaches it, including on paths

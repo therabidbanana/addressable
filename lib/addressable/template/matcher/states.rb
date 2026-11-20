@@ -52,12 +52,16 @@ module Addressable
         # The groups whose captures decide whether the rest can match from
         # here (Matcher#note_dependencies).
         attr_accessor :depends_on
+        # For a state that branches, its number among those, which is its
+        # row in the search's memo (Search#first_time?).
+        attr_accessor :memo_row
 
         def initialize(index)
           @index = index
           @first_bytes = NOTHING
           @bytes_after_run = {}
           @depends_on = NO_GROUPS
+          @memo_row = nil
         end
 
         # Points the state at the states it moves on to, once all of them
@@ -297,6 +301,12 @@ module Addressable
         def initialize(index, texts)
           super(index)
           @texts = texts
+          # One pattern for the texts, matched against the URI's bytes
+          # where they are (Search#skip), so that looking makes no strings.
+          @pattern = Regexp.new(
+            texts.map { |text| Regexp.escape(text) }.join("|").b,
+            Regexp::NOENCODING
+          )
         end
 
         def description
@@ -304,10 +314,7 @@ module Addressable
         end
 
         def follow(search, position, captures)
-          bytes = search.bytes
-          return unless @texts.any? do |text|
-            bytes.byteslice(position, text.bytesize) == text
-          end
+          return unless search.skip(@pattern, position)
           search.try(@next, position, captures)
         end
       end

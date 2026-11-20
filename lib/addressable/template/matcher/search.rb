@@ -17,6 +17,7 @@
 #++
 
 require "strscan"
+require "addressable/template/matcher/memo"
 
 module Addressable
   class Template
@@ -35,6 +36,9 @@ module Addressable
       # occurs.
       class Search
         attr_reader :text, :size
+        # The states and positions tried so far, for the states that
+        # depend on no group (#first_time?).
+        attr_reader :memo
         # The attempts still to make, the next one last. Each is a state, a
         # position in the URI and the captures so far, kept as three
         # entries rather than an object of its own, so that making one
@@ -45,7 +49,8 @@ module Addressable
           @text = text
           @size = text.bytesize
           @to_try = []
-          @tried = {}
+          @memo = Memo.new(@size)
+          @tried_with_captures = {}
           @run_ends = {}
           @occurrences = {}
           @bytes = nil
@@ -66,17 +71,28 @@ module Addressable
           try(first, first_position, captures) if first
         end
 
+        ##
         # Whether this is the first time the search reaches the state at
         # the position, with the groups it depends on (State#depends_on)
         # captured in the same places. Other captures don't change whether
         # the rest can match, so they're left out.
+        #
+        # A state that depends on no group, as most do, is remembered by
+        # its position alone, in the memo's row for it (Memo). A state
+        # that depends on a group is remembered in a Hash, by its position
+        # and where those groups were captured.
+        #
+        # @param [State] state A state that branches.
+        # @param [Integer] position A byte offset.
+        # @param [CaptureList, nil] captures The captures so far.
         def first_time?(state, position, captures)
-          key = state.index * (@size + 1) + position
-          unless state.depends_on.empty?
-            key = [key] + state.depends_on.map { |group| span(group, captures) }
+          if state.depends_on.empty?
+            return @memo.first_time?(state.memo_row, position)
           end
-          return false if @tried[key]
-          @tried[key] = true
+          key = [state.index, position] +
+            state.depends_on.map { |group| span(group, captures) }
+          return false if @tried_with_captures[key]
+          @tried_with_captures[key] = true
         end
 
         # The group's text, from the latest start and end noted for it, or

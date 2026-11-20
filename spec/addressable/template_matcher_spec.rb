@@ -799,6 +799,123 @@ describe Addressable::Template::Matcher, "builder methods" do
   end
 end
 
+describe Addressable::Template::Matcher::Memo do
+  it "says a position is new the first time, and not after that" do
+    memo = described_class.new(20)
+    expect(memo.first_time?(0, 5)).to be(true)
+    expect(memo.first_time?(0, 5)).to be(false)
+    expect(memo.first_time?(0, 5)).to be(false)
+  end
+
+  it "keeps each row and each position apart" do
+    memo = described_class.new(20)
+    (0..20).each { |position| expect(memo.first_time?(3, position)).to be(true) }
+    (0..20).each { |position| expect(memo.first_time?(1, position)).to be(true) }
+    (0..20).each { |position| expect(memo.first_time?(3, position)).to be(false) }
+    expect(memo.first_time?(0, 7)).to be(true)
+  end
+
+  it "takes every position from 0 to the end of the URI" do
+    [0, 1, 7, 8, 9, 15, 16, 17, 1000].each do |size|
+      memo = described_class.new(size)
+      expect(memo.first_time?(0, 0)).to be(true)
+      expect(memo.first_time?(0, size)).to be(size != 0)
+      expect(memo.first_time?(0, size)).to be(false)
+      expect(memo.positions(0)).to eq([0, size].uniq)
+    end
+  end
+
+  it "raises for a position outside the URI, and notes nothing" do
+    memo = described_class.new(8)
+    expect { memo.first_time?(0, 9) }.to raise_error(
+      IndexError, "position 9 outside 0..8"
+    )
+    expect { memo.first_time?(0, -1) }.to raise_error(IndexError)
+    expect(memo.to_s).to eq("")
+  end
+
+  it "lists the positions noted in a row, in order" do
+    memo = described_class.new(40)
+    [33, 2, 40, 8, 2, 7].each { |position| memo.first_time?(1, position) }
+    expect(memo.positions(1)).to eq([2, 7, 8, 33, 40])
+    expect(memo.positions(0)).to eq([])
+    expect(memo.positions(5)).to eq([])
+  end
+
+  it "lists the rows used, each with its positions" do
+    memo = described_class.new(12)
+    memo.first_time?(2, 12)
+    memo.first_time?(0, 3)
+    memo.first_time?(2, 0)
+    expect(memo.to_s).to eq("0: 3\n2: 0 12")
+  end
+
+  it "agrees with a set of positions on generated input" do
+    random = Random.new(6570)
+    20.times do
+      size = random.rand(0..300)
+      memo = described_class.new(size)
+      seen = Hash.new { |hash, row| hash[row] = {} }
+      500.times do
+        row = random.rand(4)
+        position = random.rand(0..size)
+        expect(memo.first_time?(row, position)).to be(!seen[row][position])
+        seen[row][position] = true
+      end
+      4.times do |row|
+        expect(memo.positions(row)).to eq(seen[row].keys.sort)
+      end
+    end
+  end
+end
+
+describe Addressable::Template::Matcher, "what a search tried" do
+  matcher_class = Addressable::Template::Matcher
+
+  def matcher(pattern)
+    Addressable::Template::ParsedTemplate.new(pattern).matcher
+  end
+
+  # {/a}!, whose states that branch are 0 (the choice to leave a out) and
+  # 3 (a's run), in rows 0 and 1.
+  it "can be read from a search the caller gives" do
+    search = matcher_class::Search.new("/xy?!")
+    expect(matcher("{/a}!").match("/xy?!", search)).to be_nil
+    expect(search.memo.to_s).to eq("0: 0\n1: 1")
+    search = matcher_class::Search.new("/xy!")
+    expect(matcher("{/a}!").match("/xy!", search).captures).to eq(["xy"])
+    expect(search.memo.to_s).to eq("0: 0\n1: 1")
+  end
+
+  it "tries each state that branches once at each position" do
+    template = matcher("{a,b}{+c}{+d}!")
+    states = template.instance_variable_get(:@states).select(&:branches?)
+    text = "a,b/c?d" * 30 + " !"
+    search = matcher_class::Search.new(text)
+    followed = Hash.new(0)
+    states.each do |state|
+      allow(state).to receive(:follow).and_wrap_original do |original, *args|
+        followed[[state.index, args[1]]] += 1
+        original.call(*args)
+      end
+    end
+    expect(template.match(text, search)).to be_nil
+    expect(followed.values.uniq).to eq([1])
+    states.each do |state|
+      positions = followed.keys.select { |index, _| index == state.index }
+      expect(search.memo.positions(state.memo_row)).
+        to eq(positions.map(&:last).sort)
+    end
+  end
+
+  it "remembers a state that depends on a group by its captures too" do
+    search = matcher_class::Search.new("x/y")
+    expect(matcher("{a}/{a}").match("x/y", search)).to be_nil
+    expect(search.instance_variable_get(:@tried_with_captures).keys).
+      to eq([[8, 2, [0, 1]]])
+  end
+end
+
 describe Addressable::Template::Matcher::FirstBytes, "#to_s" do
   matcher = Addressable::Template::Matcher
 

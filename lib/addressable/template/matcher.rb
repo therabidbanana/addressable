@@ -343,6 +343,9 @@ module Addressable
         @required_text.freeze
         add(Done)
         @states.each { |state| state.link(@states) }
+        @states.select(&:branches?).each_with_index do |state, row|
+          state.memo_row = row
+        end
         note_dependencies
         changed = true
         while changed
@@ -364,16 +367,18 @@ module Addressable
       # Matches the whole URI, making the choices in order.
       #
       # @param [String] text The URI's text.
+      # @param [Search] search
+      #   What the search keeps. A caller that gives its own can read what
+      #   was tried afterwards (Search#memo).
       #
       # @return [Captures, NilClass] The captures, or nil if it doesn't match.
-      def match(text)
+      def match(text, search = Search.new(text))
         if @encoding && @encoding != text.encoding && !text.ascii_only?
           raise Encoding::CompatibilityError,
             "incompatible encoding regexp match (#{@encoding} regexp with " \
             "#{text.encoding} string)"
         end
         return nil unless holds_required_text?(text)
-        search = Search.new(text)
         search.try(@states.first, 0, nil)
         to_try = search.to_try
         until to_try.empty?
