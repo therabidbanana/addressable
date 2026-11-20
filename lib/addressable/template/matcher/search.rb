@@ -145,8 +145,7 @@ module Addressable
       end
 
       # A match's captures, as a regular expression's MatchData gives them
-      # to Matching.match_data. Positions are byte offsets, which
-      # match_data only compares with each other.
+      # to Matching.match_data. The slots are byte offsets.
       class Captures
         def initialize(text, slots)
           @text = text
@@ -159,17 +158,6 @@ module Addressable
             last = @slots[group * 2 + 1]
             first && last ? @text.byteslice(first, last - first) : nil
           end
-        end
-
-        # Where the group (1 for the first varspec) begins, or nil if it
-        # didn't take part in the match.
-        def begin(group)
-          @slots[group * 2 - 1] && @slots[group * 2 - 2]
-        end
-
-        # Where the group ends, or nil if it didn't take part in the match.
-        def end(group)
-          @slots[group * 2 - 2] && @slots[group * 2 - 1]
         end
       end
     end

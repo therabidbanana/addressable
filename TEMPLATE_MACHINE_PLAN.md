@@ -153,8 +153,47 @@ Decided on 2026-11-19:
   The leader moves to the first value present, so `{?a,b}` isn't
   `{?a}{&b}`: `?b=2` matches it.
 - **The earlier variable wins** wherever two variables could take the
-  same text, in one expression or across two, exploded or not.
+  same text, in one expression or across two, exploded or not, with
+  four exceptions, tried in this order:
+  - A variable a `;`, `?` or `&` expression names, outside an exploded
+    one, takes its own pair: the exploded value stops before the first
+    place the variable's name follows it (even before its first member,
+    leaving it out) where the rest can match. `{?a*,b}` on `?x=1&b=2`
+    gives `a` `{"x" => "1"}` and `b` `"2"`, and on `?b=2` gives `b`
+    `"2"`; `{;a*}{;b}{;c}` likewise. On `?x=1&b=2&y=3` the rest can't
+    match after `b`, so `a` takes all three. This covers the later
+    variables in the expression and in the expressions right after it
+    whose leader is its joiner. A variable whose pair is only in the
+    middle of the members never takes it, since expansion writes it
+    after them.
+  - A `+` or `#` value stops at the first `?` or `#` where the rest can
+    match, since those start a URI's query and fragment:
+    `/files/{+path}{?q}` on `/files/a/b?q=c` gives `path` `a/b`. One
+    that stops there right away is left out: `{+base}{?q*}` on `?a=1`
+    gives `base` `nil`.
+  - A value stops before the last place the next expression's leader
+    follows it, where the rest can match, so the next expression isn't
+    left empty when the URI has its text: `/{name}{.ext}` on
+    `/archive.tar.gz` gives `archive.tar` and `gz`, and
+    `{/dirs*}{/file}` on `/a/b/c.txt` gives `["a", "b"]` and `c.txt`.
+  - A `+` or `#` value before its expression's last stops at a comma,
+    which expansion writes between values.
+- **An exploded variable right after another in its expression takes
+  nothing**, since the earlier one takes every member it could:
+  `{;foo*,bar*,baz*}` matches like `{;foo*}`, with `bar` and `baz`
+  `nil`. The matcher adds no steps for it (unless a processor gives
+  either one a pattern). Across expressions the next leader rule still
+  applies: `{;a*}{;b*}` on `;x=1;y=2` gives `b` `{"y" => "2"}`, as
+  `{/a*}{/b*}` gives `b` the last segment.
 - **Names in `;`, `?` and `&` expressions are matched as written.**
+- **A variable with a processor pattern is optional like any other**, so
+  the earlier variable can take text the pattern could match: `{a}{b}`
+  with `[0-9]+` for `b` gives `x12` to `a`.
+- **Pct-encoding in `+` and `#` values isn't kept.** A `+` or `#` value
+  can take text a later expression encoded (`%2C` in a query value); the
+  match decodes it, and expanding it writes the character as it is. So
+  with a `+` or `#` expression, the round trip compares URIs decoded.
+  `:regexp` does the same.
 - **A match expands back to the URI.** For every URI written by
   expanding some values, expanding what `match` gives back writes that
   URI again (not always the same values: a list and a hash can write the
@@ -167,11 +206,14 @@ What changes, `:regexp`'s result first (2.9.2 and this branch's
 
 - **The earlier variable takes the text.** `{a}{b}` on `xyz` gives
   `{"a" => nil, "b" => "xyz"}`, not `{"a" => "xyz", "b" => nil}`;
-  `{a,b}` on `x` gives `{"a" => "", "b" => "x"}`; `{/a*}{/b*}` and
-  `{/a*,b*}` on `/x/y` give `b` both segments. Today which exploded
+  `{a,b}` on `x` gives `{"a" => "", "b" => "x"}`; `{/a*,b*}` on `/x/y`
+  gives `b` both segments, and will give `a` both. Today which exploded
   variable takes the members depends on the operator: the last for the
   default operator, `.` and `/`, the first for `+`, `#`, `;`, `?` and
-  `&`.
+  `&`. Across expressions the next leader rule applies: `{/a*}{/b*}` on
+  `/x/y` gives `b` both, and will give `["x"]` and `["y"]`, and
+  `{/dirs*}{/file}` on `/a/b/c.txt` gives `dirs` all three, and will
+  give `file` `c.txt`.
 - **Joiners are required.** `{?a,b}` on `?a=1b=2` gives
   `{"a" => "", "b" => nil, "1b" => "2"}`; it won't match.
 - **Names are checked.** `{?a}` on `?x=1` gives
@@ -201,8 +243,20 @@ What changes, `:regexp`'s result first (2.9.2 and this branch's
   `#`. It will give `[""]`. `{?a}x` on `?x` gives `{"a" => nil}`, but
   no value of `a` expands to a bare `?`; it won't match. (2.9.2 gives
   the same.)
+- **A variable named outside an exploded one takes its own pair.**
+  `{;hash*,first}` and `{?hash*,first}` on `a=1`, `b=2`, `c=3`,
+  `first=foo` give `first` `nil` and `hash` all four pairs; they will
+  give `first` `"foo"`. `template_spec.rb`'s own note on this example
+  says a separate key is the more likely reading.
 - **No `nil => ""` key.** `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to
-  `""`, since `b`'s empty capture has no name.
+  `""`, since `b`'s empty capture has no name. Inside an exploded `;`
+  value, an empty member is a `""` key, as expansion writes one:
+  `{;a*}` on `;a;;b` gives `{"a" => "", nil => "", "b" => ""}`, and
+  will give `""` for `nil`; on `;` it gives `{}`, and will give
+  `{"" => ""}`.
+- **A `;` value written `k=` doesn't match.** Expansion writes `;k` for
+  an empty value, never `;k=`: `{;a*}` on `;x=;` gives `{"x" => ""}`,
+  and won't match.
 - **No empty member out of nowhere.** `{a*}{b}` on `x,y` gives
   `{"a" => ["x", ""], "b" => "y"}`, and expanding that `a` writes `x,`
   (2.9.2 gives `{"a" => ["x,"], "b" => "y"}`).
@@ -254,6 +308,27 @@ left out coming back as `""`, `[]` or `{}`, 5,451 had a `;`, `?` or `&`
 expression (unchecked names, and repeated names in exploded values),
 and the other 198 were earlier-wins splits combined with empty values,
 plus the bare `#` leader above. None had a cause outside this list.
+
+Done on 2026-11-19: the machine makes every fix above. 20,000 round
+trips fail only where a `+` or `#` value decodes text (compared decoded,
+they all pass). Of the 2,559 distinct matches the `Template` specs make,
+63 give a different result on the machine; none got worse, 14 that
+didn't expand back to their URI now do, and 3 URIs no expansion writes
+(`{?a*,b*}` on `?&b=2`) no longer match. The specs pin each difference:
+`MACHINE_SPLITS` in `template_match_spec.rb`, `machine_differences` and
+`processor_differences` in `template_machine_spec.rb`, and the
+"matching fixes" examples. In machine mode, `template_match_spec.rb`'s
+generated strings check that the machine's matches are sound (they
+expand back, and it matches whatever `:regexp` matches correctly)
+instead of comparing with `:regexp`.
+
+Memory on the adversarial shapes at 16 KB, before and after: `{a}`×12`!`
+33.6 → 16.8 MB, `{;foo*,bar*,baz*}` 8.4 → 0.5 MB, `{?a,b,c}!` 4.2 MB →
+nothing, `{/a*,b*,c*}!` 8.4 → 0.9 MB (the later exploded variables have
+no steps), `{;a*}{;b*}{;c}!` 2.1 → 4.2 MB (the next leader rule tries
+each `;` value twice), and `{+v1,…,v10}` unchanged at nothing. The
+named-variable rule's shapes stay small: `{;a*,b}!` 0.9 MB,
+`{;a*}{;b}{;c}!` 2.1 MB.
 
 ## What's left
 

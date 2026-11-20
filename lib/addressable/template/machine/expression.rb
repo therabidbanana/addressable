@@ -38,6 +38,12 @@ module Addressable
           false
         end
 
+        # Whether the operator writes each value after its variable's name,
+        # as ;, ? and & do.
+        def self.names_values?
+          false
+        end
+
         def self.tagged_value
           TaggedValue
         end
@@ -155,10 +161,17 @@ module Addressable
 
         ##
         # Adds the steps that match the expression to the matcher, in the
-        # order of :regexp's reference regexp (template_match_spec.rb):
-        # nothing first, then the leader and each variable's value, which
-        # may be left out, with an optional joiner between them. Each value
-        # is captured, for Matching.match_data.
+        # shape expansion writes it: each variable's value may be left out,
+        # the first value present comes after the leader, and each later
+        # one after the joiner. Each value is as long as can be first, so
+        # where two variables could take the same text, the earlier one
+        # does. Each value is captured, for Matching.match_data, and a
+        # value left out is captured as nothing, so it's nil. A variable that
+        # can never take anything (#absorbed?) gets a group but no steps.
+        #
+        # This is where the machine differs from :regexp, whose regexp
+        # makes the joiners optional and tries the shortest values first
+        # (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine").
         #
         # @param [Matcher] matcher The matcher.
         # @param [#match, nil] processor
@@ -169,29 +182,62 @@ module Addressable
           patterns = variables.map do |variable|
             processor && processor.match(variable.name)
           end
-          leader = self.class.leader
-          matcher.nothing_or do
-            if leader == "#" && fragment
-              matcher.literal([["#", "%23"]])
-            elsif !leader.empty?
-              matcher.exact(leader)
-            end
-            variables.each_with_index do |variable, position|
-              if position > 0
-                matcher.optional { matcher.exact(self.class.joiner) }
-              end
-              if patterns[position]
-                matcher.capture do
-                  matcher.processor_pattern(patterns[position].to_s)
-                end
+          groups = variables.map { matcher.new_group }
+          positions = variables.each_index.reject do |position|
+            absorbed?(position, patterns)
+          end
+          # Adds a variable's value, by its position: as its steps take it,
+          # or, with :empty, nothing. With an array, a value that takes
+          # nothing is left out instead, at the place the array's states are
+          # later landed (Matcher#leave_out_if_empty).
+          value = lambda do |position, how = nil|
+            matcher.capture(groups[position]) do
+              variable = variables[position]
+              leaders = next_leaders.select { |text| may_hold?(variable, text) }
+              names = named_texts(position, positions, patterns,
+                self.class.joiner)
+              if how == :empty
+                # Nothing to add.
+              elsif patterns[position]
+                matcher.processor_pattern(patterns[position].to_s)
+              elsif leaders.empty?
+                variable_steps(matcher, variable, names)
               else
-                matcher.optional do
-                  matcher.capture do
-                    variable_steps(matcher, variable)
-                  end
+                # The value stops before the last place the next
+                # expression's leader follows it, if the rest can match from
+                # there, so that it doesn't take the next expression's
+                # text: /{name}{.ext} gives "/archive.tar.gz" to name and ext
+                # as "archive.tar" and "gz".
+                matcher.preferring_followed_by(leaders) do
+                  variable_steps(matcher, variable, names)
                 end
               end
+              how << matcher.leave_out_if_empty if how.is_a?(Array)
             end
+          end
+          # Adds the block's steps for a variable, which may be left out. An
+          # exploded variable is left out first where a later variable's
+          # name follows (#named_texts); prefix is the text before that
+          # name.
+          optional = lambda do |position, prefix, &steps|
+            names = named_texts(position, positions, patterns, prefix)
+            if names.empty?
+              matcher.optional(&steps)
+            else
+              matcher.optional_unless_followed_by(names, &steps)
+            end
+          end
+          if self.class.leader == self.class.joiner
+            # Every value comes after the same text, so each one is
+            # matched the same way, whether or not one came before it.
+            positions.each do |position|
+              optional.call(position, self.class.joiner) do
+                leader_steps(matcher)
+                value.call(position)
+              end
+            end
+          else
+            first_value_steps(matcher, value, positions, optional)
           end
         end
 
@@ -322,29 +368,182 @@ module Addressable
 
         # --- Matching ---
 
-        # A variable's value: exploded, up to the next comma, or as its
-        # operator takes a value. An exploded value's members have the
-        # joiner between them, as :regexp's regexp writes them
-        # (variable_regexp_source), so a member can only end where a joiner
-        # or what follows the value starts, and its run can skip to the end
-        # of its characters rather than stopping at each one.
-        def variable_steps(matcher, variable)
-          if variable.explode
-            matcher.repeat(self.class.joiner) do
-              member_steps(matcher)
+        ##
+        # The steps for an expression whose leader isn't its joiner, such as
+        # {?a,b} ("?" and "&") or {a,b} (nothing and ","). The leader goes
+        # before whichever value comes first, so the steps come in two
+        # parts. Before any value, each variable can take the leader and its
+        # value, then go on to the later variables' steps in the second
+        # part, or be left out. In the second part, each variable can take
+        # the joiner and its value, or be left out. {?a,b,c} is:
+        #
+        #   (?a=… then the second part's b) or
+        #   (?b=… then the second part's c) or
+        #   (?c=… then the end) or nothing;
+        #   second part: (&b=…)? (&c=…)?
+        #
+        # Each variable's steps are added twice at most, so the steps grow
+        # with the number of variables.
+        #
+        # Without a leader (a default or + expression), an empty first value
+        # writes nothing, the same as no value, unless a joiner follows it:
+        # {a,b} writes ",y" for a = "" and b = "y". So there a first value
+        # that takes nothing is left out (nil), unless a later value follows
+        # after the joiner. A + value that stops at a "?" or "#" right away
+        # (Matcher#reserved_run) is left out too: /{+base}{?q} gives "?q=1"
+        # to q.
+        #
+        # @param [Matcher] matcher The matcher.
+        # @param [Proc] value Adds a variable's value, by its position.
+        # @param [Array<Integer>] positions
+        #   The positions of the variables to add steps for, in order.
+        # @param [Proc] optional
+        #   Adds the block's steps for a variable, by its position and the
+        #   text before its value, as steps that may be left out.
+        def first_value_steps(matcher, value, positions, optional)
+          no_leader = self.class.leader.empty?
+          # The jumps into the second part, by the index in positions: to
+          # each variable's steps, which may leave it out, to its joiner,
+          # which it has to take, and to the end of the expression.
+          ahead = Hash.new { |hash, index| hash[index] = [] }
+          to_joiner = Hash.new { |hash, index| hash[index] = [] }
+          positions.each_with_index do |position, index|
+            left_out = []
+            optional.call(position, self.class.leader) do
+              leader_steps(matcher)
+              value.call(position, no_leader ? left_out : nil)
+              ahead[index + 1] << matcher.jump_ahead
             end
-          elsif self.class.allows_reserved? && !last?(variable)
-            # A + or # variable before the last takes its value up to the
-            # next comma.
-            matcher.possessive_run(:reserved_no_comma)
-          else
-            value_steps(matcher)
+            matcher.land(left_out)
+            next unless no_leader && index < positions.size - 1
+            matcher.optional do
+              value.call(position, :empty)
+              to_joiner[index + 1] << matcher.jump_ahead
+            end
+          end
+          # No value at all.
+          ahead[positions.size] << matcher.jump_ahead
+          (1...positions.size).each do |index|
+            matcher.land(ahead[index])
+            optional.call(positions[index], self.class.joiner) do
+              matcher.land(to_joiner[index])
+              matcher.exact(self.class.joiner)
+              value.call(positions[index])
+            end
+          end
+          matcher.land(ahead[positions.size])
+        end
+
+        ##
+        # Whether the variable can never take anything: an exploded variable
+        # right after another exploded one, which takes every member it
+        # could, since the earlier variable wins. {;a*,b*} matches like
+        # {;a*}. A processor's pattern can give either one other text, so a
+        # variable with one, or after one, isn't absorbed.
+        #
+        # @param [Integer] position The variable's position.
+        # @param [Array] patterns The processor's pattern for each variable.
+        def absorbed?(position, patterns)
+          return false if position.zero?
+          before = position - 1
+          variables[position].explode && variables[before].explode &&
+            !patterns[position] && !patterns[before]
+        end
+
+        ##
+        # The texts that start a later variable's pair, which an exploded
+        # ;, ? or & value's members could also take: each later variable
+        # that isn't exploded, in the expression or in the expressions right
+        # after it whose leader is its joiner, after the text before it.
+        # The exploded value stops before the first one where the rest can
+        # match, even before its first member, so that a variable named
+        # outside it takes its own pair: {?a*,b} gives "?x=1&b=2" to a and b
+        # as {"x" => "1"} and "2", and "?b=2" to b.
+        #
+        # @param [Integer] position The exploded variable's position.
+        # @param [Array<Integer>] positions The positions with steps.
+        # @param [Array] patterns The processor's pattern for each variable.
+        # @param [String] prefix
+        #   The text before a later variable's name in the expression: the
+        #   leader where it could be the first value, the joiner otherwise.
+        #
+        # @return [Array<String>] The texts.
+        def named_texts(position, positions, patterns, prefix)
+          return [] unless self.class.names_values?
+          return [] unless variables[position].explode
+          later = positions.select do |after|
+            after > position && !variables[after].explode && !patterns[after]
+          end
+          texts = later.map { |after| prefix + variables[after].name }
+          node = following
+          while node.is_a?(Expression) && node.class.names_values? &&
+              node.class.leader == self.class.joiner
+            node.variables.each do |variable|
+              texts << node.class.leader + variable.name unless variable.explode
+            end
+            node = node.following
+          end
+          texts
+        end
+
+        # The texts the next expression's leader can be written as, or none
+        # if the next node isn't an expression with a leader.
+        def next_leaders
+          return [] unless following.is_a?(Expression)
+          leader = following.class.leader
+          return [] if leader.empty?
+          leader == "#" && following.fragment ? ["#", "%23"] : [leader]
+        end
+
+        # Whether the variable's value can hold the text, so that it could
+        # take the next expression's leader: in its characters, or as the
+        # joiner between an exploded value's members. A "%23" is a
+        # pct-encoded triplet, which every value can hold.
+        def may_hold?(variable, text)
+          return true if text == "%23"
+          return true if variable.explode && text == self.class.joiner
+          return !is_a?(OpLabel) || label_dots if text == "."
+          self.class.allows_reserved?
+        end
+
+        # The leader, a "#" in either form where a fragment may have
+        # started before it.
+        def leader_steps(matcher)
+          leader = self.class.leader
+          if leader == "#" && fragment
+            matcher.literal([["#", "%23"]])
+          elsif !leader.empty?
+            matcher.exact(leader)
           end
         end
 
-        # A value: unreserved characters, as few as can be first.
-        def value_steps(matcher)
-          matcher.lazy_run(:unreserved)
+        # A variable's value: exploded, with the joiner between its members,
+        # or as its operator takes a value. An exploded value stops before
+        # the first of the names (#named_texts) where the rest can match. A
+        # + or # value before the last stops at the next comma, which
+        # expansion writes between values; only the last can hold one.
+        def variable_steps(matcher, variable, names = [])
+          if variable.explode && !names.empty?
+            matcher.repeat_stopping_before(self.class.joiner, names) do
+              member_steps(matcher)
+            end
+          elsif variable.explode
+            matcher.repeat(self.class.joiner) do
+              member_steps(matcher)
+            end
+          elsif self.class.allows_reserved? && !variable.equal?(variables.last)
+            matcher.reserved_run(:reserved_no_comma)
+          else
+            value_steps(matcher, variable)
+          end
+        end
+
+        # A value: unreserved characters, as many as can be first. The ;, ?
+        # and & operators write the variable's name first, so they need it;
+        # an exploded value's member, which has no variable, reuses this
+        # for the others.
+        def value_steps(matcher, _variable = nil)
+          matcher.greedy_run(:unreserved)
         end
 
         # An exploded value's member.

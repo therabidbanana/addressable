@@ -116,19 +116,142 @@ module TemplateMatchSpec
     Addressable::Template.new(pattern).send(:parse_template_pattern, pattern)[1]
   end
 
-  # Expects the :machine engine's #match to give the same mapping, or nil,
-  # as the :regexp engine's for each string.
-  def self.expect_same_matches(example, pattern, strings)
+  # Whether expanding the mapping writes the string, with pct-encoded
+  # triplets decoded on both sides: a match decodes its values, and
+  # expansion may encode them differently from the string.
+  def self.expands_to?(template, mapping, string)
+    expanded = template.expand(mapping).to_s
+    Addressable::URI.unencode(expanded) == Addressable::URI.unencode(string)
+  rescue TypeError
+    # A mapping with a nil key, which :regexp gives for an empty capture
+    # with no name, doesn't expand.
+    false
+  end
+
+  # Whether the string has two ;, ? or & pairs with the same name, where
+  # the pattern has an exploded ;, ? or & value. A hash can't hold both,
+  # so such a string can't expand back from a match (the plan's "repeated
+  # names in an exploded ;, ? or & value").
+  def self.repeats_a_name?(pattern, string)
+    return false unless pattern =~ /\{[;?&][^}]*\*/
+    # Leave out the literal text the pattern ends with.
+    string = string.chomp(pattern[/\}([^}]*)\z/, 1])
+    names = string.split(/[;?&]/, -1).drop(1).map do |pair|
+      pair.split("=", 2).first.to_s
+    end
+    names.uniq.size < names.size
+  end
+
+  # Expects the :machine engine's #match to be sound for each string,
+  # where :regexp can't be its oracle, since the machine fixes some of its
+  # results (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine"):
+  # every match the machine gives expands back to the string, and every
+  # string :regexp matches with a mapping that expands back to it, the
+  # machine matches too.
+  def self.expect_sound_matches(example, pattern, strings)
     machine = Addressable::Template.new(pattern, engine: :machine)
     regexp = Addressable::Template.new(pattern, engine: :regexp)
     strings.each do |string|
-      expected = regexp.match(string)
+      next if repeats_a_name?(pattern, string)
       actual = machine.match(string)
-      example.expect(actual && actual.mapping).to example.eq(
-        expected && expected.mapping
-      ), "for #{string.inspect}"
+      if actual
+        example.expect(expands_to?(machine, actual.mapping, string)).to(
+          example.be(true),
+          "#{actual.mapping.inspect} doesn't expand to #{string.inspect}"
+        )
+      else
+        expected = regexp.match(string)
+        example.expect(
+          expected && expands_to?(regexp, expected.mapping, string)
+        ).to example.be_falsey, "doesn't match #{string.inspect}"
+      end
     end
   end
+
+  # The :machine engine's results where they differ from the :regexp
+  # engine's in "when a URI can be split between variables more than one
+  # way" (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine"). Each
+  # expands back to its URI, except where noted.
+  MACHINE_SPLITS = {
+    # An empty member is a "" key, which expansion writes as an empty
+    # member, not nil.
+    ["{;a*}", ";a;;b"] => {"a" => {"a" => "", "" => "", "b" => ""}},
+    # A value stops before the last place the next expression's leader
+    # follows it, if the rest can match.
+    ["{/a*}{/b}", "/x/y/z"] => {"a" => ["x", "y"], "b" => "z"},
+    ["{.a*}{.b}", ".x.y.z"] => {"a" => ["x", "y"], "b" => "z"},
+    ["{&a*}{&b}", "&x=1=2&b=3"] => {"a" => {"x" => "1=2"}, "b" => "3"},
+    # The earlier variable takes what both could take, in one expression or
+    # across two, and a variable the URI leaves out is nil.
+    ["{a*}{b}", "x,y,z"] => {"a" => ["x", "y", "z"], "b" => nil},
+    ["{a*,b}", "x,y,z"] => {"a" => ["x", "y", "z"], "b" => nil},
+    ["{+d*,a}?", ";,,x?"] => {"d" => [";", "", "x"], "a" => nil},
+    ["{\#a*,d*,b}=", "\#,,="] => {"a" => ["", "", ""], "d" => nil, "b" => nil},
+    ["{a*,b,c}", "x,y,z"] => {"a" => ["x", "y", "z"], "b" => nil, "c" => nil},
+    ["{/a,b,c}", "/x"] => {"a" => "x", "b" => nil, "c" => nil},
+    ["{/a,b,c}", "/x/y"] => {"a" => "x", "b" => "y", "c" => nil},
+    ["{.a,b}.json", ".x.json"] => {"a" => "x", "b" => nil},
+    ["{a,b,c}", "x,y"] => {"a" => "x", "b" => "y", "c" => nil},
+    ["{/a,b*}", "/x/y"] => {"a" => "x", "b" => ["y"]},
+    ["{;a,b}", ";a=1"] => {"a" => "1", "b" => nil},
+    ["{;a,b*}x", ";ax"] => {"a" => "", "b" => nil},
+    ["{+a*,b*}", "x,y"] => {"a" => ["x", "y"], "b" => nil},
+    ["{+a*,b*,c}", "x,y,z"] => {"a" => ["x", "y", "z"], "b" => nil, "c" => nil},
+    ["{+a*,b,c*}", "x,y"] => {"a" => ["x", "y"], "b" => nil, "c" => nil},
+    ["{+a*,b}z", "x,yz"] => {"a" => ["x", "y"], "b" => nil},
+    ["{\#a*,c*,b,b}/-", "\#k=a;b,n=a,a=b,a=b/-"] => {
+      "a" => ["k=a;b", "n=a", "a=b", "a=b"], "c" => nil, "b" => nil
+    },
+    ["{;a*,b*}", ";a=1;b=2"] => {"a" => {"a" => "1", "b" => "2"}, "b" => nil},
+    ["{/a*,b*}", "/x/y"] => {"a" => ["x", "y"], "b" => nil},
+    ["{/a*,b*}", "//x/y"] => {"a" => ["", "x", "y"], "b" => nil},
+    ["{/a*,b,c*}", "/x/y/z"] => {
+      "a" => ["x", "y", "z"], "b" => nil, "c" => nil
+    },
+    ["{a*,b*}", ",x,y"] => {"a" => ["", "x", "y"], "b" => nil},
+    ["{+a}{+b}{+c}", "xyz"] => {"a" => "xyz", "b" => nil, "c" => nil},
+    ["{+a}{+b}{+c}", "x,y/z"] => {"a" => "x,y/z", "b" => nil, "c" => nil},
+    ["{+a}{+b}x", "pqx"] => {"a" => "pq", "b" => nil},
+    ["{a}{b}{c}", "xyz"] => {"a" => "xyz", "b" => nil, "c" => nil},
+    ["{.a,b}{c}", ".x.yz"] => {"a" => "x", "b" => "yz", "c" => nil},
+    ["{/a}{+b}", "/x/y"] => {"a" => "x", "b" => "/y"},
+    ["{a}{+b}{c}{+d}", "w/x"] => {
+      "a" => "w", "b" => "/x", "c" => nil, "d" => nil
+    },
+    ["{+a,b}{+c,d}", "x,y,z"] => {
+      "a" => "x", "b" => "y,z", "c" => nil, "d" => nil
+    },
+    ["{\#a,b}{+c,d}", "\#x,y"] => {
+      "a" => "x", "b" => "y", "c" => nil, "d" => nil
+    },
+    # The comma before z can only be c's: b's value can't hold one. So c
+    # starts with an empty member, as expanding ["", "z"] writes it.
+    ["{a,b}{c*}", "x,y,z"] => {"a" => "x", "b" => "y", "c" => ["", "z"]},
+    ["{.a}{c*}", ".x,y"] => {"a" => "x", "c" => ["", "y"]},
+    ["{a*}{c,d*}", "x,y"] => {"a" => ["x", "y"], "c" => nil, "d" => nil},
+    ["{+a}{b}", "p/q"] => {"a" => "p/q", "b" => nil},
+    ["{+a}{b}", "p/qr"] => {"a" => "p/qr", "b" => nil},
+    ["{\#a}{b}", "\#p/q"] => {"a" => "p/q", "b" => nil},
+    # A + or # value before the last stops at a comma.
+    ["{+v1,v2,v3}", "a"] => {"v1" => "a", "v2" => nil, "v3" => nil},
+    ["{+v1,v2,v3}", "a,b"] => {"v1" => "a", "v2" => "b", "v3" => nil},
+    ["{+v1,v2,v3}x", "a,bx"] => {"v1" => "a", "v2" => "b", "v3" => nil},
+    # A name written twice keeps its first value, so this doesn't expand
+    # back to its URI (the plan's "a variable written twice").
+    ["{+v1,v2,v1}", "a,b,c"] => {"v1" => "a", "v2" => "b"},
+    ["{;b*,c*}", ";n=ak=ab;c=a2Cb"] => {
+      "b" => {"n" => "ak=ab", "c" => "a2Cb"}, "c" => nil
+    },
+    # A variable a ;, ? or & expression names outside an exploded one
+    # takes its own pair.
+    ["{?a*,b*,c}", "?a=1&b=2&c=3"] => {
+      "a" => {"a" => "1", "b" => "2"}, "b" => nil, "c" => "3"
+    },
+    # No expansion writes "?&" or "&&", so these don't match.
+    ["{?a*,b*}", "?&b=2"] => nil,
+    ["{&a*,b*}", "&&b=2"] => nil,
+    ["{?a*,b,c*}", "?&=="] => nil
+  }.freeze
 
   # Expressions placed after a single expression, so that a different order
   # of end positions picks a different split.
@@ -305,16 +428,23 @@ describe Addressable::Template, "#match" do
       }
     }.each do |(pattern, uri), mapping|
       it "matches #{uri.inspect} against #{pattern}" do
-        expect(Addressable::Template.new(pattern).match(uri).mapping).to eq(
-          mapping
-        )
+        expect(
+          Addressable::Template.new(pattern, engine: :regexp).match(uri).mapping
+        ).to eq(mapping)
+      end
+
+      machine_mapping =
+        TemplateMatchSpec::MACHINE_SPLITS.fetch([pattern, uri], mapping)
+      it "matches #{uri.inspect} against #{pattern} with the :machine engine" do
+        match = Addressable::Template.new(pattern, engine: :machine).match(uri)
+        expect(match && match.mapping).to eq(machine_mapping)
       end
     end
 
-    # The reference regexp is the oracle for how #match splits a URI. These
-    # examples pin the :regexp engine's builder to it, and in machine mode,
-    # the examples after them pin the :machine engine's #match to the
-    # :regexp engine's, so both split as the reference does.
+    # The reference regexp is the oracle for how the :regexp engine splits
+    # a URI, and these examples pin its builder to it. The :machine engine
+    # fixes some of those splits, so in machine mode the examples after
+    # them check only that its matches are sound (expect_sound_matches).
     TemplateMatchSpec::OPERATORS.product(["", "*"]).each do |operator, modifier|
       pattern = "{#{operator}a#{modifier}}"
       # A lone label variable at the end of a template takes every character
@@ -364,12 +494,15 @@ describe Addressable::Template, "#match" do
           end
         end
 
-        # In the default mode this would compare the :regexp engine with
-        # itself.
-        if TestHelper.template_engine == :machine
-          it "matches like the :regexp engine for #{pattern}" do
+        # Only in machine mode, to keep the default run quick. A pattern
+        # that writes a name twice can't expand back to every string it
+        # matches, since the name gets one value (the plan's "a variable
+        # written twice").
+        names = pattern.scan(/\{[^}]*\}/).join.scan(/[a-z]+/)
+        if TestHelper.template_engine == :machine && names.uniq == names
+          it "matches soundly for #{pattern}" do
             alphabet = TemplateMatchSpec.alphabet(operator, "x")
-            TemplateMatchSpec.expect_same_matches(
+            TemplateMatchSpec.expect_sound_matches(
               self, pattern, TemplateMatchSpec.strings(alphabet, 5)
             )
           end
@@ -382,9 +515,9 @@ describe Addressable::Template, "#match" do
         ["", "*"], TemplateMatchSpec::CONTEXTS
       ).each do |operator, modifier, context|
         pattern = "{#{operator}a#{modifier}}#{context}"
-        it "matches like the :regexp engine for #{pattern}" do
+        it "matches soundly for #{pattern}" do
           alphabet = TemplateMatchSpec.alphabet(operator, "x")
-          TemplateMatchSpec.expect_same_matches(
+          TemplateMatchSpec.expect_sound_matches(
             self, pattern, TemplateMatchSpec.strings(alphabet, 5)
           )
         end
@@ -414,9 +547,21 @@ describe Addressable::Template, "#match" do
       def processor.match(name)
         nil
       end
-      template = Addressable::Template.new("{+a}{+b}")
+      template = Addressable::Template.new("{+a}{+b}", engine: :regexp)
       expect(template.match("xy", processor).mapping).to eq(
         "a" => nil, "b" => "xy"
+      )
+    end
+
+    it "gives the earlier of adjacent expressions the value with a processor " \
+      "with the :machine engine" do
+      processor = Object.new
+      def processor.match(name)
+        nil
+      end
+      template = Addressable::Template.new("{+a}{+b}", engine: :machine)
+      expect(template.match("xy", processor).mapping).to eq(
+        "a" => "xy", "b" => nil
       )
     end
 
@@ -425,12 +570,29 @@ describe Addressable::Template, "#match" do
       def processor.match(name)
         name == "b" ? "[0-9]+" : nil
       end
-      template = Addressable::Template.new("{/a,b,c}")
+      template = Addressable::Template.new("{/a,b,c}", engine: :regexp)
       expect(template.match("/x/1/y", processor).mapping).to eq(
         "a" => "x", "b" => "1", "c" => "y"
       )
       expect(template.match("/x1", processor).mapping).to eq(
         "a" => "x", "b" => "1", "c" => ""
+      )
+    end
+
+    # A variable with a pattern is optional like any other, so the earlier
+    # variable takes text the pattern could match.
+    it "matches the other variables around a processor's pattern with the " \
+      ":machine engine" do
+      processor = Object.new
+      def processor.match(name)
+        name == "b" ? "[0-9]+" : nil
+      end
+      template = Addressable::Template.new("{/a,b,c}", engine: :machine)
+      expect(template.match("/x/1/y", processor).mapping).to eq(
+        "a" => "x", "b" => "1", "c" => "y"
+      )
+      expect(template.match("/x1", processor).mapping).to eq(
+        "a" => "x1", "b" => nil, "c" => nil
       )
     end
   end

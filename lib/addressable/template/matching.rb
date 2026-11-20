@@ -197,15 +197,23 @@ module Addressable
       # @param [Addressable::URI] uri The URI, from parse_uri.
       # @param [Array<String>] expansions The template's expressions, in order.
       # @param [#captures, #begin, #end] matched
-      #   The value captured for each varspec, in order, and where it begins
-      #   and ends, as a regular expression's MatchData gives them, with
-      #   group 1 for the first varspec.
+      #   The value captured for each varspec, in order, as a regular
+      #   expression's MatchData gives them. Without joiners_required, it
+      #   also needs where each one begins and ends, with group 1 for the
+      #   first varspec.
       # @param [#restore, nil] processor The processor, if any.
+      # @param [TrueClass, FalseClass] joiners_required
+      #   Whether every value captured came after its leader or joiner, as
+      #   the :machine engine matches them. :regexp's regexp makes joiners
+      #   optional, so there an empty exploded value after the first
+      #   varspec can be a joiner that a later value started after, and has
+      #   no members.
       #
       # @return [Addressable::Template::MatchData, NilClass]
       #   The match, or nil if the template has no expressions and the URI
       #   isn't the pattern as written.
-      def self.match_data(template, uri, expansions, matched, processor)
+      def self.match_data(template, uri, expansions, matched, processor,
+                          joiners_required: false)
         mapping = {}
         if uri.to_str == template.pattern
           return Addressable::Template::MatchData.new(uri, template, mapping)
@@ -224,13 +232,25 @@ module Addressable
             value = captured[index]
             case operator
             when nil, '+', '#', '/', '.'
-              if value && modifier == '*'
+              if value && modifier == '*' && joiners_required
+                # An empty value came after its leader or joiner, so it's
+                # one empty member.
+                value = value.split(JOINERS.fetch(operator, ','), -1)
+                value = [''] if value.empty?
+              elsif value && modifier == '*'
                 value = exploded_members(operator, value, position == 0)
                 drop_joiners_before_later_values(value,
                   varspecs.drop(position + 1), captured, matched, index + 1)
               end
             when ';', '?', '&'
-              name, value = named_value(operator, name, modifier == '*', value)
+              if value && modifier == '*' && joiners_required
+                # Every member came after its leader or joiner, so an empty
+                # one is an empty name, which expansion writes for a ""
+                # key. :regexp drops it, or gives it a nil key.
+                value = named_members(operator, name, value, true)
+              else
+                name, value = named_value(operator, name, modifier == '*', value)
+              end
             end
             value = restore(name, value, processor)
             # A name that appears again keeps its first value, unless that
@@ -321,12 +341,17 @@ module Addressable
       # @param [String] operator The expression's operator.
       # @param [String] name The varspec's name.
       # @param [String] value The value captured for the varspec.
+      # @param [TrueClass, FalseClass] keep_empty
+      #   Whether an empty member is an empty name, rather than dropped at
+      #   the end or a nil key elsewhere, as :regexp gives it.
       #
       # @return [Array<String>, Hash] The list or associative array.
-      def self.named_members(operator, name, value)
-        pairs = value.split(JOINERS[operator]).map do |pair|
+      def self.named_members(operator, name, value, keep_empty = false)
+        members = value.split(JOINERS[operator], keep_empty ? -1 : 0)
+        members = [''] if keep_empty && members.empty?
+        pairs = members.map do |pair|
           key, member = pair.split('=', 2)
-          [key, member || ""]
+          [keep_empty ? key.to_s : key, member || ""]
         end
         if !pairs.empty? && pairs.all? { |key, _| key == name }
           pairs.map { |_, member| member }

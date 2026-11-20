@@ -84,7 +84,7 @@ module Addressable
         captures = search.match(uri.to_str)
         return nil unless captures
         Matching.match_data(template, uri, search.expansions, captures,
-          processor)
+          processor, joiners_required: true)
       end
 
       # Builds the matcher and the regexp, so a frozen template can still

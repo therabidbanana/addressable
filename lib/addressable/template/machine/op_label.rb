@@ -35,11 +35,11 @@ module Addressable
         # could continue it, when it takes every character up to the
         # delimiter. label_dots is only true for a lone, unexploded
         # variable, so a member, which uses this too, never takes dots.
-        def value_steps(matcher)
+        def value_steps(matcher, _variable = nil)
           if label_dots
             matcher.possessive_run(:unreserved)
           else
-            matcher.lazy_run(:unreserved_no_dot)
+            matcher.greedy_run(:unreserved_no_dot)
           end
         end
 

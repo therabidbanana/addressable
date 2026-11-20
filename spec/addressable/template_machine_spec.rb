@@ -913,9 +913,95 @@ describe Addressable::Template, "with the :machine engine, #match" do
     end
   end
 
+  # Expects the machine to match the URI as :regexp does, or, where the
+  # machine fixes :regexp's result (machine_differences), to give the
+  # fixed mapping.
   def expect_same(pattern, uri)
-    expect(outcome(:machine, pattern, uri)).
-      to eq(outcome(:regexp, pattern, uri)), "for #{uri.inspect}"
+    if machine_differences.key?([pattern, uri])
+      match = Addressable::Template.new(pattern, engine: :machine).match(uri)
+      expect(match && match.mapping).
+        to eq(machine_differences[[pattern, uri]]), "for #{uri.inspect}"
+    else
+      expect(outcome(:machine, pattern, uri)).
+        to eq(outcome(:regexp, pattern, uri)), "for #{uri.inspect}"
+    end
+  end
+
+  # The machine's mapping where it differs from :regexp's for the URIs in
+  # this group's examples (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in
+  # the machine"), or nil where a URI no expansion writes no longer
+  # matches.
+  def machine_differences
+    {
+      # The earlier variable takes what both could take, but stops before
+      # the last place the next expression's leader follows it where the
+      # rest can match; a + value stops at the first "?" or "#" where the
+      # rest can match; and a variable the URI leaves out is nil.
+      ["{+base}{/path*}{?q*}{#f}", "http://x.org/a/b?k=v&j=w#f"] => {
+        "base" => "http://x.org/a", "path" => ["b"],
+        "q" => {"k" => "v", "j" => "w"}, "f" => "f"
+      },
+      ["{.a*}{.b}", ".x.y.z"] => {"a" => ["x", "y"], "b" => "z"},
+      ["{&a*}{&b}", "&x=1=2&b=3"] => {"a" => {"x" => "1=2"}, "b" => "3"},
+      ["{a*,b}", "x,y,z"] => {"a" => ["x", "y", "z"], "b" => nil},
+      ["{a*,b}", "x,,y"] => {"a" => ["x", "", "y"], "b" => nil},
+      ["{/a*,b}", "/x/y/z"] => {"a" => ["x", "y", "z"], "b" => nil},
+      ["{/a*,b}", "/x//"] => {"a" => ["x", "", ""], "b" => nil},
+      ["{/a*,b}", "/x//y"] => {"a" => ["x", "", "y"], "b" => nil},
+      ["{/a*,b}", "//"] => {"a" => ["", ""], "b" => nil},
+      ["{+a*,b}", "x,,y"] => {"a" => ["x", "", "y"], "b" => nil},
+      ["{+a*,b}", "x,y,z"] => {"a" => ["x", "y", "z"], "b" => nil},
+      ["{a}{b}", "xyz"] => {"a" => "xyz", "b" => nil},
+      ["{a}{b}", "x%41y"] => {"a" => "xAy", "b" => nil},
+      ["{+a}{b}", "p/qr"] => {"a" => "p/qr", "b" => nil},
+      ["{+a}{b}", "p/q/r"] => {"a" => "p/q/r", "b" => nil},
+      ["{+a}{b}", "é/q"] => {"a" => "é/q", "b" => nil},
+      ["{?a}{b}", "?a=xy"] => {"a" => "xy", "b" => nil},
+      ["{?a*}{b}", "?x=1=2"] => {"a" => {"x" => "1=2"}, "b" => nil},
+      ["{?a*}{b}", "?x=1&y=2z"] => {"a" => {"x" => "1", "y" => "2z"}, "b" => nil},
+      ["{?a*}{b}", "?x=1=2=3"] => {"a" => {"x" => "1=2=3"}, "b" => nil},
+      # A "#" or "%23" before a fragment expression is its leader where
+      # the rest can match: a # value stops at a "#", which starts a
+      # fragment, and before the next expression's leader.
+      ["{#a}{#b}", "#x#y"] => {"a" => "x", "b" => "y"},
+      ["{#a}{#b}", "#x%23y"] => {"a" => "x", "b" => "y"},
+      # An exploded + member gives back what follows it.
+      ["{+a*}/{d}", "x,y/z/w"] => {"a" => ["x", "y/z"], "d" => "w"},
+      # Names in ;, ? and & expressions are matched as written, and joiners
+      # between values are required.
+      ["{;a,b}{;c*}", ";a=1;b;c=2;d"] => {
+        "a" => "1", "b" => "", "c" => {"c" => "2", "d" => ""}
+      },
+      ["{;a,b}{;c*}", ";a;c"] => {"a" => "", "b" => nil, "c" => [""]},
+      ["{;a,b}{;c*}", ";=;"] => nil,
+      ["{;a,b}", ";a=xb"] => {"a" => "xb", "b" => nil},
+      ["{;a,b}", ";a=xb=2"] => nil,
+      ["{;a,b}", ";ab"] => nil,
+      ["{;a}x", ";axx"] => nil,
+      ["{?a,b}", "?a=é%E9b=2"] => nil,
+      ["{?a,b}", "?a=xb=2"] => nil,
+      ["{?a,b}", "?a=x%41b=2"] => nil,
+      ["{?a,b}", "?a=éb=2"] => nil,
+      ["{?a,b,c}", "?a=xc=z"] => nil,
+      ["{?a,b,c}", "?a=x=y=z"] => nil,
+      ["{?a,b,c}", "?a=xb=yc=z"] => nil,
+      ["{&a,b}x", "&a=1b=2x"] => nil,
+      ["{?a,b}/", "?a=xb=y/"] => nil,
+      # A ; value or member written "k=" is empty, which expansion writes
+      # as "k", and an empty member is a "" key, not nil.
+      ["{;a*}", ";="] => nil,
+      ["{;a*}", ";x=;"] => nil,
+      ["{;a*}", ";x;;y"] => {"a" => {"x" => "", "" => "", "y" => ""}},
+      ["{;a*}", ";x;"] => {"a" => {"x" => "", "" => ""}},
+      # Two empty members repeat the "" name, so the hash keeps one (the
+      # plan's "repeated names in an exploded ;, ? or & value").
+      ["{;a*}", ";;"] => {"a" => {"" => ""}},
+      # A variable named outside an exploded one takes its own pair.
+      ["{;a*,b}", ";x=1;b=2"] => {"a" => {"x" => "1"}, "b" => "2"},
+      ["{;a*,b}", ";x;;b"] => {"a" => {"x" => "", "" => ""}, "b" => ""},
+      ["{?a*,b}", "?x=1&b=2"] => {"a" => {"x" => "1"}, "b" => "2"},
+      ["{?a*,b}", "?x=1=2&b="] => {"a" => {"x" => "1=2"}, "b" => ""}
+    }
   end
 
   {
@@ -1258,8 +1344,36 @@ describe Addressable::Template, "with the :machine engine, #match" do
       outcomes = [:regexp, :machine].map do |engine|
         outcome_with(engine, pattern, uri, processor(patterns, calls[engine]))
       end
-      expect(outcomes.last).to eq(outcomes.first), "for #{uri.inspect}"
+      if processor_differences.key?([pattern, patterns, uri])
+        expect(outcomes.last.first).
+          to eq(processor_differences[[pattern, patterns, uri]]),
+            "for #{uri.inspect}"
+      else
+        expect(outcomes.last).to eq(outcomes.first), "for #{uri.inspect}"
+      end
       expect(calls[:machine]).to eq(calls[:regexp])
+    end
+
+    # The machine's mapping where it differs from :regexp's for the URIs
+    # in these examples. A variable with a pattern is optional like any
+    # other, and the earlier variable takes what both could take, where
+    # :regexp requires a variable with a pattern in its expression and
+    # gives text to the later variable.
+    def processor_differences
+      {
+        ["{a}{b}", {"a" => ".*"}, "xyz"] => {"a" => "xyz", "b" => nil},
+        ["{a}{b}", {"b" => "[0-9]+"}, "x12"] => {"a" => "x12", "b" => nil},
+        ["{a}{b}", {"b" => "[0-9]+"}, "12"] => {"a" => "12", "b" => nil},
+        ["{/a,b,c}", {"b" => "[0-9]+"}, "/x1"] => {
+          "a" => "x1", "b" => nil, "c" => nil
+        },
+        ["{/a,b,c}", {"b" => "[0-9]+"}, "/1"] => {
+          "a" => "1", "b" => nil, "c" => nil
+        },
+        ["{/a,b,c}", {"b" => "[0-9]+"}, "/x/y"] => {
+          "a" => "x", "b" => nil, "c" => "y"
+        }
+      }
     end
 
     {
@@ -1639,12 +1753,34 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
     "the earlier variable takes text both could take" => [
       ["{a}{b}", "xyz", {"a" => nil, "b" => "xyz"}, {"a" => "xyz", "b" => nil}],
       ["{a,b}", "x", {"a" => "", "b" => "x"}, {"a" => "x", "b" => nil}],
-      ["{/a*}{/b*}", "/x/y", {"a" => nil, "b" => ["x", "y"]},
-        {"a" => ["x", "y"], "b" => nil}],
       ["{/a*,b*}", "/x/y", {"a" => [], "b" => ["x", "y"]},
         {"a" => ["x", "y"], "b" => nil}],
       ["{a*}{b}", "x,y", {"a" => ["x", ""], "b" => "y"},
         {"a" => ["x", "y"], "b" => nil}]
+    ],
+    "a value stops before the next expression's leader where it can" => [
+      ["{/a*}{/b*}", "/x/y", {"a" => nil, "b" => ["x", "y"]},
+        {"a" => ["x"], "b" => ["y"]}],
+      ["{/dirs*}{/file}", "/a/b/c.txt",
+        {"dirs" => ["a", "b", "c.txt"], "file" => nil},
+        {"dirs" => ["a", "b"], "file" => "c.txt"}],
+      ["/{name}{.ext}", "/archive.tar.gz",
+        {"name" => "archive.tar", "ext" => "gz"},
+        {"name" => "archive.tar", "ext" => "gz"}]
+    ],
+    "a + or # value stops at the first ? or # where it can" => [
+      ["/files/{+path}{?q}", "/files/a/b?q=c", {"path" => "a/b", "q" => "c"},
+        {"path" => "a/b", "q" => "c"}],
+      ["{+base}{#frag}", "http://x.org/a?x=1#top",
+        {"base" => "http://x.org/a?x=1", "frag" => "top"},
+        {"base" => "http://x.org/a?x=1", "frag" => "top"}],
+      ["{+base}{?q*}", "?a=1", {"base" => nil, "q" => {"a" => "1"}},
+        {"base" => nil, "q" => {"a" => "1"}}]
+    ],
+    "a + or # value before the last stops at a comma" => [
+      ["{+v1,v2,v3}", "a,b,c,d", {"v1" => "a", "v2" => "b", "v3" => "c,d"},
+        {"v1" => "a", "v2" => "b", "v3" => "c,d"}],
+      ["{+a,b}x", "yx", {"a" => nil, "b" => "y"}, {"a" => "y", "b" => nil}]
     ],
     "a variable the URI leaves out is nil" => [
       ["{+a*,b*}", "x,y", {"a" => ["x", "y"], "b" => []},
@@ -1662,10 +1798,40 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       ["{;a,b*}", ";x=1;y=2",
         {"a" => nil, "x" => "", "b" => {"1" => "", "y" => "2"}},
         {"a" => nil, "b" => {"x" => "1", "y" => "2"}}],
-      ["{?a,b}", "?a=1&a=2", {"a" => "1", "b" => nil}, nil],
+      ["{?a,b}", "?a=1&a=2", {"a" => "1", "b" => nil}, nil]
+    ],
+    "a variable named outside an exploded one takes its own pair" => [
       ["{;a*,b}", ";x=1;y=2;b=3",
         {"a" => {"x" => "1", "y" => "2", "b" => "3"}, "b" => nil, nil => ""},
-        {"a" => {"x" => "1", "y" => "2", "b" => "3"}, "b" => nil}]
+        {"a" => {"x" => "1", "y" => "2"}, "b" => "3"}],
+      ["{?a*,b}", "?b=2",
+        {"a" => {"b" => "2"}, "b" => nil}, {"a" => nil, "b" => "2"}],
+      ["{&a*,b,c}", "&x=1&b=2&c=3",
+        {"a" => {"x" => "1", "b" => "2", "c" => "3"}, "b" => nil, "c" => nil},
+        {"a" => {"x" => "1"}, "b" => "2", "c" => "3"}],
+      ["{;a*}{;b}{;c}", ";x=1;b=2;c=3",
+        {"a" => {"x" => "1", "b" => "2", "c" => "3"}, "b" => nil, "c" => nil},
+        {"a" => {"x" => "1"}, "b" => "2", "c" => "3"}],
+      ["{?z,a*,b}", "?z=1&b=2",
+        {"z" => "1", "a" => {"b" => "2"}, "b" => nil},
+        {"z" => "1", "a" => nil, "b" => "2"}],
+      # Only where the rest matches: b's pair comes after a's members.
+      ["{?a*,b}", "?x=1&b=2&y=3",
+        {"a" => {"x" => "1", "b" => "2", "y" => "3"}, "b" => nil},
+        {"a" => {"x" => "1", "b" => "2", "y" => "3"}, "b" => nil}],
+      ["{;a*,b}", ";x=1;bc=2",
+        {"a" => {"x" => "1", "bc" => "2"}, "b" => nil, nil => ""},
+        {"a" => {"x" => "1", "bc" => "2"}, "b" => nil}]
+    ],
+    "an exploded variable right after another takes nothing" => [
+      ["{;foo*,bar*,baz*}", ";foo=1;bar=2;baz=3",
+        {"foo" => {"foo" => "1", "bar" => "2", "baz" => "3"},
+         "bar" => {}, "baz" => {}},
+        {"foo" => {"foo" => "1", "bar" => "2", "baz" => "3"},
+         "bar" => nil, "baz" => nil}],
+      ["{;a*,b*,c}", ";x=1;c=2",
+        {"a" => {"x" => "1", "c" => "2"}, "b" => {}, "c" => nil, nil => ""},
+        {"a" => {"x" => "1"}, "b" => nil, "c" => "2"}]
     ],
     "an exploded + or # value can be followed by text" => [
       ["{+a*}!", "y!", nil, {"a" => ["y"]}],
@@ -1684,7 +1850,6 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
         end
 
         it "gives #{machine_mapping.inspect} for #{pattern} on #{uri}" do
-          pending "the matcher change for this fix"
           expect(mapping(:machine, pattern, uri)).to eq(machine_mapping)
         end
       end
@@ -1748,8 +1913,16 @@ describe Addressable::Template, "with the :machine engine, a match" do
     [expressions.join(separators.sample(random: random)), values]
   end
 
+  # A + or # value can take text that a later expression pct-encoded, such
+  # as "%2C" for a comma in a query value. A match decodes it, and expanding
+  # it writes the comma as it is, since + and # allow it. So with a + or #
+  # expression, the URIs are compared with pct-encoded triplets decoded.
+  def same_uri?(pattern, uri, back)
+    return back == uri unless pattern =~ /\{[+#]/
+    Addressable::URI.unencode(back) == Addressable::URI.unencode(uri)
+  end
+
   it "expands back to the URI it matched" do
-    pending "the matcher changes in the plan's matching fixes"
     random = Random.new(6570)
     failures = []
     2000.times do
@@ -1757,15 +1930,7 @@ describe Addressable::Template, "with the :machine engine, a match" do
       template = Addressable::Template.new(pattern, engine: :machine)
       uri = template.expand(values).to_s
       match = template.match(uri)
-      back =
-        begin
-          match && template.expand(match.mapping).to_s
-        rescue TypeError => error
-          # Expanding a mapping with a nil key, which an empty capture with
-          # no name gives, raises.
-          error
-        end
-      next if back == uri
+      next if match && same_uri?(pattern, uri, template.expand(match.mapping).to_s)
       failures << [pattern, values, uri, match && match.mapping]
     end
     expect(failures.first(5)).to eq([]), "#{failures.size} failed"

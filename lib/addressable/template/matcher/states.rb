@@ -80,7 +80,7 @@ module Addressable
 
         ##
         # Where a run of the set just before this state is worth stopping,
-        # for LazyRun#prepare. Often a match from here can only start with
+        # for GreedyRun#prepare. Often a match from here can only start with
         # one of the set's characters by taking the rest of their run: in
         # {?a,b}, b's name takes a's whole value, then needs "=". Then the
         # run before can only stop inside a run of its characters if the
@@ -207,9 +207,9 @@ module Addressable
         end
       end
 
-      # A run as short as possible first: stop here, or take one more
-      # character and ask again.
-      class LazyRun < Run
+      # A run as long as possible first: take one more character and ask
+      # again, or stop here.
+      class GreedyRun < Run
         # Asked once the first bytes are known. See State#bytes_after_run
         # and State#leading_text.
         def prepare
@@ -219,11 +219,6 @@ module Addressable
 
         def branches?
           true
-        end
-
-        # Whether the run tries taking one more character before stopping.
-        def takes_more_first?
-          false
         end
 
         def follow(search, position, captures)
@@ -246,28 +241,70 @@ module Addressable
           stop = @next if @next.first_bytes.allow?(search, position)
           after = @set.character_end(search.text, position)
           more = self if after
-          if takes_more_first?
-            search.try_in_order(more, after, stop, position, captures)
-          else
-            search.try_in_order(stop, position, more, after, captures)
-          end
+          search.try_in_order(more, after, stop, position, captures)
         end
       end
 
-      # A run as long as possible first: take one more character and ask
-      # again, or stop here.
-      class GreedyRun < LazyRun
-        def takes_more_first?
+      # Goes on only if one of the texts comes next. It takes nothing.
+      class FollowedBy < State
+        def initialize(index, texts)
+          super(index)
+          @texts = texts
+        end
+
+        def follow(search, position, captures)
+          bytes = search.bytes
+          return unless @texts.any? do |text|
+            bytes.byteslice(position, text.bytesize) == text
+          end
+          search.try(@next, position, captures)
+        end
+      end
+
+      # One character of the set.
+      class OneCharacter < Run
+        def possible_first_bytes
+          @set.first_bytes
+        end
+
+        # It takes one character, not the whole run.
+        def bytes_after_taking_run(_set)
+          nil
+        end
+
+        def follow(search, position, captures)
+          after = @set.character_end(search.text, position)
+          search.try(@next, after, captures) if after
+        end
+      end
+
+      # A run that stops only at a "?" or "#" in it: the first one first,
+      # then each later one. Matcher#reserved_run tries it before a
+      # greedy run of the same set.
+      class DelimiterRun < Run
+        def branches?
           true
+        end
+
+        # It stops inside its run, so the run before it can't be skipped.
+        def bytes_after_taking_run(_set)
+          nil
+        end
+
+        def follow(search, position, captures)
+          run_end = search.run_end(@set, position)
+          place = [
+            search.next_occurrence("?", position),
+            search.next_occurrence("#", position)
+          ].compact.min
+          return unless place && place < run_end
+          stop = @next if @next.first_bytes.allow?(search, place)
+          search.try_in_order(stop, place, self, place + 1, captures)
         end
       end
 
       # Every character of the set that follows, with no other choice.
       class PossessiveRun < Run
-        def takes_whole_run?
-          true
-        end
-
         def follow(search, position, captures)
           search.try(@next, search.run_end(@set, position), captures)
         end
@@ -376,8 +413,39 @@ module Addressable
         end
       end
 
-      # Goes back to an earlier state, the start of a loop.
+      # Goes on if the value being captured has taken something, and
+      # otherwise leaves the value out: the start of its capture is dropped,
+      # and the search goes on where the steps that leave it out go on. The
+      # latest capture noted is where the value started.
+      class LeaveOutIfEmpty < State
+        # The index of the state where a value left out goes on, set once
+        # it's added (Matcher#land).
+        attr_writer :target
+
+        def link(states)
+          super
+          @left_out = states[@target]
+        end
+
+        def possible_first_bytes
+          @next.first_bytes | @left_out.first_bytes
+        end
+
+        def follow(search, position, captures)
+          if position > captures.position
+            search.try(@next, position, captures)
+          else
+            search.try(@left_out, position, captures.rest)
+          end
+        end
+      end
+
+      # Goes back to an earlier state, the start of a loop, or ahead to a
+      # later one (Matcher#jump_ahead).
       class Jump < State
+        # The index of the state it goes to, set later for a jump ahead.
+        attr_writer :target
+
         def initialize(index, target)
           super(index)
           @target = target

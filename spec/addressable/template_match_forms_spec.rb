@@ -27,7 +27,14 @@ describe Addressable::Template, "matching non-ASCII text in either form" do
     ["/x{?a*}", "/x?k=é"] => {"a" => {"k" => "é"}},
     ["/{a}/é/{b}", "/1/é/2"] => {"a" => "1", "b" => "2"},
     ["/{a}é{b}", "/1é2"] => {"a" => "1", "b" => "2"},
-    ["/{a}{b}", "/é"] => {"a" => nil, "b" => "é"},
+    # The :machine engine gives text both could take to the earlier
+    # variable (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine").
+    ["/{a}{b}", "/é"] =>
+      if TestHelper.template_engine == :machine
+        {"a" => "é", "b" => nil}
+      else
+        {"a" => nil, "b" => "é"}
+      end,
     ["/\u{1D11E}/{var}", "/%F0%9D%84%9E/v"] => {"var" => "v"},
     ["/%F0%9D%84%9E/{var}", "/\u{1D11E}/v"] => {"var" => "v"}
   }.each do |(pattern, uri), mapping|

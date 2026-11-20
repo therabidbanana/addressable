@@ -48,13 +48,15 @@ module Addressable
 
         # --- Matching ---
 
-        def value_steps(matcher)
-          matcher.lazy_run(:reserved)
+        # A value stops at a "?" or "#" where it can (Matcher#reserved_run).
+        def value_steps(matcher, _variable = nil)
+          matcher.reserved_run(:reserved)
         end
 
-        # A member takes everything up to the next comma.
+        # A member can't hold a comma, which would start the next one, but
+        # gives back what the rest of the template needs.
         def member_steps(matcher)
-          matcher.possessive_run(:reserved_no_comma)
+          matcher.reserved_run(:reserved_no_comma)
         end
 
         # --- Regexp ---

@@ -26,23 +26,35 @@ module Addressable
         def self.operator; ";"; end
         def self.leader; ";"; end
         def self.joiner; ";"; end
+        def self.names_values?; true; end
         def self.tagged_value; PathParamTaggedValue; end
 
         private
 
         # --- Matching ---
 
-        # A name, then an optional "=" and a value.
-        def value_steps(matcher)
-          matcher.greedy_run(:unreserved)
-          matcher.optional { matcher.exact("=") }
-          matcher.lazy_run(:unreserved)
+        # The variable's name as written, then "=" and a value that isn't
+        # empty, or nothing: expansion writes ";a" for an empty value, never
+        # ";a=".
+        def value_steps(matcher, variable)
+          matcher.exact(variable.name)
+          matcher.optional do
+            matcher.exact("=")
+            matcher.one_character(:unreserved)
+            matcher.greedy_run(:unreserved)
+          end
         end
 
-        # A member: name and value characters and "=", in any order, as
-        # many as can be first, as member_regexp_source writes it.
+        # A member: a name, then "=" and a value that isn't empty, or
+        # nothing, as value_steps takes one. The value can hold more "=",
+        # as member_regexp_source allows.
         def member_steps(matcher)
-          matcher.greedy_run(:unreserved_or_equals)
+          matcher.greedy_run(:unreserved)
+          matcher.optional do
+            matcher.exact("=")
+            matcher.one_character(:unreserved_or_equals)
+            matcher.greedy_run(:unreserved_or_equals)
+          end
         end
 
         # --- Regexp ---

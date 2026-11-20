@@ -1547,8 +1547,14 @@ describe Addressable::Template do
         ).match(uri3)
       }
       its(:variables){ should == ["hash", "first"] }
-      its(:captures){ should == [
-        {"a" => "1", "b" => "2", "c" => "3", "first" => "foo"}, nil] }
+      # The :machine engine gives a variable named outside an exploded one
+      # its own pair (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the
+      # machine").
+      its(:captures){
+        should == (TestHelper.template_engine == :machine ?
+          [{"a" => "1", "b" => "2", "c" => "3"}, "foo"] :
+          [{"a" => "1", "b" => "2", "c" => "3", "first" => "foo"}, nil])
+      }
     end
     # Note that this expansion is impossible to revert deterministically - the
     # * operator means first could have been a key of hash or a separate key.
@@ -1560,8 +1566,12 @@ describe Addressable::Template do
         ).match(uri4)
       }
       its(:variables){ should == ["hash", "first"] }
-      its(:captures){ should == [
-        {"a" => "1", "b" => "2", "c" => "3", "first"=> "foo"}, nil] }
+      # The :machine engine takes the separate key.
+      its(:captures){
+        should == (TestHelper.template_engine == :machine ?
+          [{"a" => "1", "b" => "2", "c" => "3"}, "foo"] :
+          [{"a" => "1", "b" => "2", "c" => "3", "first"=> "foo"}, nil])
+      }
     end
     context "fifth uri" do
       subject {
@@ -1579,7 +1589,12 @@ describe Addressable::Template do
         ).match("http://example.com/docs/readme/edit")
       }
       its(:variables){ should == ["base", "file"] }
-      its(:captures){ should == [nil, "docs/readme"] }
+      # The :machine engine gives text both could take to the earlier
+      # variable (TEMPLATE_MACHINE_PLAN.md, "Matching fixes in the machine").
+      its(:captures){
+        should == (TestHelper.template_engine == :machine ?
+          ["docs/readme", nil] : [nil, "docs/readme"])
+      }
     end
     context "multi-variable # expression followed by a literal" do
       subject {
@@ -1588,7 +1603,12 @@ describe Addressable::Template do
         ).match("http://example.com/#x/")
       }
       its(:variables){ should == ["a", "b", "c"] }
-      its(:captures){ should == [nil, "x", nil] }
+      # The :machine engine gives text both could take to the earlier
+      # variable.
+      its(:captures){
+        should == (TestHelper.template_engine == :machine ?
+          ["x", nil, nil] : [nil, "x", nil])
+      }
     end
     context "+ expression with a variable before an explode modifier" do
       subject {
@@ -1597,7 +1617,11 @@ describe Addressable::Template do
         ).match("http://example.com/a/b")
       }
       its(:variables){ should == ["path", "segments"] }
-      its(:captures){ should == ["a/b", []] }
+      # With the :machine engine, a variable the URI leaves out is nil.
+      its(:captures){
+        should == (TestHelper.template_engine == :machine ?
+          ["a/b", nil] : ["a/b", []])
+      }
     end
   end
 
@@ -3168,7 +3192,14 @@ describe Addressable::Template, "extracting a label value that contains a dot" d
     ["/f{.ext}{/y}.bak", "/f.gz.bak"] => {"ext" => "gz", "y" => nil},
     ["/f{.ext}{/y}.bak", "/f.tar.gz.bak"] => nil,
     ["/f{.ext}.bak", "/f.tar.gz.bak"] => nil,
-    ["/f{.ext}{+r}", "/f.tar.gz/x"] => {"ext" => nil, "r" => ".tar.gz/x"},
+    # The :machine engine gives text both could take to the earlier
+    # variable.
+    ["/f{.ext}{+r}", "/f.tar.gz/x"] =>
+      if TestHelper.template_engine == :machine
+        {"ext" => "tar", "r" => ".gz/x"}
+      else
+        {"ext" => nil, "r" => ".tar.gz/x"}
+      end,
     ["{.a}{.b}", ".x.y.z"] => nil,
     ["{.a,b}", ".A.B.C"] => nil,
     ["{.a*}", ".A.B.C"] => {"a" => ["A", "B", "C"]},

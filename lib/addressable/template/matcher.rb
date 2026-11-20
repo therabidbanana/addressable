@@ -27,27 +27,28 @@ module Addressable
     # The :machine engine's matcher.
     #
     # The nodes describe how they match by calling the builder methods
-    # (#literal, #lazy_run, #optional, #capture, #repeat, ...), which add
+    # (#literal, #greedy_run, #optional, #capture, #repeat, ...), which add
     # states to a small graph. Each state knows what to try next, in order.
     # #match then searches the graph depth first, trying those choices in
-    # the same order as the regexp Template builds, so it finds the same
-    # split of the URI between the varspecs. It knows nothing about
-    # operators.
+    # order, and the first way through the graph gives the split of the
+    # URI between the varspecs. The nodes order the choices so that the
+    # earlier variable takes what it can (Expression#add_match_steps). It
+    # knows nothing about operators.
     #
     # A plain depth-first search can take exponential time. This one
     # remembers each state and position it has tried: if it comes back to
     # one, that one already failed (or the search would have stopped), so
     # it's skipped. It only needs to remember states that branch (choices,
-    # lazy and greedy runs, processor patterns). Every other state has one
-    # way on, and every loop in the graph passes through a state that
-    # branches, so from each branch the search takes at most as many
-    # steps as the template has states before it reaches another. The
-    # time grows with the URI's length times the template's size, squared
-    # at worst.
+    # runs that can stop at more than one place, processor patterns).
+    # Every other state has one way on, and every loop in the graph passes
+    # through a state that branches, so from each branch the search takes
+    # at most as many steps as the template has states before it reaches
+    # another. The time grows with the URI's length times the template's
+    # size, squared at worst.
     #
     # To try less, each state also knows which bytes a match from it can
     # start with (FirstBytes), and the search skips a state that can't
-    # start with the byte at its position. A lazy or greedy run also knows
+    # start with the byte at its position. A greedy run also knows
     # when what follows it can only start inside a run of its characters
     # if a certain byte comes after that run (State#bytes_after_run), and
     # otherwise only stops at the run's end. Where what follows starts
@@ -123,14 +124,48 @@ module Addressable
         literal([[text, nil]])
       end
 
-      # Characters of a set, as few as can be first.
-      def lazy_run(set)
-        add(LazyRun, SETS.fetch(set))
+      ##
+      # The block's states, tried first so that one of the texts has to
+      # follow them, and then as they are. With runs that take as much as
+      # they can, the first try stops before the last place a text follows.
+      # The block is called twice.
+      #
+      # @param [Array<String>] texts ASCII text.
+      def preferring_followed_by(texts)
+        choice = add(Choice)
+        choice.first = @states.size
+        inside_optional { yield }
+        add(FollowedBy, texts)
+        to_end = jump_ahead
+        choice.second = @states.size
+        inside_optional { yield }
+        land([to_end])
+      end
+
+      # One character of a set.
+      def one_character(set)
+        add(OneCharacter, SETS.fetch(set))
       end
 
       # Characters of a set, as many as can be first.
       def greedy_run(set)
         add(GreedyRun, SETS.fetch(set))
+      end
+
+      ##
+      # Characters of a set that can hold "?" and "#", stopping at the
+      # first "?" or "#" where what follows can match, and otherwise as
+      # many as can be first. "?" and "#" start a URI's query and fragment,
+      # so /files/{+path}{?q} gives "a/b?q=c" to path and q as "a/b" and
+      # "c", not all to path, though path could hold it.
+      def reserved_run(set)
+        choice = add(Choice)
+        choice.first = @states.size
+        add(DelimiterRun, SETS.fetch(set))
+        to_end = jump_ahead
+        choice.second = @states.size
+        greedy_run(set)
+        land([to_end])
       end
 
       # Every character of a set that follows, giving none back.
@@ -151,21 +186,52 @@ module Addressable
         choice.second = @states.size
       end
 
-      # Nothing, or the block's states, tried in that order.
-      def nothing_or
+      ##
+      # Nothing where one of the texts follows, if the rest can match from
+      # there; otherwise the block's states, or nothing, tried in that
+      # order.
+      #
+      # @param [Array<String>] texts ASCII text.
+      def optional_unless_followed_by(texts)
         choice = add(Choice)
-        choice.second = @states.size
-        inside_optional { yield }
         choice.first = @states.size
+        add(FollowedBy, texts)
+        to_end = jump_ahead
+        choice.second = @states.size
+        optional { yield }
+        land([to_end])
       end
 
-      # Captures what the block's states match, in the next group.
-      def capture
-        slot = @groups * 2
+      # A new group for a varspec's value, numbered in order from 0.
+      def new_group
         @groups += 1
-        add(Capture, slot)
+        @groups - 1
+      end
+
+      # Captures what the block's states match, in the group. A group can
+      # be captured in more than one place, since a value can be reached
+      # more than one way; a match only passes through one of them.
+      def capture(group)
+        add(Capture, group * 2)
         yield
-        add(Capture, slot + 1)
+        add(Capture, group * 2 + 1)
+      end
+
+      # Goes on if the value being captured has taken something, and
+      # otherwise leaves it out, going on where #land points it.
+      def leave_out_if_empty
+        add(LeaveOutIfEmpty)
+      end
+
+      # Goes on to a state that hasn't been added yet, which #land marks.
+      def jump_ahead
+        add(Jump, nil)
+      end
+
+      # Points the jumps (or LeaveOutIfEmpty states) at the next state
+      # added.
+      def land(jumps)
+        jumps.each { |jump| jump.target = @states.size }
       end
 
       # The block's states as many times over as they match, as many as can
@@ -187,6 +253,31 @@ module Addressable
           exact(joiner)
           yield
         end
+      end
+
+      ##
+      # One or more members, as the block's states, with the joiner between
+      # them, stopping after the first member that one of the texts
+      # follows, if the rest can match from there, and otherwise as many as
+      # can be first.
+      #
+      # @param [Array<String>] texts ASCII text.
+      def repeat_stopping_before(joiner, texts)
+        yield
+        stop = add(Choice)
+        stop.first = @states.size
+        add(FollowedBy, texts)
+        to_end = jump_ahead
+        stop.second = @states.size
+        more = add(Choice)
+        more.first = @states.size
+        inside_optional do
+          exact(joiner)
+          yield
+        end
+        add(Jump, stop.index)
+        more.second = @states.size
+        land([to_end])
       end
 
       # Ends the template, links the states, and works out their first
