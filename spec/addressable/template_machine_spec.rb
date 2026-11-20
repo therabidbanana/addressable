@@ -1893,7 +1893,7 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       # Known wrong: no value expands to "xy" (a = "xy" writes "xxy"), so
       # it shouldn't match. It waits on prefix lengths: once {a:1} takes
       # at most one character, the two prefixes can be compared (the
-      # plan's "Still to decide").
+      # plan's "Next work", item 1).
       ["{a:1}{a:2}", "xy", {"a" => "xy"}, {"a" => "xy"}],
       # A literal the value could hold, or one that starts with "%", or a
       # "#" that may be written "%23", doesn't decide where it ends.

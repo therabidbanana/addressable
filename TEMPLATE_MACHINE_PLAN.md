@@ -240,35 +240,60 @@ machine template, matching `to_regexp` can split a URI differently from
 
 ## Next work
 
-Each item stands alone. Items 1–4 need a decision before building;
-the rest can be built as described. Work one piece at a time, with
+Each item stands alone and can be built as described; items 1–4 and
+12 record decisions made on 2026-11-20. Work one piece at a time, with
 specs first, and get each reviewed before committing (see "Working on
 it").
 
 ### Matching results
 
-1. **Prefix lengths (decision).** `{a:3}` matches `abcdef` as
-   `{"a" => "abcdef"}`, though expanding `{a:3}` never writes more than
-   three characters. Taking at most three characters would reject it,
-   bound the run, and fix a known wrong result: `{a:1}{a:2}` on `xy`
-   gives `"xy"`, which writes `xxy` (pinned in
+1. **Cap a prefix at its length (decided).** `{a:3}` matches `abcdef`
+   as `{"a" => "abcdef"}`, though expanding `{a:3}` never writes more
+   than three characters. A prefix varspec takes at most its length in
+   characters, counting a pct-encoded triplet as one, as
+   `Values.prefix` does for `+` and `#`; then `{a:3}` on `abcdef`
+   doesn't match. That bounds the run, and fixes a known wrong result:
+   `{a:1}{a:2}` on `xy` gives `"xy"`, which writes `xxy` (pinned in
    `template_machine_spec.rb` with a "Known wrong" note). With bounded
    prefixes, two prefixes of one name can be compared (the shorter is
-   the start of the longer), and a prefix's end is near enough to
-   decided that `RepeatedNames` could accept `{a:1}{a}`.
-2. **Repeated names whose place isn't decided (decision).** `{a}{a}`,
-   `{a}{b}{a}`, `{a}.{a}` and a name exploded in one varspec and not
-   another (`{/a}{/a*}`) still give the first value, which can fail to
-   expand back. Doing better needs a check that stays linear; no
-   approach is known. Leaving them is acceptable: real templates
-   repeat names with something between that decides the split.
-3. **A list or hash in an unexploded variable (decision).** `{/a}` with
-   `["x", "y"]` writes `/x,y`, but an unexploded value can't hold a
-   comma outside `+` and `#`, so `{/a}` on `/x,y` gives `nil`. Matching
-   it as the string `"x,y"` would be a new result where there was none.
-4. **Exploded hashes outside `;`, `?` and `&` (decision).** Expanding
-   `{a*}` with `{"k" => "v"}` writes `k=v`, which `{a*}` doesn't match.
-   Matching it as a hash needs a rule for when members are pairs.
+   the start of the longer, and the same if the value is shorter than
+   both), so it won't match; and a prefix's end is near enough to
+   decided that `RepeatedNames` can accept shapes like `{a:1}{a}`.
+2. **Reject repeated names whose values disagree (decided; worth more
+   exploration).** `{a}{a}`, `{a}{b}{a}`, `{a}.{a}` and a name
+   exploded in one varspec and not another (`{/a}{/a*}`) aren't
+   converted by `RepeatedNames`, and give the first value, which can
+   fail to expand back. For now, once the search finds a match, check
+   each such name's varspecs (decoded values equal, a prefix the start
+   of the whole, left out only where it writes nothing) and give `nil`
+   if they disagree. That's linear and never gives a wrong value, but
+   it can miss a split that agrees: `{a}{a}` on `xx` finds `"xx"` and
+   `nil` first, and gives `nil` rather than `"x"`. Keep the open
+   question in the plan: a check that finds the agreeing split and
+   stays linear would replace this. Leave the round trip's generator
+   out of these shapes until then.
+3. **Match a list in an unexploded variable (decided).** `{/a}` with
+   `["x", "y"]` writes `/x,y`, but `{/a}` on `/x,y` gives `nil`.
+   Outside `+` and `#` a string's comma is written `%2C`, so a raw
+   comma in an unexploded value can only come from a list. Where the
+   joiner isn't a comma (`/`, `.`, `;`, `?`, `&`), let the value hold
+   raw commas and give it as a list: `{/a}` on `/x,y` gives
+   `["x", "y"]`, `{?a}` on `?a=x,y` the same. Not for the default
+   operator, whose joiner is the comma, nor `+` and `#`, whose values
+   hold raw commas. An unexploded hash writes the same text
+   (`{"k" => "v"}` writes `/k,v`), so those URIs give a list: the two
+   can't be told apart. A new result where there was none, so it
+   belongs in a minor release.
+4. **Match exploded hashes outside `;`, `?` and `&` (decided).**
+   Expanding `{/a*}` with `{"k" => "v"}` writes `/k=v`, which doesn't
+   match today. Expansion writes the `=` between key and value as it
+   is, and pct-encodes an `=` inside a key, a value or a list member
+   (`["k=v"]` writes `/k%3Dv`, `{"k=x" => "v=y"}` writes
+   `/k%3Dx=v%3Dy`; checked on both engines). So for the default, `/`
+   and `.` operators, a member with a raw `=` is a pair: if every
+   member has one, the value is a hash; if none does, a list; mixed
+   members don't match. Not for `+` and `#`, which write `k=v` for both
+   the hash and the list `["k=v"]`.
 
 ### Memory
 
@@ -371,11 +396,12 @@ Measured at 16 KB (memo only, `ObjectSpace.memsize_of`): `{a}`×12`!`
       caches shared across a rolling deploy.
     - Measure what building the regexp in `freeze` costs a frozen
       machine template.
-    - Decide whether changelog entries go in with each change, as
-      `CLAUDE.md` asks, or all at release N (this branch has held them
-      back). Either way, list the new API (`Template.engine`,
-      `Template.engine=`, `Template#engine`, `engine:`), the processor
-      differences and the matching rules.
+    - Changelog entries all go in at release N (decided 2026-11-20),
+      not with each change as `CLAUDE.md` asks: the machine is opt-in
+      and still changing, so entries written now would be rewritten.
+      List the new API (`Template.engine`, `Template.engine=`,
+      `Template#engine`, `engine:`), the processor differences and the
+      matching rules table.
     - Overrides of `Template`'s private methods (`normalize_value`)
       have no effect on the machine. That's a behaviour change once
       `:machine` is the default; say so in the changelog, with
