@@ -55,10 +55,12 @@ Decisions that shape the code:
   writes. It builds it once, on first use or in `freeze`. The matcher
   uses only small fixed patterns that can't backtrack across the
   template: a possessive run per character set, and one per literal.
-- **The machine matches `Template` exactly, bugs included.** Fixing one is
-  a `Template` change with its own changelog entry, and the machine
-  follows it. The one exception is processor patterns; see "Where the
-  machine differs from `Template`".
+- **The machine expands and builds regexps exactly as `Template` does,
+  bugs included**, and fixing one is a `Template` change the machine
+  follows. Matching is the exception: `:regexp`'s matching stays as it
+  is, and the machine fixes the results listed in "Matching fixes in
+  the machine", documented there and in the specs. Processor patterns
+  also differ; see "Where the machine differs from `Template`".
 
 ## Done
 
@@ -101,8 +103,8 @@ Performance (Ruby 3.3.1, compared with `:regexp`):
   `InvalidTemplateError`.
 - `match(nil)` raises `NoMethodError`, where the docs say `nil`.
 - An empty capture after an exploded `;` variable has no name, so
-  `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to `""` (see "Matching
-  changes to consider").
+  `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to `""`. The machine copies
+  this only until "Matching fixes in the machine" lands.
 - Non-ASCII literals in a pattern that isn't UTF-8 make `match` raise
   `Encoding::CompatibilityError`.
 - The machine doesn't copy this one: on Ruby 2.3, `named_captures`
@@ -125,86 +127,96 @@ it. So:
 The way back is `engine: :regexp`. Note both in the changelog when the
 machine ships.
 
-## Matching changes to consider
+## Matching fixes in the machine
 
 RFC 6570 only defines expansion, so how a URI matches a template is
-Addressable's own contract, and some templates can't be matched the way
-they expand. `Template` matches them in ways that are hard to defend.
-Changing them would make the results more correct, give the matcher
-fewer ways to split a URI (less to search, and less to attack), and
-could retire some of `Matching.match_data`'s quirks. But each changes
-what `match` and `extract` return for valid input: a "Changed output"
-entry in a minor release, made in `Template` for both engines, or a
-machine-only difference documented in "Where the machine differs from
-`Template`". Undecided. Candidates (both engines give these today):
+Addressable's own contract, and `Template` matches some templates in
+ways that are hard to defend. The machine fixes them; `:regexp` keeps
+its results, and `engine: :regexp` is the way back. Each fix is a
+difference from `:regexp`, pinned in the specs and listed in the
+changelog when the machine ships. Most of them also give the matcher
+fewer ways to split a URI, so less to search and less memory on
+adversarial input (see "Memory on adversarial input").
 
-- **Check names in `;`, `?` and `&` expressions.** Expansion writes
-  each variable's name, but matching takes any name and files the
-  value under the one the URI gives: `{?a}` matches `?x=1` as
-  `{"a" => nil, "x" => "1"}`, and `{?a,b}` matches `?x=1&y=2` as
-  `{"a" => nil, "x" => "1", "b" => nil, "y" => "2"}`. Matching the
-  names as literals would make both reject those URIs, and the names
-  would anchor each value, so values couldn't move between variables.
-  That removes most of the splits the search tries in a query, and
-  `match_data`'s rule for names the URI gives.
-- **Variables after an exploded one in the same expression.** Members
-  are tried longest first, so the exploded variable takes them all:
-  `{;a*,b}` on `;x=1;y=2;b=3` gives
-  `{"a" => {"x" => "1", "y" => "2", "b" => "3"}, "b" => nil}`, and
-  `{?a*,b*,c*}` is effectively `{?a*}`. With names checked, `b` would
-  get `"3"`, as expanding those values writes it; without, they could
-  be documented as always empty.
-- **The `nil => ""` key.** That `{;a*,b}` match also maps `nil` to
-  `""`: `b`'s empty capture has no name to go under. A bug in any case,
-  so a `Template` fix the machine follows.
-- **A value given twice.** `{?a,b}` on `?a=1&a=2` gives
-  `{"a" => "1", "b" => nil}`, dropping `a=2` silently. Checking names
-  (above) would reject it.
-- **Prefix lengths aren't checked.** `{a:3}` matches `abcdef` as
-  `{"a" => "abcdef"}`, though expanding `{a:3}` never writes more than
-  three characters. Taking at most three would reject it, and bound
-  every prefixed value's run.
-- **A variable written twice isn't compared.** `{a}/{a}` matches `x/y`
-  as `{"a" => "x"}` (the first non-nil value wins, in
-  `match_data`), and `{?a,a}` matches `?a=1&a=2` as `{"a" => "1"}`.
-  Requiring the values to be equal would reject both.
-- **The earlier of two variables gets nothing.** Values are tried
-  shortest first, so where two variables can take the same text the
-  first is left empty: `{a}{b}` on `xyz` gives
-  `{"a" => nil, "b" => "xyz"}`, `{a,b}` on `x` gives
-  `{"a" => "", "b" => "x"}`, `{/a*}{/b*}` on `/x/y` gives `b` both
-  segments, and `{#a}{#b}` on `#x#y` gives `{"a" => nil, "b" => "x#y"}`.
-  Expanding `a` = `"x"` and nothing for `b` writes the same URI, so
-  matching doesn't give back what was expanded. Preferring the earlier
-  variable (longest first) would, but it changes the split of every
-  ambiguous URI, so it's the widest change here. `{a}{b}` and
-  `{a,b}` are ambiguous whichever way they split, so they could also
-  be documented as such.
-- **An empty member out of nowhere.** `{a*}{b}` on `x,y` gives
-  `{"a" => ["x", ""], "b" => "y"}`: `a` keeps the empty member before
-  the comma that `b` started after. Expanding that `a` writes `x,`.
+Decided on 2026-11-19:
+
+- **Match `:regexp` only where it's right.** The reference regexp stays
+  the oracle for `:regexp` and for the splits the fixes don't touch.
+- **`to_regexp` and `source` stay byte-for-byte `Template`'s**, for
+  now. So on a machine template, matching `to_regexp` can split a URI
+  differently from `match`, or match a URI `match` rejects. Document
+  that on `to_regexp`, and revisit when `:regexp` is removed.
+- **Every expression has one shape.** Each variable may be left out.
+  The first value present takes the expression's leader and each later
+  one the joiner, which is required, as expansion writes them: `{/a,b}`
+  matches like `{/a}{/b}`, and `{?a,b}` like `?` then `a=…`, `&b=…`.
+  The leader moves to the first value present, so `{?a,b}` isn't
+  `{?a}{&b}`: `?b=2` matches it.
+- **The earlier variable wins** wherever two variables could take the
+  same text, in one expression or across two, exploded or not.
+- **Names in `;`, `?` and `&` expressions are matched as written.**
+- **A match expands back to the URI.** For every URI written by
+  expanding some values, expanding what `match` gives back writes that
+  URI again (not always the same values: a list and a hash can write the
+  same text). This replaces the reference regexp as the check on the
+  machine's splits, as a property spec over generated templates and
+  values.
+
+What changes, `:regexp`'s result first (2.9.2 and this branch's
+`:regexp` give the same, except where noted):
+
+- **The earlier variable takes the text.** `{a}{b}` on `xyz` gives
+  `{"a" => nil, "b" => "xyz"}`, not `{"a" => "xyz", "b" => nil}`;
+  `{a,b}` on `x` gives `{"a" => "", "b" => "x"}`; `{/a*}{/b*}` and
+  `{/a*,b*}` on `/x/y` give `b` both segments. Today which exploded
+  variable takes the members depends on the operator: the last for the
+  default operator, `.` and `/`, the first for `+`, `#`, `;`, `?` and
+  `&`.
+- **Joiners are required.** `{?a,b}` on `?a=1b=2` gives
+  `{"a" => "", "b" => nil, "1b" => "2"}`; it won't match.
+- **Names are checked.** `{?a}` on `?x=1` gives
+  `{"a" => nil, "x" => "1"}`, and `{;c,b}` on `;c=xy` gives
+  `{"c" => "", "b" => nil, "xy" => ""}`; the first won't match and the
+  second gives `{"c" => "xy", "b" => nil}`. `{;a,b*}` on `;x=1;y=2`
+  gives `{"a" => nil, "x" => "", "b" => {"1" => "", "y" => "2"}}`; it
+  will give `b` both pairs. `{?a,b}` on `?a=1&a=2` drops `a=2`; it
+  won't match. This retires `match_data`'s rule for names the URI
+  gives.
+- **A variable the URI leaves out is `nil`.** `{a,b}` on `y` gives
+  `{"a" => "", "b" => "y"}`, and expanding that writes `,y`; it will
+  give `{"a" => nil, "b" => "y"}`. Likewise for the `[]` and `{}` that
+  `+`, `#`, `/` and `;` give a variable that takes nothing
+  (`{+a*,b*}` on `x,y` gives `b` `[]`). A value that is in the URI
+  but empty keeps its empty value: `{/a*}` on `/` gives `[""]`.
+- **No `nil => ""` key.** `{;a*,b}` on `;x=1;y=2;b=3` maps `nil` to
+  `""`, since `b`'s empty capture has no name.
+- **No empty member out of nowhere.** `{a*}{b}` on `x,y` gives
+  `{"a" => ["x", ""], "b" => "y"}`, and expanding that `a` writes `x,`
+  (2.9.2 gives `{"a" => ["x,"], "b" => "y"}`).
+
+Still to decide:
+
+- **Prefix lengths.** `{a:3}` matches `abcdef` as `{"a" => "abcdef"}`,
+  though expanding `{a:3}` never writes more than three characters.
+  Taking at most three would reject it and bound the run.
+- **A variable written twice.** `{a}/{a}` matches `x/y` as
+  `{"a" => "x"}`, and `{?a,a}` matches `?a=1&a=2` as `{"a" => "1"}`.
+  The machine could compare the two captures (a regexp needs a
+  backreference) and reject both.
 - **Exploded associative arrays outside `;`, `?` and `&`.** Expanding
-  `{a*}` with `{"k" => "v", "j" => "w"}` writes `k=v,j=w`, but matching
-  `{a*}` against it gives `nil`, since the value's characters don't
-  include `=`. Matching it as a hash would be a new result where there
-  was none, which a patch release allows, but `{a*}` on `x,y` would
-  then need a rule for when members are pairs.
+  `{a*}` with `{"k" => "v"}` writes `k=v`, which `{a*}` doesn't match.
+  Matching it as a hash needs a rule for when members are pairs.
 
-Several of these look like bugs with no good fix in one regexp, and the
-machine changes that. Comparing a variable written twice needs a
-backreference, which is where regexps backtrack catastrophically; the
-machine can compare two captures. A prefix length is a bounded repeat,
-awkward with pct-encoded and multibyte characters, and more for a
-regexp to backtrack through; in the machine it's a counted run. Names
-and which variable comes first could be written in either engine, and
-are only a question of compatibility. So some fixes may only be
-practical in the machine, which argues for making them when it becomes
-the default (release N+1), documented as differences from `:regexp`.
-
-To decide: look for code and issues that rely on today's results
-(GitHub issues, dependants' specs), sort the candidates into fixes for
-both engines (the `nil` key, the empty member) and fixes for the
-machine only, and choose the release for each.
+A first round-trip run over 20,000 random templates of one or two
+expressions (strings for unexploded variables, lists and hashes for
+exploded ones), on the machine as it is, failed 9,914: 2,715 only
+because a variable left out came back as `""`, `[]` or `{}`, 5,322
+with other values (mostly names in `;`, `?` and `&`, and the exploded
+splits above), and 1,877 didn't match at all. The ones that didn't
+match mostly reuse a name across expressions with values of different
+types, or put a `+` or `#` expression before a literal with reserved
+characters (`{+a*}!{+a}` with `a = ["x"]` writes `x!x`, which doesn't
+match); triage them before writing the spec.
 
 ## What's left
 
@@ -312,7 +324,9 @@ cover the shapes in 3 and 4. What's left, in order:
      search tries every state at every position it can reach, so
      changes that only reorder choices save nothing, and only
      checking names would shrink shapes like `{?a,b,c}!`. If pruning
-     isn't enough, two ways to shrink the memo itself: a bit-packed
+     isn't enough, two ways to shrink the memo itself (the first was
+     shelved on 2026-11-19 as too fiddly; trim states instead, and
+     see "Matching fixes in the machine"): a bit-packed
      memo (one bit per branching state and
      position, in a String), or a thread list (a Pike VM, as RE2 and
      Rust's regex use for captures): walk the URI a byte at a time
