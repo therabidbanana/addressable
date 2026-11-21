@@ -211,12 +211,29 @@ module Addressable
         # exploded list repeats it, and an associative array otherwise,
         # where an empty member is a "" key.
         #
+        # A value that isn't exploded and holds a comma as it is, is a
+        # list, where the variable can hold one (#holds_list?).
+        #
         # @param [Variable] variable The variable.
         # @param [String, nil] text
         #   The text captured, or nil if the variable took no part.
+        # @param [TrueClass, FalseClass] as_matched
+        #   Whether the text was matched by the variable's own steps, not
+        #   a processor's pattern, whose text is given as it is.
         #
         # @return [Array] The name, and a String, Array, Hash or nil.
-        def read(variable, text)
+        def read(variable, text, as_matched = true)
+          name, value = read_text(variable, text)
+          if as_matched && value.is_a?(String) && holds_list?(variable) &&
+              value.include?(",")
+            value = value.split(",", -1)
+          end
+          [name, value]
+        end
+
+        # The name and value #read gives, before a list is told from a
+        # string.
+        def read_text(variable, text)
           name = variable.name
           return [name, nil] if text.nil?
           if variable.explode
@@ -302,8 +319,32 @@ module Addressable
         # its steps match it (Matcher::SETS). A + or # value before the
         # last can't hold a comma.
         def value_set(variable)
-          return :unreserved unless self.class.allows_reserved?
-          variable.equal?(variables.last) ? :reserved : :reserved_no_comma
+          if self.class.allows_reserved?
+            variable.equal?(variables.last) ? :reserved : :reserved_no_comma
+          elsif holds_list?(variable)
+            :unreserved_or_comma
+          else
+            :unreserved
+          end
+        end
+
+        ##
+        # Whether a variable's value can be a list written with commas
+        # between its members, as expansion writes a list or an
+        # associative array in a variable that isn't exploded: {/a} writes
+        # ["x", "y"] as "/x,y". Outside + and #, a comma in a string is
+        # written "%2C", so a comma as it is can only be between members.
+        # Where the operator's joiner is the comma too ({a,b}), only the
+        # last variable can: a comma after an earlier one is the joiner,
+        # as it is for + and #. Not with a prefix, which expansion refuses
+        # for a list. An exploded value's member, which has no variable,
+        # never is.
+        #
+        # @param [Variable, nil] variable The variable, or nil for a member.
+        def holds_list?(variable)
+          return false if variable.nil? || variable.explode || variable.prefix
+          return false if self.class.allows_reserved?
+          self.class.joiner != "," || variable.equal?(variables.last)
         end
 
         ##
@@ -639,7 +680,7 @@ module Addressable
         # an exploded value's member, which has no variable, reuses this
         # for the others.
         def value_steps(matcher, variable = nil)
-          value_run(matcher, variable, :unreserved)
+          value_run(matcher, variable, value_set(variable))
         end
 
         # A run of a set's characters for a value, as many as can be first:

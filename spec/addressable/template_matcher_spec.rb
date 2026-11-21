@@ -43,7 +43,7 @@ describe Addressable::Template::Matcher, "#to_s" do
     "{a}" => [
       "0 Choice 1 or 6",
       "1 Capture group 0 start",
-      "2 GreedyRun unreserved, stopping at its end",
+      "2 GreedyRun unreserved_or_comma, stopping at its end",
       "3 LeaveOutIfEmpty to 6",
       "4 Capture group 0 end",
       "5 Jump to 7",
@@ -55,24 +55,25 @@ describe Addressable::Template::Matcher, "#to_s" do
       "0 Choice 1 or 5",
       "1 Literal \"/\"",
       "2 Capture group 0 start",
-      "3 GreedyRun unreserved, stopping before \".json\"",
+      "3 GreedyRun unreserved_or_comma, stopping before \".json\"",
       "4 Capture group 0 end",
       "5 Literal \".json\"",
       "6 Done"
     ],
     # A non-ASCII literal in either form, and a value before one that
-    # could take the end of its run.
+    # could take the end of its run: it stops at its end, or anywhere if
+    # the template's end follows.
     "é{/a}{b}" => [
       "0 Literal \"é\"|\"%C3%A9\"",
       "1 Choice 2 or 6",
       "2 Literal \"/\"",
       "3 Capture group 0 start",
-      "4 GreedyRun unreserved, stopping at its end, or anywhere if the " \
-        "end follows it",
+      "4 GreedyRun unreserved_or_comma, stopping at its end, or anywhere " \
+        "if the end follows it",
       "5 Capture group 0 end",
       "6 Choice 7 or 12",
       "7 Capture group 1 start",
-      "8 GreedyRun unreserved, stopping at its end",
+      "8 GreedyRun unreserved_or_comma, stopping at its end",
       "9 LeaveOutIfEmpty to 12",
       "10 Capture group 1 end",
       "11 Jump to 13",
@@ -84,7 +85,7 @@ describe Addressable::Template::Matcher, "#to_s" do
     "{a}{b}" => [
       "0 Choice 1 or 6",
       "1 Capture group 0 start",
-      "2 GreedyRun unreserved, stopping at its end",
+      "2 GreedyRun unreserved_or_comma, stopping at its end",
       "3 LeaveOutIfEmpty to 6",
       "4 Capture group 0 end",
       "5 Jump to 7",
@@ -99,14 +100,14 @@ describe Addressable::Template::Matcher, "#to_s" do
       "1 Literal \"?\"",
       "2 Capture group 0 start",
       "3 Literal \"a=\"",
-      "4 GreedyRun unreserved, stopping at its end",
+      "4 GreedyRun unreserved_or_comma, stopping at its end",
       "5 Capture group 0 end",
       "6 Jump to 15",
       "7 Choice 8 or 14",
       "8 Literal \"?\"",
       "9 Capture group 1 start",
       "10 Literal \"b=\"",
-      "11 GreedyRun unreserved, stopping at its end",
+      "11 GreedyRun unreserved_or_comma, stopping at its end",
       "12 Capture group 1 end",
       "13 Jump to 21",
       "14 Jump to 21",
@@ -114,7 +115,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "16 Literal \"&\"",
       "17 Capture group 1 start",
       "18 Literal \"b=\"",
-      "19 GreedyRun unreserved, stopping at its end",
+      "19 GreedyRun unreserved_or_comma, stopping at its end",
       "20 Capture group 1 end",
       "21 Done"
     ],
@@ -133,7 +134,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "9 Jump to 18",
       "10 Choice 11 or 16",
       "11 Capture group 1 start",
-      "12 GreedyRun unreserved, stopping at its end",
+      "12 GreedyRun unreserved_or_comma, stopping at its end",
       "13 LeaveOutIfEmpty to 16",
       "14 Capture group 1 end",
       "15 Jump to 22",
@@ -141,7 +142,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "17 Choice 18 or 22",
       "18 Literal \",\"",
       "19 Capture group 1 start",
-      "20 GreedyRun unreserved, stopping at its end",
+      "20 GreedyRun unreserved_or_comma, stopping at its end",
       "21 Capture group 1 end",
       "22 Done"
     ],
@@ -152,10 +153,10 @@ describe Addressable::Template::Matcher, "#to_s" do
       "1 Choice 2 or 11",
       "2 Capture group 0 start",
       "3 Choice 4 or 7",
-      "4 GreedyRun unreserved",
+      "4 GreedyRun unreserved_or_comma",
       "5 FollowedBy \".\"",
       "6 Jump to 8",
-      "7 GreedyRun unreserved",
+      "7 GreedyRun unreserved_or_comma",
       "8 LeaveOutIfEmpty to 11",
       "9 Capture group 0 end",
       "10 Jump to 12",
@@ -163,7 +164,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "12 Choice 13 or 17",
       "13 Literal \".\"",
       "14 Capture group 1 start",
-      "15 GreedyRun unreserved_no_dot, stopping at its end",
+      "15 GreedyRun unreserved_no_dot_or_comma, stopping at its end",
       "16 Capture group 1 end",
       "17 Done"
     ],
@@ -190,7 +191,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "18 Literal \"?\"",
       "19 Capture group 1 start",
       "20 Literal \"q=\"",
-      "21 GreedyRun unreserved, stopping at its end",
+      "21 GreedyRun unreserved_or_comma, stopping at its end",
       "22 Capture group 1 end",
       "23 Jump to 25",
       "24 Jump to 25",
@@ -267,23 +268,22 @@ describe Addressable::Template::Matcher, "#to_s" do
       "28 Literal \"&\"",
       "29 Capture group 1 start",
       "30 Literal \"b=\"",
-      "31 GreedyRun unreserved, stopping at its end",
+      "31 GreedyRun unreserved_or_comma, stopping at its end",
       "32 Capture group 1 end",
       "33 Done"
     ],
-    # A ; value: the name, then "=" and a value that isn't empty, or
-    # nothing.
+    # A ; value: the name, then "=" and a value, or nothing. The value can
+    # be empty, for a list of one empty member.
     "{;a}" => [
-      "0 Choice 1 or 9",
+      "0 Choice 1 or 8",
       "1 Literal \";\"",
       "2 Capture group 0 start",
       "3 Literal \"a\"",
-      "4 Choice 5 or 8",
+      "4 Choice 5 or 7",
       "5 Literal \"=\"",
-      "6 OneCharacter unreserved",
-      "7 GreedyRun unreserved, stopping at its end",
-      "8 Capture group 0 end",
-      "9 Done"
+      "6 GreedyRun unreserved_or_comma, stopping at its end",
+      "7 Capture group 0 end",
+      "8 Done"
     ],
     # An exploded variable right after another gets a group and no states.
     "{;a*,b*}" => [
@@ -312,7 +312,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "1 Choice 2 or 6",
       "2 Literal \".\"",
       "3 Capture group 0 start",
-      "4 PossessiveRun unreserved",
+      "4 PossessiveRun unreserved_or_comma",
       "5 Capture group 0 end",
       "6 Literal \"/\"",
       "7 Done"
@@ -367,7 +367,7 @@ describe Addressable::Template::Matcher, "#to_s" do
     "{a}/{a}" => [
       "0 Choice 1 or 6",
       "1 Capture group 0 start",
-      "2 GreedyRun unreserved, stopping at its end",
+      "2 GreedyRun unreserved_or_comma, stopping at its end",
       "3 LeaveOutIfEmpty to 6",
       "4 Capture group 0 end",
       "5 Jump to 7",
@@ -395,8 +395,8 @@ describe Addressable::Template::Matcher, "#to_s" do
       "5 Choice 6 or 12 (once for each place of group 0)",
       "6 Literal \"/\"",
       "7 Capture group 1 start",
-      "8 GreedyRun unreserved, stopping at its end (once for each place " \
-        "of group 0)",
+      "8 GreedyRun unreserved_or_comma, stopping at its end (once for " \
+        "each place of group 0)",
       "9 Capture group 1 end",
       "10 StartsWith group 1 with group 0",
       "11 Jump to 13",

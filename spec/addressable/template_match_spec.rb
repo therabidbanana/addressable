@@ -226,8 +226,10 @@ module TemplateMatchSpec
     },
     # The comma before z can only be c's: b's value can't hold one. So c
     # starts with an empty member, as expanding ["", "z"] writes it.
-    ["{a,b}{c*}", "x,y,z"] => {"a" => "x", "b" => "y", "c" => ["", "z"]},
-    ["{.a}{c*}", ".x,y"] => {"a" => "x", "c" => ["", "y"]},
+    ["{a,b}{c*}", "x,y,z"] => {"a" => "x", "b" => ["y", "z"], "c" => nil},
+    # A . value that isn't exploded holds a list's commas, and the earlier
+    # variable wins.
+    ["{.a}{c*}", ".x,y"] => {"a" => ["x", "y"], "c" => nil},
     ["{a*}{c,d*}", "x,y"] => {"a" => ["x", "y"], "c" => nil, "d" => nil},
     ["{+a}{b}", "p/q"] => {"a" => "p/q", "b" => nil},
     ["{+a}{b}", "p/qr"] => {"a" => "p/qr", "b" => nil},

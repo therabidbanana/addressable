@@ -170,7 +170,8 @@ module Addressable
         #   a name's values disagree.
         def read(texts)
           values = @all.map do |slot|
-            slot.expression.read(slot.variable, texts[slot.group])
+            slot.expression.read(slot.variable, texts[slot.group],
+              slot.pattern.nil?)
           end
           values if @written_again.all? { |slots| agree?(slots, values) }
         end

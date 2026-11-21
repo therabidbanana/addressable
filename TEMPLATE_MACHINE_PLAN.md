@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,010 and 4,896 examples), and
+full suite passes in both IDNA modes (5,103 and 4,989 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -171,10 +171,11 @@ The machine's rules:
   and `{?a,b}` like `?` then `a=…`, `&b=…`. A variable the URI leaves
   out is `nil`, never `""`, `[]` or `{}`; an empty value the URI holds
   keeps it (`{/a*}` on `/` gives `[""]`).
-- **Names in `;`, `?` and `&` are matched as written.** A `;` value
-  written `k=` doesn't match, since expansion writes `;k` for an empty
-  value. Inside an exploded `;`, `?` or `&` value an empty member is a
-  `""` key.
+- **Names in `;`, `?` and `&` are matched as written.** Expansion
+  writes `;k` for an empty string, so a `;` value written `k=` isn't
+  one: with a prefix, or as an exploded value's member, it doesn't
+  match, and otherwise it's a list of one empty member (below). Inside
+  an exploded `;`, `?` or `&` value an empty member is a `""` key.
 - **The earlier variable wins** wherever two variables could take the
   same text, with four exceptions, tried in this order:
   1. A variable a `;`, `?` or `&` expression names, outside an exploded
@@ -197,6 +198,18 @@ The machine's rules:
 - **An exploded variable right after another in its expression takes
   nothing** (`{;foo*,bar*}` matches like `{;foo*}`), so the matcher adds
   no steps for it.
+- **A value that isn't exploded can be a list.** Expansion writes a
+  list's members with commas between them, and a comma inside a string
+  as `%2C`, so a comma as it is separates members: `{/a}` on `/x,y`
+  gives `["x", "y"]`, and `{?a}` on `?a=x,y` the same. An associative
+  array writes the same text, so it comes back as a list too. In the
+  default operator the comma is the joiner as well, so only an
+  expression's last variable can be a list, as only a `+` or `#`
+  expression's last holds commas: `{a,b}` on `x,y,w` gives `"x"` and
+  `["y", "w"]`. A `;` value written `a=` is a list of one empty
+  member, which is what writes it. Not `+` and `#`, whose values hold
+  commas; nor with a prefix, which expansion refuses for a list; nor
+  a value a processor's pattern matched.
 - **A prefix takes at most its length,** counted in decoded
   characters, since expansion cuts the value before it pct-encodes it:
   a character as it is, or the triplets of one UTF-8 character
@@ -246,6 +259,11 @@ Examples of where the machine's results differ from `:regexp`'s
 | `{+a*}!` | `y!` | no match (the members took the `!`) | `"a" => ["y"]` | Expands back |
 | `{#a*}x` | `#x` | `"a" => nil` (writes `x`) | `"a" => [""]` | Expands back |
 | `{;a*}` | `;x=;` | `"a" => {"x" => ""}` (writes `;x`) | no match | Names as written |
+| `{/a}` | `/x,y` | no match | `"a" => ["x", "y"]` | List in a value |
+| `{a,b}` | `x,y,w` | no match | `"a" => "x", "b" => ["y", "w"]` | List in a value |
+| `{;a}` | `;a=` | `"a" => ""` (writes `;a`) | `"a" => [""]` | List in a value |
+| `{?a,b}` | `?a=x,y&b=w` | no match | `"a" => ["x", "y"], "b" => "w"` | List in a value |
+| `{.a}{c*}` | `.x,y` | `"a" => nil, "c" => [".x", "y"]` | `"a" => ["x", "y"], "c" => nil` | List in a value |
 | `{a:3}` | `abcdef` | `"a" => "abcdef"` (writes `abc`) | no match | Prefix length |
 | `{a:2}{b}` | `xyz` | `"a" => nil, "b" => "xyz"` | `"a" => "xy", "b" => "z"` | Prefix length |
 | `{a}/{a}` | `x/y` | `"a" => "x"` (writes `x/x`) | no match | Name written again |
@@ -309,18 +327,29 @@ it").
    - 22 still match with values that don't write the URI, and 1,268
      with a mapping `expand` raises for. Not looked into.
    - The round trip's generator still gives each name one use.
-3. **Match a list in an unexploded variable (decided).** `{/a}` with
-   `["x", "y"]` writes `/x,y`, but `{/a}` on `/x,y` gives `nil`.
-   Outside `+` and `#` a string's comma is written `%2C`, so a raw
-   comma in an unexploded value can only come from a list. Where the
-   joiner isn't a comma (`/`, `.`, `;`, `?`, `&`), let the value hold
-   raw commas and give it as a list: `{/a}` on `/x,y` gives
-   `["x", "y"]`, `{?a}` on `?a=x,y` the same. Not for the default
-   operator, whose joiner is the comma, nor `+` and `#`, whose values
-   hold raw commas. An unexploded hash writes the same text
-   (`{"k" => "v"}` writes `/k,v`), so those URIs give a list: the two
-   can't be told apart. A new result where there was none, so it
-   belongs in a minor release.
+3. **Match a list in an unexploded variable (built).** A value that
+   isn't exploded holds raw commas and comes back as a list
+   (`Expression#holds_list?`; see "Matching rules"): any `/`, `.`,
+   `;`, `?` or `&` value, and the last of a default expression. On
+   20,000 generated templates with strings, lists and hashes in
+   unexploded variables, each name used once, every expansion now
+   matches and writes the URI back: 14,911 with a list or hash, where
+   4,541 did, and the same 5,089 with strings only. A new result where
+   there was none, so it belongs in a minor release. What it costs:
+   - A literal comma, or an expression with no leader, right after
+     such a value no longer decides where it ends, so a name written
+     again there isn't compared as the search goes
+     (`Expression#end_decided?`), only once a split is found (item 2).
+     On item 2's 12,196 repeated-name templates, 45 fewer expansions
+     match (7,734 to 7,689).
+   - Where two variables could take a comma, the earlier one wins:
+     `{.a}{c*}` on `.x,y` gives `a` `["x", "y"]`, where `c` took
+     `["", "y"]`, and `{a,b}{c*}` on `x,y,z` gives `b` `["y", "z"]`,
+     where `c` took `["", "z"]`.
+   - The values aren't always the ones expanded, only ones that write
+     the same URI: `{a,b}` with `["x", "y"]` and `"w"` writes `x,y,w`,
+     which gives `"x"` and `["y", "w"]`; an associative array comes
+     back as a list; and a list of one member as a string.
 4. **Match exploded hashes outside `;`, `?` and `&` (decided).**
    Expanding `{/a*}` with `{"k" => "v"}` writes `/k=v`, which doesn't
    match today. Expansion writes the `=` between key and value as it

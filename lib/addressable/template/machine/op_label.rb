@@ -27,9 +27,14 @@ module Addressable
         def self.leader; "."; end
         def self.joiner; "."; end
 
-        # A label's value holds "." only where label_dots allows it.
-        def value_set(_variable)
-          label_dots ? :unreserved : :unreserved_no_dot
+        # A label's value holds "." only where label_dots allows it, and a
+        # list's commas where it can be one (#holds_list?).
+        def value_set(variable)
+          if holds_list?(variable)
+            label_dots ? :unreserved_or_comma : :unreserved_no_dot_or_comma
+          else
+            label_dots ? :unreserved : :unreserved_no_dot
+          end
         end
 
         private
@@ -41,12 +46,16 @@ module Addressable
         # delimiter. label_dots is only true for a lone, unexploded
         # variable, so a member, which uses this too, never takes dots.
         # With a prefix, the run up to the delimiter has to fit its
-        # length: the delimiter can't follow anywhere sooner.
+        # length: the delimiter can't follow anywhere sooner. Where the
+        # delimiter is a comma, which a list's value holds too, the run
+        # has to be able to give it back.
         def value_steps(matcher, variable = nil)
-          if label_dots && !(variable && variable.prefix)
-            matcher.possessive_run(:unreserved)
+          set = value_set(variable)
+          if label_dots && !(variable && variable.prefix) &&
+              starts_outside?(following, Matcher::SETS.fetch(set))
+            matcher.possessive_run(set)
           else
-            value_run(matcher, variable, value_set(variable))
+            value_run(matcher, variable, set)
           end
         end
 

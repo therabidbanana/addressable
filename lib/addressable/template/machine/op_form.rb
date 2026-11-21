@@ -36,7 +36,7 @@ module Addressable
         # The variable's name as written, "=", and a value.
         def value_steps(matcher, variable)
           matcher.exact("#{variable.name}=")
-          value_run(matcher, variable, :unreserved)
+          value_run(matcher, variable, value_set(variable))
         end
 
         # A member, as member_regexp_source writes it: a name and "=", as

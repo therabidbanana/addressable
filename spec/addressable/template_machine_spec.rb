@@ -1848,6 +1848,62 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       ["{+a:5}{+b}", "x?y", {"a" => nil, "b" => "x?y"},
         {"a" => "x", "b" => "?y"}]
     ],
+    "a /, ., ;, ? or & value that isn't exploded can be a list" => [
+      ["{/a}", "/x,y", nil, {"a" => ["x", "y"]}],
+      ["{.a}", ".x,y", nil, {"a" => ["x", "y"]}],
+      ["{;a}", ";a=x,y", nil, {"a" => ["x", "y"]}],
+      ["{?a}", "?a=x,y", nil, {"a" => ["x", "y"]}],
+      ["{&a}", "&a=x,y", nil, {"a" => ["x", "y"]}],
+      # Members can be empty, and are decoded: a comma inside one is
+      # written "%2C".
+      ["{/a}", "/,x", nil, {"a" => ["", "x"]}],
+      ["{/a}", "/x,", nil, {"a" => ["x", ""]}],
+      ["{/a}", "/,", nil, {"a" => ["", ""]}],
+      ["{;a}", ";a=,", nil, {"a" => ["", ""]}],
+      ["{?a}", "?a=x%2Cy,z", nil, {"a" => ["x,y", "z"]}],
+      ["{/a}", "/x%2Cy", {"a" => "x,y"}, {"a" => "x,y"}],
+      ["{/a}", "/x", {"a" => "x"}, {"a" => "x"}],
+      # An associative array writes the same text, so it comes back as a
+      # list.
+      ["{/a}", "/k,v", nil, {"a" => ["k", "v"]}],
+      # With the values around it.
+      ["{/a,b}", "/x,y/w", nil, {"a" => ["x", "y"], "b" => "w"}],
+      ["{?a,b}", "?a=x,y&b=w", nil, {"a" => ["x", "y"], "b" => "w"}],
+      ["{/a},{b}", "/x,y,w", nil, {"a" => ["x", "y"], "b" => "w"}],
+      ["/{.a}/", "/.x.y,z/", nil, {"a" => ["x.y", "z"]}],
+      ["{/a}{?a}", "/x,y?a=x,y", nil, {"a" => ["x", "y"]}],
+      ["{/a}{?a}", "/x,y?a=x,z", nil, nil],
+      # A literal comma after the value is still the literal.
+      ["{.a},", ".xy,", {"a" => "xy"}, {"a" => "xy"}],
+      ["/{.a},", "/.x.y,", {"a" => "x.y"}, {"a" => "x.y"}],
+      ["/{.a},", "/.x,y,", nil, {"a" => ["x", "y"]}],
+      ["/{.a},", "/.,", {"a" => ""}, {"a" => ""}],
+      ["/{.a}{?b},", "/.x.y?b=1,", {"a" => "x.y", "b" => "1"},
+        {"a" => "x.y", "b" => "1"}],
+      ["{/a},", "/x,", {"a" => "x"}, {"a" => "x"}],
+      ["{?a},x", "?a=1,x", {"a" => "1"}, {"a" => "1"}],
+      # In the default operator the comma is the joiner too, so only the
+      # last variable's value can be a list, as only a + or # expression's
+      # last holds commas.
+      ["{a}", "x,y", nil, {"a" => ["x", "y"]}],
+      ["{a}", ",", nil, {"a" => ["", ""]}],
+      ["{a,b}", "x,y", {"a" => "x", "b" => "y"}, {"a" => "x", "b" => "y"}],
+      ["{a,b}", "x,y,w", nil, {"a" => "x", "b" => ["y", "w"]}],
+      ["{b,a}", "w,,x", nil, {"b" => "w", "a" => ["", "x"]}],
+      # A ; value with its "=" and nothing after is a list of one empty
+      # member; an empty string is written without the "=".
+      ["{;a}", ";a=", {"a" => ""}, {"a" => [""]}],
+      ["{;a}", ";a", {"a" => ""}, {"a" => ""}],
+      ["{;a,b}", ";a=;b=w", {"a" => "", "b" => "w"},
+        {"a" => [""], "b" => "w"}],
+      # Not + and #, whose values hold commas, nor with a prefix, which
+      # expansion refuses for a list.
+      ["{+a}", "x,y", {"a" => "x,y"}, {"a" => "x,y"}],
+      ["{#a}", "#x,y", {"a" => "x,y"}, {"a" => "x,y"}],
+      ["{/a:3}", "/x,y", nil, nil],
+      # Nor an exploded value's member.
+      ["{/a*}", "/x,y", nil, nil]
+    ],
     "joiners between values are required" => [
       ["{?a,b}", "?a=1b=2", {"a" => "", "b" => nil, "1b" => "2"}, nil]
     ],

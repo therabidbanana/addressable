@@ -29,13 +29,25 @@ module Addressable
         def self.names_values?; true; end
         def self.tagged_value; PathParamTaggedValue; end
 
+        # A value written with its "=" and nothing after it is a list of
+        # one empty member: an empty string is written without the "=".
+        def read(variable, text, as_matched = true)
+          if as_matched && holds_list?(variable) &&
+              text == "#{variable.name}="
+            return [variable.name, [""]]
+          end
+          super
+        end
+
         private
 
         # --- Matching ---
 
-        # The variable's name as written, then "=" and a value that isn't
-        # empty, or nothing: expansion writes ";a" for an empty value, never
-        # ";a=".
+        # The variable's name as written, then "=" and a value, or nothing:
+        # expansion writes ";a" for an empty string, never ";a=". It does
+        # write ";a=" for a list of one empty member, so a value that can
+        # be a list can be empty after its "=" (#read). One with a prefix
+        # can't be a list, so it can't.
         def value_steps(matcher, variable)
           matcher.exact(variable.name)
           matcher.optional do
@@ -44,8 +56,7 @@ module Addressable
               matcher.capped_run(:unreserved, variable.prefix,
                 at_least_one: true)
             else
-              matcher.one_character(:unreserved)
-              matcher.greedy_run(:unreserved)
+              matcher.greedy_run(value_set(variable))
             end
           end
         end

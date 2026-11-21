@@ -204,6 +204,29 @@ describe Addressable::Template::Machine::Slots, "#read and #mapping" do
     ["{a*}", ["x,y"]] => {"a" => ["x", "y"]},
     ["{+a*}", ["x,y/z"]] => {"a" => ["x", "y/z"]},
     ["{#a*}", ["x,y"]] => {"a" => ["x", "y"]},
+    # A /, ., ;, ? or & value that isn't exploded, with a comma as it is,
+    # is a list.
+    ["{/a}", ["x,y"]] => {"a" => ["x", "y"]},
+    ["{/a}", ["x,,"]] => {"a" => ["x", "", ""]},
+    ["{/a}", [","]] => {"a" => ["", ""]},
+    ["{.a}", ["%41,x%2Cy"]] => {"a" => ["A", "x,y"]},
+    ["{;a}", ["a=x,y"]] => {"a" => ["x", "y"]},
+    ["{?a}", ["a=x,y"]] => {"a" => ["x", "y"]},
+    ["{&a}", ["a=,"]] => {"a" => ["", ""]},
+    ["{/a}", ["x%2Cy"]] => {"a" => "x,y"},
+    # With the comma for its joiner, only an expression's last variable.
+    ["{a}", ["x,y"]] => {"a" => ["x", "y"]},
+    ["{b,a}", ["w", ",x"]] => {"b" => "w", "a" => ["", "x"]},
+    ["{a,b}", ["x,y", "w"]] => {"a" => "x,y", "b" => "w"},
+    # A ; value with its "=" and nothing after is a list of one empty
+    # member.
+    ["{;a}", ["a="]] => {"a" => [""]},
+    ["{;a}", ["a"]] => {"a" => ""},
+    ["{;a:2}", ["a="]] => {"a" => ""},
+    ["{?a}", ["a="]] => {"a" => ""},
+    ["{+a}", ["x,y"]] => {"a" => "x,y"},
+    ["{#a}", ["x,y"]] => {"a" => "x,y"},
+    ["{/a:3}", ["x,y"]] => {"a" => "x,y"},
     # A ;, ? or & value comes with its name.
     ["{?a}", ["a=1"]] => {"a" => "1"},
     ["{?a}", ["a="]] => {"a" => ""},
@@ -277,6 +300,15 @@ describe Addressable::Template::Machine::Slots, "#read and #mapping" do
      "processor's pattern can make another" do
     expect(mapping("{?n}", ["12"])).to eq("n" => nil, "12" => "")
     expect(mapping("{?n}", ["k=v=w"])).to eq("n" => nil, "k" => "v")
+  end
+
+  it "gives the text a processor's pattern matched as it is, commas " \
+     "and all" do
+    nodes = Addressable::Template::Parser.new.parse_nodes("{/n}{/a}")
+    slots = described_class.new(nodes, SlotsSpecProcessor.new("n" => ".*"))
+    expect(slots.mapping(slots.read(["x,y", "x,y"]))).to eq(
+      "n" => "x,y", "a" => ["x", "y"]
+    )
   end
 
   it "restores each value with the processor, under its name" do

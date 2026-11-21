@@ -95,6 +95,12 @@ module Addressable
         unreserved_or_equals: CharacterSet.new(unreserved + "="),
         # A label's value, which can't contain "." unless it's delimited.
         unreserved_no_dot: CharacterSet.new(unreserved.gsub("\\.", "")),
+        # A /, ., ;, ? or & value that isn't exploded: a list's members
+        # are written with commas between them, where a comma in a string
+        # is written "%2C".
+        unreserved_or_comma: CharacterSet.new(unreserved + ","),
+        unreserved_no_dot_or_comma:
+          CharacterSet.new(unreserved.gsub("\\.", "") + ","),
         reserved: CharacterSet.new(reserved),
         # A + or # value before the last, which ends at a comma.
         reserved_no_comma: CharacterSet.new(reserved.delete(","))
