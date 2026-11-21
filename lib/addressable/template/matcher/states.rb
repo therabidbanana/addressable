@@ -395,14 +395,25 @@ module Addressable
       #
       # Unlike GreedyRun, it has to know where it started, so it hands
       # over every end from there at once, and the search remembers it by
-      # its start. From each start it takes up to its length in steps, so
-      # the time grows with the URI's length times the prefix's.
+      # its start. It looks up how far its length reaches (Units), and
+      # from each start hands over only the ends it hasn't before, so its
+      # time grows with the URI's length, whatever the prefix's. Where
+      # the captures decide whether a match stands (a name written more
+      # than once), an end that failed for one start may not for another,
+      # so it hands over every end each time, and its time grows with the
+      # URI's length times the prefix's.
       class CappedRun < Run
+        # Whether the captures decide if the rest can match from an end,
+        # so that each start has to hand over every end. Matcher#finish
+        # sets it.
+        attr_writer :captures_decide
+
         def initialize(index, set, length, at_least_one, delimiters_first)
           super(index, set)
           @length = length
           @at_least_one = at_least_one
           @delimiters_first = delimiters_first
+          @captures_decide = true
         end
 
         def possible_first_bytes
@@ -428,8 +439,7 @@ module Addressable
         end
 
         def follow(search, start)
-          ends = ends_from(search.text, start)
-          ends.shift if @at_least_one
+          ends = ends_from(search, start)
           ends.select! { |finish| @next.first_bytes.allow?(search, finish) }
           # Handed over shortest first, so that the longest is tried first.
           ends.each { |finish| search.try(@next, finish) }
@@ -444,48 +454,34 @@ module Addressable
 
         private
 
-        # The start, then every place after it the run can end, in order:
-        # after each of the set's characters, up to the length.
-        def ends_from(text, position)
-          ends = [position]
-          count = 0
-          # How many more triplets belong to the UTF-8 character begun.
-          continuing = 0
-          while (after = @set.character_end(text, position))
-            octet = triplet_octet(text, position, after)
-            if octet && continuing > 0 && octet >= 0x80 && octet < 0xC0
-              continuing -= 1
+        ##
+        # The places the run can end from the start, in order: the start
+        # itself, unless it has to take a character, then after each of
+        # the set's characters, up to the length.
+        #
+        # It looks its reach up (Units#reach), which costs working out
+        # where the URI's characters fall, once, and then little for each
+        # start. And where the captures don't decide a match, it leaves
+        # out the ends this state handed over from another start: they
+        # failed then, so they'd fail now (Search#not_handed_over).
+        def ends_from(search, start)
+          units = search.units(@set)
+          ends, first, last = units.reach(start, @length)
+          if @at_least_one
+            # The start is the first place before the boundaries, or the
+            # first boundary.
+            ends.empty? ? first += 1 : ends.shift
+          end
+          stretches =
+            if @captures_decide
+              first > last ? [] : [[first, last]]
             else
-              count += 1
-              continuing = octet ? continuation_octets(octet) : 0
+              search.not_handed_over(self, first, last)
             end
-            break if count > @length
-            ends << after
-            position = after
+          stretches.each do |from, to|
+            (from..to).each { |boundary| ends << units.position(boundary) }
           end
           ends
-        end
-
-        # The octet a pct-encoded triplet at the position stands for, or
-        # nil if the character there is written as it is.
-        def triplet_octet(text, position, after)
-          return nil unless text.getbyte(position) == 37 &&
-            after == position + 3
-          text.byteslice(position + 1, 2).hex
-        end
-
-        # How many more octets a UTF-8 character that starts with this one
-        # has.
-        def continuation_octets(octet)
-          if octet >= 0xF0
-            3
-          elsif octet >= 0xE0
-            2
-          elsif octet >= 0xC0
-            1
-          else
-            0
-          end
         end
       end
 

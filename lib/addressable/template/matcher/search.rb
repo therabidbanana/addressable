@@ -18,6 +18,7 @@
 
 require "strscan"
 require "addressable/template/matcher/memo"
+require "addressable/template/matcher/units"
 
 module Addressable
   class Template
@@ -67,8 +68,51 @@ module Addressable
           @tried_with_captures = {}
           @run_ends = {}
           @occurrences = {}
+          @units = {}
+          @handed_over = {}
           @bytes = nil
           @scanner = nil
+        end
+
+        # Where the set's characters fall in the URI (Units), worked out
+        # the first time a state asks.
+        def units(set)
+          @units[set] ||= Units.new(set, @text)
+        end
+
+        ##
+        # The boundaries, of a stretch from the first to the last, that a
+        # state hasn't handed over before as places its value can end, as
+        # stretches in order. It notes them as handed over.
+        #
+        # A state whose value can start in many places finds mostly the
+        # same ends from each. Where the captures don't decide whether the
+        # rest can match, an end that failed for one start fails for
+        # every other, so handing it over again only costs time. One
+        # stretch is remembered for each state: a new one that touches it
+        # is joined to it, and one that doesn't takes its place, which
+        # hands some ends over again but never leaves one out.
+        #
+        # @param [State] state The state.
+        # @param [Integer] first The first boundary.
+        # @param [Integer] last The last boundary, before the first if
+        #   there are none.
+        #
+        # @return [Array<Array>] Up to two stretches, each a first and a
+        #   last boundary.
+        def not_handed_over(state, first, last)
+          return [] if first > last
+          known = @handed_over[state]
+          if known.nil? || first > known[1] + 1 || last < known[0] - 1
+            @handed_over[state] = [first, last]
+            return [[first, last]]
+          end
+          fresh = []
+          fresh << [first, known[0] - 1] if first < known[0]
+          fresh << [known[1] + 1, last] if last > known[1]
+          known[0] = first if first < known[0]
+          known[1] = last if last > known[1]
+          fresh
         end
 
         # Adds an attempt to make next: the state, at the position, with

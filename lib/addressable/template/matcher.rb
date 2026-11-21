@@ -69,7 +69,14 @@ module Addressable
       # @param [Integer] groups
       #   How many groups the template has: one for each varspec's value,
       #   numbered in order from 0 (Machine::Slots).
-      def initialize(groups)
+      # @param [TrueClass, FalseClass] values_compared
+      #   Whether a way through the graph can be turned down for what its
+      #   groups captured (#match's block), as it is for a name written
+      #   more than once. Then the same state at the same position doesn't
+      #   always end the same way, and a state that leans on that to do
+      #   less (CappedRun) can't.
+      def initialize(groups, values_compared = false)
+        @values_compared = values_compared
         @encoding = nil
         @states = []
         @groups = groups
@@ -382,6 +389,10 @@ module Addressable
         add(Done)
         @states.each { |state| state.link(@states) }
         @states.each(&:skip_jumps)
+        captures_decide = @values_compared || !@readers.empty?
+        @states.grep(CappedRun).each do |state|
+          state.captures_decide = captures_decide
+        end
         @states.select(&:branches?).each_with_index do |state, row|
           state.memo_row = row
         end

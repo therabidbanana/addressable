@@ -151,6 +151,12 @@ module Addressable
           @by_expression.fetch(node, NONE)
         end
 
+        # Whether #read can turn a split down for the values its groups
+        # took: where a name is written more than once.
+        def compares_values?
+          !@written_again.empty?
+        end
+
         ##
         # Reads each slot's value from what its group captured
         # (Expression#read), for one way of splitting the URI, if that way

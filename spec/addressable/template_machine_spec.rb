@@ -1329,14 +1329,24 @@ describe Addressable::Template, "with the :machine engine, #match" do
     ["{a}{+a}!", "%41" * 5_000 + " !"],
     # A prefix's run starts again at every place the value before it can
     # end, and takes up to its length in steps from each, so these grow
-    # with the URI's length times the prefix's. That's linear in the URI,
-    # but slow for a long prefix: {x}.{a:9999}! takes about 12 s here, so
-    # it isn't run (TEMPLATE_MACHINE_PLAN.md, "Next work", item 17).
+    # A prefix's run starts again at every place the value before it can
+    # end. It looks up how far its length reaches, and hands over only
+    # the ends it hasn't from another start, so a long prefix costs no
+    # more than a short one. These took 12 to 116 seconds when it walked
+    # its length from each start.
     ["{a:3}{b:3}{c:3}!", "a" * 16_000 + "?!"],
     ["{x}.{a:3}!", "a." * 8_000 + "?!"],
-    ["{x}.{a:100}!", "a." * 8_000 + "?!"],
-    ["{x}.{a:100}!", "%C3%A9." * 2_000 + "?!"],
-    ["{+x}{+a:100}!", "a?" * 8_000 + " !"],
+    ["{x}.{a:9999}!", "a." * 8_000 + "?!"],
+    ["{x}.{a:9999}!", "%C3%A9." * 2_000 + "?!"],
+    ["{+x}/{+a:9999}!", "a/" * 8_000 + " !"],
+    ["{+x}{+a:9999}!", "a?" * 8_000 + " !"],
+    ["{a:9999}{b:9999}{c:9999}!", "a" * 16_000 + "?!"],
+    ["{a:9999}{b:9999}{c:9999}!", "%E2%82%AC" * 1_800 + "?!"],
+    ["{x}%{a:9999}!", "%41" * 5_000 + "?!"],
+    # Where a name is written more than once, each start hands over every
+    # end, so the time grows with the prefix's length too. With a short
+    # one that's still quick.
+    ["{x}.{a:3}/{a:3}!", "a." * 8_000 + "/a?!"],
     # After a variable that can take everything it could, a variable
     # never takes a character, whatever its prefix, so it has no states.
     ["{x}{a:9999}!", "a" * 16_000 + "?!"],

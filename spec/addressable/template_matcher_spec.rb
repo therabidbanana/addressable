@@ -1034,6 +1034,168 @@ describe Addressable::Template::Matcher, "builder methods" do
   end
 end
 
+describe Addressable::Template::Matcher::Units do
+  sets = Addressable::Template::Matcher::SETS
+
+  # The places a value starting at the position can end within the
+  # length, as byte offsets.
+  def ends(text, position, length, set = :unreserved)
+    units = described_class.new(
+      Addressable::Template::Matcher::SETS.fetch(set), text
+    )
+    before, first, last = units.reach(position, length)
+    before + (first..last).map { |boundary| units.position(boundary) }
+  end
+
+  # The same, found by walking from the position a character at a time.
+  def walked_ends(text, position, length, set)
+    found = [position]
+    count = 0
+    continuing = 0
+    while (after = set.character_end(text, position))
+      triplet = text.getbyte(position) == 37 && after == position + 3
+      octet = triplet ? text.byteslice(position + 1, 2).hex : nil
+      if octet && continuing > 0 && octet >= 0x80 && octet < 0xC0
+        continuing -= 1
+      else
+        count += 1
+        continuing =
+          if octet.nil? || octet < 0xC0
+            0
+          elsif octet >= 0xF0
+            3
+          elsif octet >= 0xE0
+            2
+          else
+            1
+          end
+      end
+      break if count > length
+      found << after
+      position = after
+    end
+    found
+  end
+
+  it "reaches a character at a time, as far as the length" do
+    expect(ends("abcd", 0, 2)).to eq([0, 1, 2])
+    expect(ends("abcd", 1, 9)).to eq([1, 2, 3, 4])
+    expect(ends("abcd", 4, 2)).to eq([4])
+    expect(ends("abcd", 2, 0)).to eq([2])
+    expect(ends("", 0, 3)).to eq([0])
+  end
+
+  it "stops at a character that isn't in the set" do
+    expect(ends("ab/cd", 0, 9)).to eq([0, 1, 2])
+    expect(ends("ab/cd", 2, 9)).to eq([2])
+    expect(ends("ab/cd", 3, 9)).to eq([3, 4, 5])
+    # A "%" without two hex digits after it isn't a triplet.
+    expect(ends("a%4/", 0, 9)).to eq([0, 1])
+    expect(ends("a%4b", 0, 9)).to eq([0, 1, 4])
+  end
+
+  it "counts a character once, however many bytes or triplets it is" do
+    expect(ends("é€\u{1F600}x", 0, 3)).to eq([0, 2, 5, 9])
+    expect(ends("%C3%A9x", 0, 1)).to eq([0, 3, 6])
+    expect(ends("%E2%82%ACx", 0, 1)).to eq([0, 3, 6, 9])
+    expect(ends("%F0%9F%98%80x", 0, 1)).to eq([0, 3, 6, 9, 12])
+    expect(ends("%41%42", 0, 1)).to eq([0, 3])
+  end
+
+  it "counts a triplet that carries no character on as one" do
+    expect(ends("%A9%A9", 0, 1)).to eq([0, 3])
+    expect(ends("%FF%FF", 0, 1)).to eq([0, 3])
+    expect(ends("%C3x", 0, 1)).to eq([0, 3])
+    # A value that starts after the triplet that began the character.
+    expect(ends("%E2%82%ACx", 3, 1)).to eq([3, 6])
+    expect(ends("%E2%82%ACx", 3, 2)).to eq([3, 6, 9])
+    expect(ends("%E2%82%ACx", 6, 1)).to eq([6, 9])
+    expect(ends("%E2%82%ACx", 3, 3)).to eq([3, 6, 9, 10])
+  end
+
+  it "reaches from inside a triplet, whose hex digits are characters " \
+     "of their own there" do
+    expect(ends("%41bc", 1, 2)).to eq([1, 2, 3])
+    expect(ends("%41bc", 1, 3)).to eq([1, 2, 3, 4])
+    expect(ends("%41bc", 2, 1)).to eq([2, 3])
+    expect(ends("%41bc", 1, 0)).to eq([1])
+    expect(ends("%41%C3%A9", 2, 2)).to eq([2, 3, 6, 9])
+    expect(ends("%4/", 1, 5)).to eq([1, 2])
+  end
+
+  it "agrees with a walk from every position of generated text" do
+    random = Random.new(6570)
+    pieces = [
+      "a", "é", "€", "\u{1F600}", "%41", "%C3%A9", "%E2%82%AC", "%C3",
+      "%A9", "%80", "%FF", "%F0%9F", "%", "%4", "/", ",", "=", "."
+    ]
+    set_names = [:unreserved, :reserved, :unreserved_no_dot_or_comma]
+    300.times do
+      text = Array.new(random.rand(0..14)) { pieces.sample(random: random) }.join
+      name = set_names.sample(random: random)
+      units = described_class.new(sets.fetch(name), text)
+      starts = [0]
+      text.each_char { |character| starts << starts.last + character.bytesize }
+      # Inside a triplet too, after its "%" and after its first digit.
+      text.to_enum(:scan, /%[0-9A-F]{2}/).each do
+        starts << $~.begin(0) + 1 << $~.begin(0) + 2
+      end
+      starts.uniq.each do |position|
+        [0, 1, 2, 3, 100].each do |length|
+          before, first, last = units.reach(position, length)
+          found = before + (first..last).map { |b| units.position(b) }
+          expect(found).to eq(
+            walked_ends(text, position, length, sets.fetch(name))
+          ), "for #{text.inspect} from #{position}, length #{length}, #{name}"
+        end
+      end
+    end
+  end
+end
+
+describe Addressable::Template::Matcher::Search, "#not_handed_over" do
+  let(:search) { described_class.new("abcdef") }
+
+  it "gives a state's first stretch whole" do
+    expect(search.not_handed_over(:run, 3, 7)).to eq([[3, 7]])
+  end
+
+  it "gives none for a stretch with nothing in it" do
+    expect(search.not_handed_over(:run, 4, 3)).to eq([])
+    expect(search.not_handed_over(:run, 3, 3)).to eq([[3, 3]])
+  end
+
+  it "leaves out what the state handed over before" do
+    search.not_handed_over(:run, 3, 7)
+    expect(search.not_handed_over(:run, 3, 7)).to eq([])
+    expect(search.not_handed_over(:run, 4, 6)).to eq([])
+    expect(search.not_handed_over(:run, 1, 5)).to eq([[1, 2]])
+    expect(search.not_handed_over(:run, 5, 9)).to eq([[8, 9]])
+    expect(search.not_handed_over(:run, 0, 12)).to eq([[0, 0], [10, 12]])
+    expect(search.not_handed_over(:run, 0, 12)).to eq([])
+  end
+
+  it "joins a stretch that only touches the one before" do
+    search.not_handed_over(:run, 3, 5)
+    expect(search.not_handed_over(:run, 6, 8)).to eq([[6, 8]])
+    expect(search.not_handed_over(:run, 1, 2)).to eq([[1, 2]])
+    expect(search.not_handed_over(:run, 1, 8)).to eq([])
+  end
+
+  it "gives a stretch apart from the one before whole, and remembers " \
+     "it in its place" do
+    search.not_handed_over(:run, 3, 5)
+    expect(search.not_handed_over(:run, 9, 11)).to eq([[9, 11]])
+    expect(search.not_handed_over(:run, 9, 11)).to eq([])
+    expect(search.not_handed_over(:run, 3, 5)).to eq([[3, 5]])
+  end
+
+  it "keeps each state's stretches apart" do
+    search.not_handed_over(:run, 3, 7)
+    expect(search.not_handed_over(:other, 3, 7)).to eq([[3, 7]])
+  end
+end
+
 describe Addressable::Template::Matcher::Memo do
   it "says a position is new the first time, and not after that" do
     memo = described_class.new(20)

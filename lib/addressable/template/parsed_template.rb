@@ -204,7 +204,7 @@ module Addressable
       # any, then adds each node's steps to a new matcher.
       def compile(processor = nil)
         slots = Machine::Slots.new(@nodes, processor)
-        matcher = Matcher.new(slots.size)
+        matcher = Matcher.new(slots.size, slots.compares_values?)
         @nodes.each { |node| node.add_match_steps(matcher, slots.of(node)) }
         Compiled.new(slots, matcher.finish).freeze
       end

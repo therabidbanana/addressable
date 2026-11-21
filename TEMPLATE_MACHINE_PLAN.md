@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,205 and 5,091 examples), and
+full suite passes in both IDNA modes (5,222 and 5,108 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -422,37 +422,41 @@ it").
     - It breaks a caller who wrote the name into the pattern, as
       `:regexp` needs (`n=[0-9]+`): that no longer matches. Say so in
       the changelog.
+17. **A long prefix where a name is written twice is still slow (the
+    rest is built).** `CappedRun` has to know where its value started,
+    so it hands over every end from each start. It used to walk its
+    length from each one, and hand over every end again, so the time
+    grew with the URI's length times the prefix's: 12 to 116 seconds
+    for a 9999 prefix at 16 KB. Now the search works out where the
+    URI's characters fall, once (`Matcher::Units`), so a run looks up
+    how far its length reaches, and it hands over only the ends it
+    hasn't from another start (`Search#not_handed_over`). Rejecting
+    16 KB, on Ruby 3.3.1:
 
-17. **A long prefix is slow where its run starts in many places
-    (revisit; accepted for now, 2026-11-20).** `CappedRun` has to know
-    where its value started, so it hands over every end from each
-    start, and the time grows with the URI's length times the
-    prefix's. That's linear in the URI and small for a short prefix
-    (`{x}.{a:3}!` rejects 16 KB in 38 ms, `{x}.{a:100}!` in 0.24 s), but
-    not for the longest (Ruby 3.3.1, 16 KB that doesn't match):
+    | Template | URI | Before | Now |
+    |---|---|---|---|
+    | `{a:9999}{b:9999}{c:9999}!` | `aaa…?!` | 116 s | 82 ms |
+    | `{a:9999}{b:9999}!` | `aaa…?!` | 21 s | 35 ms |
+    | `{x}.{a:9999}!` | `a.a.a.…?!` | 12 s | 37 ms |
+    | `{+x}/{+a:9999}!` | `a/a/a/… !` | 13 s | 36 ms |
 
-    | Template | URI | Time |
-    |---|---|---|
-    | `{a:9999}{b:9999}!` | `aaa…?!` | 21 s |
-    | `{a:9999}{b:9999}{c:9999}!` | `aaa…?!` | 116 s |
-    | `{x}.{a:9999}!` | `a.a.a.…?!` | 12 s |
-    | `{+x}/{+a:9999}!` | `a/a/a/… !` | 13 s |
-    | `{a:9999}{x}!`, `{/x}{/a:9999}!`, `{x}/{a:9999}!` | | under 25 ms |
+    Results are the same: 48,000 generated templates and texts full of
+    prefixes, characters of several bytes and pct-encoded triplets,
+    and the 43,202 general ones. What it costs, and leaves:
+    - A match with a prefix takes about 7 µs longer, for working out
+      where the URI's characters fall (`/users/{id:8}/posts`: the
+      search alone 5.1 to 12.7 µs, of a match of about 40 µs). A short
+      prefix could walk as before and skip that; it was tried and left
+      out (2026-11-20), as two ways to do one thing for 7 µs.
+    - Where a name is written more than once, an end that failed for
+      one start may not for another, since the values are compared
+      (item 2), so the run hands over every end each time, and the time
+      still grows with the prefix's length: `{x}.{a:9999}/{a:9999}!`
+      takes 5.7 s at 16 KB (12 s before), and `{a:9999}{b:9999}/{a:2}!`
+      9.6 s (21 s). It takes a repeated name, a long prefix and many
+      places to start, all three. The run could still skip where every
+      varspec of a repeated name comes after it.
 
-    The linear-time specs run the short prefixes, not these. Item 5
-    removed `{x}{a:9999}!` (25 s): `x` can hold everything `a` can, so
-    `a` never takes a character. Ways in for the rest:
-    - The same argument thins `{a:N}{b:N}`: if `a` stops short of its
-      length and `b` then takes a character, `a` could have taken it,
-      and the earlier variable wins. So `b` only needs to start where
-      `a` is full, or took its whole run.
-    - That leaves a value that stops in many places before a literal
-      it could hold (`{x}.{a:9999}`). There the ends from one start
-      overlap those from the last, and only the new ones need trying:
-      a running count of decoded characters gives each start's last end
-      without walking to it, and the run can skip ends it already
-      handed over. Skipping is only sound where no later state reads a
-      capture (a name written again does), as with the memo.
 
 ### Memory
 
@@ -485,10 +489,9 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
       varspecs with the same name, so `{a}{b}/{a}` isn't compared with
       its earlier value. Not counting it changes results, for the
       better, so decide it with item 2.
-    - `{a:N}{b:N}`: `b` only needs to start where `a` is full. That
-      isn't known from the text alone, so it needs a state that reads
-      `a`'s capture, or a second copy of the states after `a`. Item
-      17's general fix may cover it; decide there.
+    - `{a:N}{b:N}`: `b` only needs to start where `a` is full. Item 17
+      made it quick without that (`{a:9999}{b:9999}!` rejects 16 KB in
+      35 ms), so it's only worth doing for the states it would save.
 6. **Shrink the memo and the capture lists (built).** Neither changes
    a result: 43,202 generated templates and texts give the same output.
    What one match allocates rejecting 16 KB went from 6.55 MB to
