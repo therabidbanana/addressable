@@ -623,12 +623,18 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
     machine-mode job now runs all nine spec files, which take 75 s
     here; 10 minutes is a guess for JRuby and TruffleRuby.
 12. **Before release N.**
-    - Dumps: a `Marshal` or YAML dump of a used machine template holds
-      its caches, which name private classes (2,630 bytes against
-      436). Dump only the pattern and the engine and rebuild the caches
-      on first use. Dumps from earlier versions must still load; an
-      earlier version can't load the new format, which matters for
-      caches shared across a rolling deploy.
+    - Dumps (not planned; decided 2026-11-20 that `Marshal` doesn't
+      matter enough to build for). As things are: a machine template
+      dumps and loads with `Marshal` until it has matched or been
+      frozen, and after that `Marshal.dump` raises `TypeError: can't
+      dump hash with default proc` (the matcher's hashes), as it has
+      since at least `b5f9e51`. A YAML dump of one works, at about
+      12 KB, and names private classes. A `:regexp` template dumps as
+      before. If it's ever wanted, the smallest fix that keeps
+      `:regexp` dumps as they are is to have `ParsedTemplate` dump as
+      its pattern alone (`marshal_dump`, `encode_with`) and rebuild on
+      first use. Say in the changelog that a used `:machine` template
+      can't be marshalled.
     - Measure what building the regexp in `freeze` costs a frozen
       machine template.
     - Changelog entries all go in at release N (decided 2026-11-20),
