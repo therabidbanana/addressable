@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,186 and 5,072 examples), and
+full suite passes in both IDNA modes (5,191 and 5,077 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -545,17 +545,30 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
    explain. `{+a}/{b}` over 50 directories is 2.9×, as the value can
    stop at every `/`.
 
-   Two gaps the printed graphs show (2026-11-20, not yet measured). A
-   run only skips to where the text after it occurs
-   (`State#leading_text`) when a literal follows it directly, or
-   through a `Capture`. `Jump`, `LeaveOutIfEmpty` and `FollowedBy`
-   don't pass the text on, so:
-   - A value with no leader before a literal it could hold steps
-     through every character: `{a}.json` and `x{a}y` list a plain
-     `GreedyRun unreserved`, where `{/a}.json` lists `stopping before
-     ".json"`.
-   - The first pass of rule 3 (`/{name}{.ext}`) could stop only where
-     the leader occurs, but its run is followed by a `FollowedBy`.
+   *Built (2026-11-20):* a run skips to where the text after it
+   occurs (`State#leading_text`) through a `Jump`, a `LeaveOutIfEmpty`
+   whose two ways on start with the same text, and a `FollowedBy` with
+   one text. Before, only a literal right after the run, or after a
+   `Capture`, counted, so a value with no leader before a literal it
+   could hold stepped through every character (`{a}.json`), as did the
+   first pass of rule 3 (`/{name}{.ext}`). The search alone, best of
+   seven:
+
+   | Template | URI | Before | After |
+   |---|---|---|---|
+   | `…/articles/{id}.json` | 62 bytes | 17.3 µs | 6.1 µs |
+   | `/{name}{.ext}` | 30 bytes | 19.6 µs | 9.9 µs |
+   | `/{year}/{month}/{day}/{title}.html` | 39 bytes | 22.2 µs | 13.0 µs |
+
+   The profile's own cases don't have these shapes, and are
+   unchanged. Results are the same for every template that writes
+   each name once (43,202 generated pairs). With a repeated name,
+   which splits the search reaches depends on what it has already
+   tried (item 2), so 40 of those results moved, and 65 more of item
+   2's expansions match (7,711 to 7,776).
+
+   Still stepping a character at a time: the second pass of rule 3,
+   and a value before a `#` leader that may be written `%23`.
 8. **Processor patterns.** A pattern whose next state can start
    anywhere checks every end: `{a}{b}` with `a*` on 2,001 characters
    that don't match takes 17.8 ms (`:regexp` 0.24 ms), and grows

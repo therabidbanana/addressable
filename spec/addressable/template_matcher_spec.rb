@@ -50,7 +50,19 @@ describe Addressable::Template::Matcher, "#to_s" do
       "6 Jump to 7",
       "7 Done"
     ],
-    # A value before literal text it could hold stops only before it.
+    # A value before literal text it could hold stops only before it,
+    # whether or not it has a leader.
+    "{a}.json" => [
+      "0 Choice 1 or 6",
+      "1 Capture group 0 start",
+      "2 GreedyRun unreserved_or_comma, stopping before \".json\"",
+      "3 LeaveOutIfEmpty to 6",
+      "4 Capture group 0 end",
+      "5 Jump to 7",
+      "6 Jump to 7",
+      "7 Literal \".json\"",
+      "8 Done"
+    ],
     "{/a}.json" => [
       "0 Choice 1 or 5",
       "1 Literal \"/\"",
@@ -153,7 +165,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "1 Choice 2 or 11",
       "2 Capture group 0 start",
       "3 Choice 4 or 7",
-      "4 GreedyRun unreserved_or_comma",
+      "4 GreedyRun unreserved_or_comma, stopping before \".\"",
       "5 FollowedBy \".\"",
       "6 Jump to 8",
       "7 GreedyRun unreserved_or_comma",
@@ -176,7 +188,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "3 Choice 4 or 6",
       "4 DelimiterRun reserved",
       "5 Jump to 7",
-      "6 GreedyRun reserved",
+      "6 GreedyRun reserved, stopping before \"?\"",
       "7 FollowedBy \"?\"",
       "8 Jump to 13",
       "9 Choice 10 or 12",
@@ -205,7 +217,7 @@ describe Addressable::Template::Matcher, "#to_s" do
       "3 Choice 4 or 6",
       "4 DelimiterRun reserved",
       "5 Jump to 7",
-      "6 GreedyRun reserved",
+      "6 GreedyRun reserved, stopping before \"x\"",
       "7 Capture group 0 end",
       "8 Jump to 10",
       "9 Jump to 10",
@@ -629,10 +641,92 @@ describe Addressable::Template::Matcher, "builder methods" do
     end
     expect(captures(matcher, "a")).to eq(["a"])
     expect(captures(matcher, "%41")).to eq(["%41"])
+    # A character of two, three or four bytes.
     expect(captures(matcher, "é")).to eq(["é"])
+    expect(captures(matcher, "€")).to eq(["€"])
+    expect(captures(matcher, "\u{1F600}")).to eq(["\u{1F600}"])
+    expect(captures(matcher, "€€")).to be_nil
     expect(captures(matcher, "ab")).to be_nil
     expect(captures(matcher, "/")).to be_nil
     expect(captures(matcher, "")).to be_nil
+  end
+
+  # A run only stops where the text after it occurs, where every way on
+  # from it starts with that text.
+  context "a run before text it could hold" do
+    it "stops only before the text, through a value that may be left " \
+       "out" do
+      matcher = build(1) do |m|
+        left_out = []
+        m.optional do
+          m.capture(0) do
+            m.greedy_run(:unreserved)
+            left_out << m.leave_out_if_empty
+          end
+        end
+        m.land(left_out)
+        m.exact(".json")
+      end
+      expect(matcher.to_s).to include(
+        "GreedyRun unreserved, stopping before \".json\""
+      )
+      expect(captures(matcher, "a.b.json")).to eq(["a.b"])
+      expect(captures(matcher, "a.json.json")).to eq(["a.json"])
+      expect(captures(matcher, ".json")).to eq([nil])
+      expect(captures(matcher, "a.jso")).to be_nil
+    end
+
+    it "stops only before a text that has to follow it" do
+      matcher = build(1) do |m|
+        m.capture(0) do
+          m.preferring_followed_by(["."]) { m.greedy_run(:unreserved) }
+        end
+        m.optional { m.exact(".x") }
+      end
+      expect(matcher.to_s).to include(
+        "GreedyRun unreserved, stopping before \".\""
+      )
+      expect(captures(matcher, "a.b.x")).to eq(["a.b"])
+      expect(captures(matcher, "ab")).to eq(["ab"])
+    end
+
+    it "can stop anywhere before one of several texts, or a text that " \
+       "starts with a hex digit" do
+      several = build(1) do |m|
+        m.capture(0) do
+          m.preferring_followed_by(["#", "%23"]) { m.greedy_run(:unreserved) }
+        end
+      end
+      expect(several.to_s).not_to include("stopping before")
+      hex = build(1) do |m|
+        m.capture(0) do
+          m.preferring_followed_by(["a"]) { m.greedy_run(:unreserved) }
+        end
+        m.optional { m.exact("a") }
+      end
+      expect(hex.to_s).not_to include("stopping before")
+      # The "a"s of a pct-encoded triplet aren't places to stop.
+      expect(captures(hex, "x%aa")).to eq(["x%aa"])
+      expect(captures(hex, "xaa")).to eq(["xa"])
+    end
+
+    it "can stop anywhere where the ways on start differently" do
+      matcher = build(1) do |m|
+        left_out = []
+        m.optional do
+          m.capture(0) do
+            m.greedy_run(:unreserved)
+            left_out << m.leave_out_if_empty
+          end
+          m.exact("x")
+        end
+        m.land(left_out)
+        m.exact("y")
+      end
+      expect(matcher.to_s).not_to include("stopping before")
+      expect(captures(matcher, "axy")).to eq(["a"])
+      expect(captures(matcher, "y")).to eq([nil])
+    end
   end
 
   it "#either tries the first steps, then the second" do

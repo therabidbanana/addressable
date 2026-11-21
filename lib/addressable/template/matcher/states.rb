@@ -313,6 +313,13 @@ module Addressable
           @texts.map(&:inspect).join("|")
         end
 
+        # Its one text, since nothing goes on from here without it. Not
+        # one that starts with a hex digit, as for a Literal.
+        def leading_text
+          text = @texts.first
+          text if @texts.size == 1 && text !~ /\A[0-9A-Fa-f]/
+        end
+
         def follow(search, position)
           return unless search.skip(@pattern, position)
           search.try(@next, position)
@@ -698,6 +705,13 @@ module Addressable
           "to #{@target}"
         end
 
+        # It takes nothing, so the text is what follows it, where both
+        # ways on start with the same.
+        def leading_text
+          text = @next.leading_text
+          text if text && text == @left_out.leading_text
+        end
+
         def follow(search, position)
           if position > search.start_of(@group)
             search.try(@next, position)
@@ -726,6 +740,12 @@ module Addressable
         # It takes nothing, so the state it goes back to decides.
         def bytes_after_taking_run(set)
           @next.bytes_after_run(set)
+        end
+
+        # A loop's jump goes back to a Choice, which has no one text, so
+        # this can't go round.
+        def leading_text
+          @next.leading_text
         end
 
         def description
