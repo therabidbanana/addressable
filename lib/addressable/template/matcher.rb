@@ -192,9 +192,14 @@ module Addressable
         add(PossessiveRun, SETS.fetch(set))
       end
 
-      # A value matched by a processor's pattern, a regexp's source.
-      def processor_pattern(source)
-        add(ProcessorPattern, source)
+      ##
+      # A value matched by a processor's pattern.
+      #
+      # @param [String] source The pattern, a regexp's source.
+      # @param [TrueClass, FalseClass] allow_empty
+      #   Whether the value can be empty, where the pattern matches that.
+      def processor_pattern(source, allow_empty: true)
+        add(ProcessorPattern, source, allow_empty)
       end
 
       ##

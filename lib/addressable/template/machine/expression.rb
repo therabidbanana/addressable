@@ -204,12 +204,11 @@ module Addressable
         # value's empty text is one empty member.
         #
         # A ;, ? or & value is captured with its name. Outside an exploded
-        # value the name is the text before the first "=", which is the
-        # variable's unless a processor's pattern matched other text; the
-        # value is what follows, up to the next "=". An exploded one's
-        # members are a list if every name is the variable's, as an
-        # exploded list repeats it, and an associative array otherwise,
-        # where an empty member is a "" key.
+        # value that's the variable's name, as written, and the value is
+        # what follows its "=". An exploded one's members are a list if
+        # every name is the variable's, as an exploded list repeats it,
+        # and an associative array otherwise, where an empty member is a
+        # "" key.
         #
         # A value that isn't exploded and holds a comma as it is, is a
         # list, where the variable can hold one (#holds_list?). A default,
@@ -267,8 +266,9 @@ module Addressable
               [name, Hash[pairs]]
             end
           elsif self.class.names_values?
-            written_name, value = text.split("=")
-            [written_name, value || ""]
+            # The text is the name as written, then "=" and the value, or
+            # for ;, the name alone.
+            [name, text.byteslice(name.bytesize + 1, text.bytesize) || ""]
           else
             [name, text]
           end
@@ -484,7 +484,7 @@ module Addressable
             elsif how == :empty
               # Nothing to add.
             elsif slot.pattern
-              matcher.processor_pattern(slot.pattern.to_s)
+              pattern_steps(matcher, variable, slot.pattern.to_s)
             elsif leaders.empty?
               variable_steps(matcher, variable,
                 named_texts(slot, slots, self.class.joiner))
@@ -641,9 +641,10 @@ module Addressable
         def named_texts(slot, slots, prefix)
           return [] unless self.class.names_values?
           return [] unless slot.variable.explode
+          # A later variable with a processor's pattern is named as written
+          # too (#pattern_steps).
           later = slots.select do |after|
-            after.group > slot.group && !after.variable.explode &&
-              !after.pattern
+            after.group > slot.group && !after.variable.explode
           end
           texts = later.map { |after| prefix + after.variable.name }
           node = following
@@ -726,6 +727,19 @@ module Addressable
         # for the others.
         def value_steps(matcher, variable = nil)
           value_run(matcher, variable, value_set(variable))
+        end
+
+        ##
+        # A value that a processor's pattern has to match, in place of the
+        # variable's own steps. The ;, ? and & operators write the
+        # variable's name first, as they do for any value, where the
+        # variable isn't exploded.
+        #
+        # @param [Matcher] matcher The matcher.
+        # @param [Variable] _variable The variable.
+        # @param [String] source The pattern, a regexp's source.
+        def pattern_steps(matcher, _variable, source)
+          matcher.processor_pattern(source)
         end
 
         # A run of a set's characters for a value, as many as can be first:

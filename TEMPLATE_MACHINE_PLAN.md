@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,193 and 5,079 examples), and
+full suite passes in both IDNA modes (5,205 and 5,091 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -143,6 +143,23 @@ alone, trying the pattern's first choice, then the ends nearest it
 - A variable with a pattern is optional like any other, so the earlier
   variable can take text the pattern could match: `{a}{b}` with
   `[0-9]+` for `b` gives `x12` to `a`.
+- In a `;`, `?` or `&` expression, the pattern is matched against the
+  value alone, after the variable's name as written. `Template` matches
+  it against the name, `=` and value together, so a pattern for the
+  value never matches there, and one has to write the name:
+
+  | Template | URI | Pattern for `n` | `:regexp` | `:machine` |
+  |---|---|---|---|---|
+  | `{?n}` | `?n=12` | `[0-9]+` | no match | `"n" => "12"` |
+  | `{?n}` | `?12` | `[0-9]+` | `"n" => nil, "12" => ""` | no match |
+  | `{?n}` | `?n=12` | `n=[0-9]+` | `"n" => "12"` | no match |
+  | `{?n}` | `?n=a=b` | `[a-z=]+` | `"n" => "a"` | `"n" => "a=b"` |
+  | `{;n}` | `;n` | `[0-9]*` | no match | `"n" => ""` |
+  | `{?a*,n}` | `?x=1&n=12` | `[0-9]+` | `"a" => {"x" => "1", "n" => ""}, "n" => nil, "12" => ""` | `"a" => {"x" => "1"}, "n" => "12"` |
+
+  A `;` value's name alone (`;n`) is an empty value, so it matches only
+  where the pattern matches one, and `;n=` doesn't. An exploded
+  variable's pattern still covers all its members' text.
 
 ### Matching rules
 
@@ -394,28 +411,17 @@ it").
      (`{?a*}` on `?k=1&k=2` gives `{"k" => "2"}`), as before.
 
 16. **A processor's pattern covers only the value in `;`, `?` and `&`
-    (decided 2026-11-20; build later).** In both engines the pattern
-    replaces the whole `name=value` text, so `{?n}` with `[0-9]+` for
-    `n` doesn't match `?n=12`, and matches `?12` as
-    `{"n" => nil, "12" => ""}`; only a pattern that writes the name
-    (`n=[0-9]+`) gives `{"n" => "12"}`. The machine should match the
-    name as written, then the pattern against the value alone: `{?n}`
-    with `[0-9]+` on `?n=12` gives `{"n" => "12"}`, and `?12` doesn't
-    match. `:regexp` keeps its results, so this is a new row for the
-    processor differences. Notes for building it:
-    - For `;`, the value is left out with its `=` (`;n`) only where the
-      pattern matches an empty value, and `;n=` never matches, so the
-      pattern state needs a way to refuse an empty value.
-    - `Expression#read` can then take the variable's name off the
-      front of the text, where it now splits at every `=` and gives
-      the value under whatever name the text has.
-    - A variable with a pattern becomes one an exploded value stops
-      before (`Expression#named_texts` leaves those out today), so
-      `{?a*,n}` gives `n` its own pair.
+    (built).** The machine matches the variable's name as written, then
+    the pattern against the value alone (`Expression#pattern_steps`;
+    see "Processor patterns"). Without a processor nothing changes:
+    43,202 generated pairs give the same results, and with one, the 159
+    that differ all have a `;`, `?` or `&` variable with a pattern.
+    What's left to decide or do:
     - An exploded variable's pattern still covers all its members'
-      text, names included; decide that with this.
-    - It breaks a caller who wrote the name into the pattern as a
-      workaround (`n=[0-9]+`). Say so in the changelog.
+      text, names included (`{?n*}` with `[a-z0-9=&]+`).
+    - It breaks a caller who wrote the name into the pattern, as
+      `:regexp` needs (`n=[0-9]+`): that no longer matches. Say so in
+      the changelog.
 
 17. **A long prefix is slow where its run starts in many places
     (revisit; accepted for now, 2026-11-20).** `CappedRun` has to know
@@ -639,9 +645,7 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
 14. **Simplification.** Code that only copies a `Template` bug
     (`Parser#names_in_invalid_token`, `Machine::Invalid#names`) goes
     once `Template` fixes it. `Matching.match_data` only serves
-    `:regexp`, and goes with it. `Expression#read` still copies one of
-    its quirks, until item 16: an unexploded `;`, `?` or `&` value goes
-    under the name its text has, cut at the next `=`.
+    `:regexp`, and goes with it.
 15. **Round-trip coverage of repeated names.** The round-trip spec's
     generator gives each name one use, and `template_match_spec.rb`'s
     soundness check skips patterns that reuse a name. Both could now

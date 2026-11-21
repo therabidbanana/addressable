@@ -39,6 +39,15 @@ module Addressable
           value_run(matcher, variable, value_set(variable))
         end
 
+        # The variable's name as written and "=", then the pattern's value.
+        # An exploded variable's pattern covers all its members' text,
+        # names and all.
+        def pattern_steps(matcher, variable, source)
+          return super if variable.explode
+          matcher.exact("#{variable.name}=")
+          matcher.processor_pattern(source)
+        end
+
         # A member: a name and "=", then the value. Expansion writes an "="
         # inside a value as "%3D", but a URI written some other way can
         # have one as it is (a token that ends "=="), so the value can

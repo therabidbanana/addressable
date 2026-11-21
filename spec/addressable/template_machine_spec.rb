@@ -1385,7 +1385,7 @@ describe Addressable::Template, "with the :machine engine, #match" do
         outcome_with(engine, pattern, uri, processor(patterns, calls[engine]))
       end
       if processor_differences.key?([pattern, patterns, uri])
-        expect(outcomes.last.first).
+        expect(outcomes.last && outcomes.last.first).
           to eq(processor_differences[[pattern, patterns, uri]]),
             "for #{uri.inspect}"
       else
@@ -1412,6 +1412,37 @@ describe Addressable::Template, "with the :machine engine, #match" do
         },
         ["{/a,b,c}", {"b" => "[0-9]+"}, "/x/y"] => {
           "a" => "x", "b" => nil, "c" => "y"
+        },
+        # A ;, ? or & variable's name is matched as written, and the
+        # pattern against its value alone, where :regexp matches the
+        # pattern against the name, "=" and value together.
+        ["{?n}", {"n" => "[0-9]+"}, "?n=12"] => {"n" => "12"},
+        ["{?n}", {"n" => "[0-9]+"}, "?12"] => nil,
+        ["{?n}", {"n" => "[0-9]*"}, "?n="] => {"n" => ""},
+        ["{?n}", {"n" => "[a-z=]+"}, "?n=a=b"] => {"n" => "a=b"},
+        ["{&n}", {"n" => "[0-9]+"}, "&n=12"] => {"n" => "12"},
+        ["{;n}", {"n" => "[0-9]+"}, ";n=12"] => {"n" => "12"},
+        ["{;n}", {"n" => "[0-9]+"}, ";12"] => nil,
+        ["{;n}", {"n" => "[0-9]*"}, ";n"] => {"n" => ""},
+        ["{;n}", {"n" => "[0-9]*"}, ";n=12"] => {"n" => "12"},
+        ["/x{?n,b}", {"n" => "[0-9]+"}, "/x?n=12&b=2"] => {
+          "n" => "12", "b" => "2"
+        },
+        ["/x{?n,b}", {"n" => "[0-9]+"}, "/x?b=2"] => {"n" => nil, "b" => "2"},
+        ["/x{?b,n}", {"n" => "[0-9]+"}, "/x?b=2&n=12"] => {
+          "b" => "2", "n" => "12"
+        },
+        # So a pattern that writes the name, as :regexp needs, doesn't
+        # match.
+        ["{?n}", {"n" => "n=[0-9]+"}, "?n=12"] => nil,
+        ["{;a,b}", {"a" => "a=[0-9]+"}, ";a=1;b=2"] => nil,
+        # An exploded value stops before a variable named after it, and
+        # takes its pair where the pattern doesn't match the value.
+        ["{?a*,n}", {"n" => "[0-9]+"}, "?x=1&n=12"] => {
+          "a" => {"x" => "1"}, "n" => "12"
+        },
+        ["{?a*,n}", {"n" => "[0-9]+"}, "?x=1&n=ab"] => {
+          "a" => {"x" => "1", "n" => "ab"}, "n" => nil
         }
       }
     end
@@ -1426,6 +1457,19 @@ describe Addressable::Template, "with the :machine engine, #match" do
       ["/{a*}", {"a" => "[a-z,]*"}] => ["/x,y", "/"],
       ["{?q,lang}", {"q" => "[^&]*"}] => ["?q=a&lang=b", "?q=a"],
       ["{;a,b}", {"a" => "a=[0-9]+"}] => [";a=1;b=2", ";a=x"],
+      ["{?n}", {"n" => "[0-9]+"}] => ["?n=12", "?12", "?n=ab", "?n=", "?"],
+      ["{?n}", {"n" => "[0-9]*"}] => ["?n="],
+      ["{?n}", {"n" => "[a-z=]+"}] => ["?n=a=b"],
+      ["{?n}", {"n" => "n=[0-9]+"}] => ["?n=12"],
+      ["{&n}", {"n" => "[0-9]+"}] => ["&n=12"],
+      ["{;n}", {"n" => "[0-9]+"}] => [";n=12", ";n", ";12", ";n="],
+      ["{;n}", {"n" => "[0-9]*"}] => [";n", ";n=", ";n=12"],
+      ["/x{?n,b}", {"n" => "[0-9]+"}] => ["/x?n=12&b=2", "/x?b=2"],
+      ["/x{?b,n}", {"n" => "[0-9]+"}] => ["/x?b=2&n=12"],
+      ["{?a*,n}", {"n" => "[0-9]+"}] => ["?x=1&n=12", "?x=1&n=ab"],
+      # An exploded variable's pattern covers all its members' text.
+      ["{?n*}", {"n" => "[a-z0-9=&]+"}] => ["?x=1&y=2"],
+      ["{;n*}", {"n" => "[a-z0-9=;]+"}] => [";x=1;y=2"],
       ["{a}{b}", {"b" => "(?<=x)y"}] => ["y"],
       ["{a}/{b}", {"a" => "café"}] => ["café/v", "caf%C3%A9/v"],
       ["{a}", {"a" => ""}] => ["", "x"]

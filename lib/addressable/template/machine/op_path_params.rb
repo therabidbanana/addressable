@@ -61,6 +61,24 @@ module Addressable
           end
         end
 
+        # The variable's name as written, then "=" and the pattern's value,
+        # which isn't empty. The name alone is an empty value, so it's
+        # only allowed where the pattern matches one. An exploded
+        # variable's pattern covers all its members' text, names and all.
+        def pattern_steps(matcher, variable, source)
+          return super if variable.explode
+          matcher.exact(variable.name)
+          value = lambda do
+            matcher.exact("=")
+            matcher.processor_pattern(source, allow_empty: false)
+          end
+          if Regexp.new("\\A(?:#{source})\\z") =~ ""
+            matcher.optional(&value)
+          else
+            value.call
+          end
+        end
+
         # A member: a name, then "=" and a value that isn't empty, or
         # nothing, as value_steps takes one. The value can hold more "=",
         # as member_regexp_source allows.

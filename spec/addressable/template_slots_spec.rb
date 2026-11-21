@@ -315,10 +315,14 @@ describe Addressable::Template::Machine::Slots, "#read and #mapping" do
     expect(mapping("{b}{?a}{/b}", ["x", nil, "x"]).keys).to eq(%w(b a))
   end
 
-  it "gives a ;, ? or & value the name its text has, which a " \
-     "processor's pattern can make another" do
-    expect(mapping("{?n}", ["12"])).to eq("n" => nil, "12" => "")
-    expect(mapping("{?n}", ["k=v=w"])).to eq("n" => nil, "k" => "v")
+  it "gives a ;, ? or & value what follows its name and \"=\", whatever " \
+     "a processor's pattern matched there" do
+    nodes = Addressable::Template::Parser.new.parse_nodes("{?n}{;m}{&o}")
+    slots = described_class.new(
+      nodes, SlotsSpecProcessor.new("n" => ".*", "m" => ".*", "o" => ".*")
+    )
+    values = slots.read(["n=a=b,c", "m", "o="])
+    expect(slots.mapping(values)).to eq("n" => "a=b,c", "m" => "", "o" => "")
   end
 
   it "gives the text a processor's pattern matched as it is, commas " \

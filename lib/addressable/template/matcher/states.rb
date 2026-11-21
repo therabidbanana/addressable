@@ -555,9 +555,13 @@ module Addressable
       # check reads one value, and only the pattern itself can backtrack,
       # however it was written.
       class ProcessorPattern < State
-        def initialize(index, source)
+        # @param [String] source The pattern, a regexp's source.
+        # @param [TrueClass, FalseClass] allow_empty
+        #   Whether the value can be empty, where the pattern matches that.
+        def initialize(index, source, allow_empty)
           super(index)
           @source = source
+          @allow_empty = allow_empty
           # Compiled now, so a pattern that isn't valid raises RegexpError
           # before any matching, as it does in :regexp.
           @first_choice = Regexp.new("\\A(?:#{source})")
@@ -573,7 +577,7 @@ module Addressable
         end
 
         def description
-          "/#{@source}/"
+          @allow_empty ? "/#{@source}/" : "/#{@source}/, not empty"
         end
 
         def follow(search, start)
@@ -584,6 +588,7 @@ module Addressable
           ends = search.character_ends(start).sort_by do |finish|
             [(finish - preferred).abs, finish]
           end
+          ends.delete(start) unless @allow_empty
           ends.select! do |finish|
             @next.first_bytes.allow?(search, finish) &&
               @whole_value =~ search.text.byteslice(start, finish - start)
