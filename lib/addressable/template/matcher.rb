@@ -376,6 +376,7 @@ module Addressable
         @required_text.freeze
         add(Done)
         @states.each { |state| state.link(@states) }
+        @states.each(&:skip_jumps)
         @states.select(&:branches?).each_with_index do |state, row|
           state.memo_row = row
         end
@@ -420,7 +421,7 @@ module Addressable
             "#{text.encoding} string)"
         end
         return nil unless holds_required_text?(text)
-        search.try(@states.first, 0)
+        search.try(@states.first.destination, 0)
         found = search.run(@states.last) do
           !block_given? || yield(search.captures(@groups))
         end

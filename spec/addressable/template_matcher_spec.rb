@@ -729,6 +729,41 @@ describe Addressable::Template::Matcher, "builder methods" do
     end
   end
 
+  # Each state points past the jumps to where they lead, so a jump costs
+  # the search nothing.
+  it "makes no attempt at a jump" do
+    {
+      "{a,b}{+c}{?d*}" => ["x,y/z?k=v", "x", "", "x,y", "?k=v&j=w"],
+      "{/a*}{.b}!" => ["/x/y.z!", "!", "/k=v!"]
+    }.each do |pattern, uris|
+      matcher = Addressable::Template::ParsedTemplate.new(pattern).matcher
+      states = matcher.instance_variable_get(:@states)
+      jumps = states.grep(described_class::Jump)
+      expect(jumps).not_to be_empty
+      uris.each do |uri|
+        search = described_class::Search.new(uri)
+        tried = []
+        allow(search).to receive(:try).and_wrap_original do |original, *args|
+          tried << args.first
+          original.call(*args)
+        end
+        expect(matcher.match(uri, search)).not_to be_nil, "for #{uri}"
+        expect(tried & jumps).to eq([])
+      end
+    end
+  end
+
+  it "starts past a jump the graph begins with" do
+    matcher = build(1) do |m|
+      to_value = m.jump_ahead
+      m.optional { m.exact("skipped") }
+      m.land([to_value])
+      m.capture(0) { m.greedy_run(:unreserved) }
+    end
+    expect(captures(matcher, "abc")).to eq(["abc"])
+    expect(captures(matcher, "skippedabc")).to eq(["skippedabc"])
+  end
+
   it "#either tries the first steps, then the second" do
     matcher = build(2) do |m|
       m.either(

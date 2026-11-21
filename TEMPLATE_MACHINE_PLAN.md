@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,191 and 5,077 examples), and
+full suite passes in both IDNA modes (5,193 and 5,079 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -545,10 +545,13 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
    explain. `{+a}/{b}` over 50 directories is 2.9×, as the value can
    stop at every `/`.
 
-   *Built (2026-11-20):* a run skips to where the text after it
-   occurs (`State#leading_text`) through a `Jump`, a `LeaveOutIfEmpty`
-   whose two ways on start with the same text, and a `FollowedBy` with
-   one text. Before, only a literal right after the run, or after a
+   *Built (2026-11-20):* each state points past the jumps after it to
+   where they lead (`State#skip_jumps`), so the search makes no attempt
+   at a `Jump`: one in eight of a typical match's attempts, and 3 to
+   10% of the search's time (long path 89 to 82 µs). And a run skips
+   to where the text after it occurs (`State#leading_text`) through a
+   `LeaveOutIfEmpty` whose two ways on start with the same text, and a
+   `FollowedBy` with one text. Before, only a literal right after the run, or after a
    `Capture`, counted, so a value with no leader before a literal it
    could hold stepped through every character (`{a}.json`), as did the
    first pass of rule 3 (`/{name}{.ext}`). The search alone, best of
@@ -568,7 +571,16 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
    2's expansions match (7,711 to 7,776).
 
    Still stepping a character at a time: the second pass of rule 3,
-   and a value before a `#` leader that may be written `%23`.
+   and a value before a `#` leader that may be written `%23`. That
+   isn't what holds the "reserved, fragment" row at about 2×, though:
+   its search makes 35 attempts for a 46-byte URI, six of them that
+   stepping, at about 0.45 µs an attempt, as every case does (simple
+   makes 14 for 23 bytes). Timed apart, that match is 1.5× `:regexp`'s
+   (70 against 46 µs): 18 µs of search against 0.6 µs for the regexp's
+   scan, and 28 µs in both to copy and freeze the URI for the
+   `MatchData`. So what's left is the cost of an attempt, or fewer of
+   them (a `Capture` is one, and a `Choice` whose first way on can't
+   start here another), not a wrong turn in this template.
 8. **Processor patterns.** A pattern whose next state can start
    anywhere checks every end: `{a}{b}` with `a*` on 2,001 characters
    that don't match takes 17.8 ms (`:regexp` 0.24 ms), and grows

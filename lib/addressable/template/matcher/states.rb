@@ -70,6 +70,19 @@ module Addressable
           @next = states[@index + 1]
         end
 
+        # Where an attempt that reaches this state goes on from: the state
+        # itself, unless it only passes the attempt on (Jump).
+        def destination
+          self
+        end
+
+        # Points the state past any jumps, straight at where they lead, so
+        # that the search doesn't make an attempt for each one. Called
+        # once every state is linked.
+        def skip_jumps
+          @next = @next.destination
+        end
+
         # Works out anything that depends on the first bytes, once they're
         # known.
         def prepare
@@ -494,6 +507,11 @@ module Addressable
           @second_state = states[second]
         end
 
+        def skip_jumps
+          @first_state = @first_state.destination
+          @second_state = @second_state.destination
+        end
+
         def possible_first_bytes
           @first_state.first_bytes | @second_state.first_bytes
         end
@@ -696,6 +714,11 @@ module Addressable
           @left_out = states[@target]
         end
 
+        def skip_jumps
+          super
+          @left_out = @left_out.destination
+        end
+
         def possible_first_bytes
           @next.first_bytes | @left_out.first_bytes
         end
@@ -723,7 +746,10 @@ module Addressable
       end
 
       # Goes back to an earlier state, the start of a loop, or ahead to a
-      # later one (Matcher#jump_ahead).
+      # later one (Matcher#jump_ahead). It only says where the states
+      # around it lead: once the states are linked, each one points past
+      # it (State#skip_jumps), so the search never reaches it and nothing
+      # asks it what follows.
       class Jump < State
         # The index of the state it goes to, set later for a jump ahead.
         attr_writer :target
@@ -737,29 +763,23 @@ module Addressable
           @next = states[@target]
         end
 
-        # It takes nothing, so the state it goes back to decides.
-        def bytes_after_taking_run(set)
-          @next.bytes_after_run(set)
-        end
-
-        # A loop's jump goes back to a Choice, which has no one text, so
-        # this can't go round.
-        def leading_text
-          @next.leading_text
+        # Where the jump leads, past any jumps after it. A loop's jump
+        # goes back to a Choice, so this can't go round.
+        def destination
+          @next.destination
         end
 
         def description
           "to #{@target}"
-        end
-
-        def follow(search, position)
-          search.try(@next, position)
         end
       end
 
       # The end of the template. The URI has to end here too.
       class Done < State
         def link(_states)
+        end
+
+        def skip_jumps
         end
 
         def possible_first_bytes
