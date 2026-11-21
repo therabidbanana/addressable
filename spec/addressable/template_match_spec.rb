@@ -499,11 +499,9 @@ describe Addressable::Template, "#match" do
         end
 
         # Only in machine mode, to keep the default run quick. A pattern
-        # that writes a name twice can't expand back to every string it
-        # matches, since the name gets one value (the plan's "a variable
-        # written twice").
-        names = pattern.scan(/\{[^}]*\}/).join.scan(/[a-z]+/)
-        if TestHelper.template_engine == :machine && names.uniq == names
+        # that writes a name twice is checked too: the machine only
+        # matches where the name's values agree.
+        if TestHelper.template_engine == :machine
           it "matches soundly for #{pattern}" do
             alphabet = TemplateMatchSpec.alphabet(operator, "x")
             TemplateMatchSpec.expect_sound_matches(

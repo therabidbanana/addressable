@@ -2141,6 +2141,23 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       ["{/a}{/a*}", "/x/y", {"a" => ["x", "y"]}, nil],
       ["{/a*}/{/a*}", "/x/y//x/y", {"a" => ["x", "y"]}, {"a" => ["x", "y"]}],
       ["{/a*}/{/a*}", "/x/y//x/z", {"a" => ["x", "y"]}, nil],
+      # A use left out agrees with an empty value only where an empty value
+      # would write nothing there, which isn't beside another value, or
+      # the name again.
+      ["{a,b,a}", ",", {"a" => "", "b" => ""}, nil],
+      ["{a,b,a}", ",,", {"a" => "", "b" => ""}, {"a" => "", "b" => ""}],
+      ["{a:2,a:1}{?a}", "?a=", {"a" => ""}, nil],
+      ["{a:2,a:1}{?a}", ",?a=", {"a" => ""}, {"a" => ""}],
+      # A ; value written "a=" isn't the empty string, which writes "a".
+      ["{;a,b,a}", ";a;a=", {"a" => "", "b" => nil, nil => ""}, nil],
+      ["{;a,b,a}", ";a;a", {"a" => "", "b" => nil, nil => ""},
+        {"a" => "", "b" => nil}],
+      # Where the name is exploded in one place and not in another, a list
+      # of one member is given as the member, which writes them all.
+      ["{/a*}{;a}", "/x;a=x", {"a" => ["x"]}, {"a" => "x"}],
+      ["{/a*}{;a}", "/;a", {"a" => [""]}, {"a" => ""}],
+      ["{/a*}{;a}", "/x/y;a=x,y", nil, {"a" => ["x", "y"]}],
+      ["{/a:1}{/a*}", "/x/xy", {"a" => ["x", "xy"]}, {"a" => "xy"}],
       # Where the first split found disagrees, the search goes on to the
       # next: {a}.{a} gives "x.x.x" to the first a, then "x.x".
       ["{a}.{a}", "x.x.x.x", {"a" => "x"}, {"a" => "x.x"}],
@@ -2220,9 +2237,11 @@ end
 # Expanding what #match gives back writes the URI again, for any URI
 # written by expanding some values. Templates and values are generated
 # from a fixed seed: strings, lists and associative arrays, in variables
-# that are exploded and that aren't. Left out, as the plan accepts that
-# they don't round trip: a name used twice, repeated names in an exploded
-# ;, ? or & value, and prefixes.
+# that are exploded and that aren't, each name used once; and then a name
+# written twice, where the second use is compared as the search goes.
+# Left out, as the plan accepts that they don't round trip: a name
+# written twice anywhere else, repeated names in an exploded ;, ? or &
+# value, and prefixes.
 describe Addressable::Template, "with the :machine engine, a match" do
   # Methods rather than constants, which a describe block would define at
   # the top level.
@@ -2291,6 +2310,53 @@ describe Addressable::Template, "with the :machine engine, a match" do
   def same_uri?(pattern, uri, back)
     return back == uri unless pattern =~ /\{[+#]/
     Addressable::URI.unencode(back) == Addressable::URI.unencode(uri)
+  end
+
+  # A name written twice, where the second use is compared with the first
+  # as the search goes (a RepeatedValue): templates like {a}/{a} and
+  # /{a}/x{?a,b}. The values have no "," or ".", which a + value before
+  # its expression's last, and a label, can't hold whether or not the
+  # name is repeated.
+  def generate_repeated(random)
+    values = ["", "x", "xy", "a b", "é", "x/y", "a=1", nil]
+    first = "{#{operators.sample(random: random)}a}"
+    names = [%w(a), %w(a b), %w(b a)].sample(random: random)
+    second = "{#{operators.sample(random: random)}#{names.join(',')}}"
+    pattern = [
+      ["", "/", "x"].sample(random: random), first,
+      ["/", "!", "/x/", "?", "-", ""].sample(random: random), second,
+      ["", "/", "!"].sample(random: random)
+    ].join
+    [pattern, {"a" => values.sample(random: random),
+               "b" => values.sample(random: random)}]
+  end
+
+  # Whether every use of a name after its first is a RepeatedValue.
+  def compared_in_search?(pattern)
+    nodes = Addressable::Template::Parser.new.parse_nodes(pattern)
+    slots = Addressable::Template::Machine::Slots.new(nodes)
+    nodes.flat_map { |node| slots.of(node) }.
+      group_by { |slot| slot.variable.name }.values.
+      all? { |uses| uses.drop(1).all?(&:repeated) }
+  end
+
+  it "expands back to the URI it matched, with a name written twice " \
+     "that's compared in the search" do
+    random = Random.new(6570)
+    failures = []
+    checked = 0
+    4000.times do
+      pattern, values = generate_repeated(random)
+      next unless compared_in_search?(pattern)
+      checked += 1
+      template = Addressable::Template.new(pattern, engine: :machine)
+      uri = template.expand(values).to_s
+      match = template.match(uri)
+      next if match && same_uri?(pattern, uri, template.expand(match.mapping).to_s)
+      failures << [pattern, values, uri, match && match.mapping]
+    end
+    expect(checked).to be > 1000
+    expect(failures.first(5)).to eq([]), "#{failures.size} of #{checked} failed"
   end
 
   it "expands back to the URI it matched" do

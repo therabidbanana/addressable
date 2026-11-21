@@ -144,6 +144,11 @@ module Addressable
           # a slot any text, so a name with one isn't checked.
           @written_again = @all.group_by { |slot| slot.variable.name }.values.
             select { |slots| slots.size > 1 && slots.none?(&:pattern) }.freeze
+          # The names of those that are exploded in one place and not in
+          # another (#mapping).
+          @exploded_in_part = @written_again.select do |slots|
+            slots.map { |slot| slot.variable.explode }.uniq.size > 1
+          end.map { |slots| slots.first.variable.name }.freeze
         end
 
         # The node's slots, in order. A literal has none.
@@ -199,6 +204,12 @@ module Addressable
         # replaces a shorter one's. {/var:1,var} gives "/v/value" var
         # "value", and {a:1}{a:2} gives "xxy" a "xy".
         #
+        # Where a name is exploded in one place and not in another, an
+        # exploded list of one member is given as the member: a string
+        # writes the same there, and what the other places need ({/a*}
+        # and {;a} write "/x" and ";a=x" for "x"; for ["x"], {a:1} can't
+        # expand at all).
+        #
         # @param [Array<Array>] values Each slot's name and value (#read).
         # @param [#restore, nil] processor The processor, if any.
         #
@@ -212,6 +223,8 @@ module Addressable
             variable = slot.variable
             mapping[variable.name] ||= nil
             name, value = values[slot.group]
+            value = as_one_member(slot, value) if
+              @exploded_in_part.include?(name)
             value = Matching.restore(name, value, processor)
             width = variable.prefix || Float::INFINITY
             if mapping[name].nil? || (!value.nil? && width > widths[name])
@@ -233,32 +246,58 @@ module Addressable
         # @param [Array<Array>] read
         #   The name and value read for each of the template's slots.
         def agree?(slots, read)
-          values = slots.map { |slot| Matching.decode(read[slot.group].last) }
+          values = slots.map do |slot|
+            as_one_member(slot, Matching.decode(read[slot.group].last))
+          end
           widest = slots.each_index.reject { |index| values[index].nil? }.
             max_by { |index| slots[index].variable.prefix || Float::INFINITY }
           return true if widest.nil?
           slots.each_index.all? do |index|
-            same_value?(slots[index], values[index], values[widest])
+            if values[index].nil?
+              values[widest] == "" && writes_nothing_if_empty?(slots[index], read)
+            else
+              same_value?(slots[index], values[index], values[widest])
+            end
+          end
+        end
+
+        # An exploded list of one member writes what the member alone
+        # does, so it's compared as that member. Not a list in a variable
+        # that isn't exploded: the only one of one member there is a ;
+        # value's [""], which writes ";a=" where "" writes ";a".
+        def as_one_member(slot, value)
+          return value unless slot.variable.explode && value.is_a?(Array)
+          value.size == 1 ? value.first : value
+        end
+
+        ##
+        # Whether a slot that was left out reads as an empty value would
+        # there, so that it agrees with one: its expression has no leader,
+        # and no other value, since with another an empty value has a
+        # joiner written for it ({b,a} writes "x," for an empty a). The
+        # name written again in the expression would be another value,
+        # empty too ({a:2,a:1} writes "," for an empty a).
+        #
+        # @param [Slot] slot The slot left out.
+        # @param [Array<Array>] read
+        #   The name and value read for each of the template's slots.
+        def writes_nothing_if_empty?(slot, read)
+          return false unless slot.expression.class.leader.empty?
+          @by_expression[slot.expression].all? do |other|
+            other.equal?(slot) ||
+              (read[other.group].last.nil? &&
+                other.variable.name != slot.variable.name)
           end
         end
 
         ##
         # Whether a slot's value is the widest one's, as far as the slot
-        # goes: the same, or its start for a slot with a prefix. An
-        # exploded list of one member writes what the member alone does,
-        # so the two are the same. A slot left out agrees only where it
-        # would write nothing: an empty value, in an expression with no
-        # leader.
+        # goes: the same, or its start for a slot with a prefix.
         #
         # @param [Slot] slot The slot.
-        # @param [String, Array, Hash, nil] value Its value, decoded.
+        # @param [String, Array, Hash] value Its value, decoded.
         # @param [String, Array, Hash] widest The widest value, decoded.
         def same_value?(slot, value, widest)
-          widest = widest.first if widest.is_a?(Array) && widest.size == 1
-          if value.nil?
-            return widest == "" && slot.expression.class.leader.empty?
-          end
-          value = value.first if value.is_a?(Array) && value.size == 1
           prefix = slot.variable.prefix
           if prefix && widest.is_a?(String)
             widest[0, prefix] == value

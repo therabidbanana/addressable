@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,222 and 5,108 examples), and
+full suite passes in both IDNA modes (5,252 and 5,138 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -260,7 +260,9 @@ The machine's rules:
   a name exploded in one place and not another) the values are
   compared once a split is found: equal when decoded, a prefix the
   start of the whole, an exploded list of one member the same as the
-  member, and left out only where it would write nothing. If they
+  member (which is the value given, where the name isn't exploded
+  everywhere), and left out only where an empty value would write
+  nothing: alone in an expression with no leader. If they
   disagree the search goes on to the next split, up to eight of them:
   comparing at every place the earlier value could end was quadratic
   (`{a}{a}` 1.0 s at 16 KB) and, with a value between, close to cubic.
@@ -344,19 +346,33 @@ it").
    |---|---|---|---|---|
    | Before | 7,643 | 2,210 | 2,084 | 259 |
    | Rejecting at the first split | 7,133 | 20 | 1,091 | 3,952 |
-   | Trying up to 8 (built) | 7,734 | 22 | 1,268 | 3,172 |
+   | Trying up to 8 | 7,734 | 22 | 1,268 | 3,172 |
+   | With the comparison put right (now) | 9,082 | 0 | 0 | 3,114 |
 
-   Trying every split finds one more than 8 does. What's left:
-   - A quarter of these expansions still don't match, since the search
-     can't reach the split that agrees: a state it passed on the way
-     to a split turned down isn't tried again with other captures (the
-     memo), and `{a}{a}` gives its second `a` no states (item 18).
-     These are generated worst cases; a shape like
-     `/{lang}/docs{?lang}` is compared as the search goes
-     (`RepeatedValue`).
-   - 22 still match with values that don't write the URI, and 1,268
-     with a mapping `expand` raises for. Not looked into.
-   - The round trip's generator still gives each name one use.
+   Trying every split finds one more than 8 does. The last row is
+   after item 15 ran `template_match_spec.rb`'s soundness check on
+   patterns that write a name twice, which found the comparison too
+   easy in two places, and the value given wrong in one:
+   - A use left out agreed with an empty value wherever its expression
+     had no leader. An empty value writes nothing only where it's alone
+     there: beside another value, or the name again, a joiner is
+     written (`{a,b,a}` matched `,` as two empty values, which write
+     `,,`).
+   - A `;` value written `a=`, a list of one empty member, was taken
+     for the empty string, which writes `a`.
+   - Where a name is exploded in one place and not in another, its
+     value was the exploded list of one member, where the member
+     itself writes every place the same: `{/a*}{;a}` on `/x;a=x` gives
+     `"x"`, not `["x"]`, which a prefix can't even be expanded with.
+     Every one of the mappings `expand` raised for was this.
+
+   What's left: a quarter of these expansions still don't match, since
+   the search can't reach the split that agrees: a state it passed on
+   the way to a split turned down isn't tried again with other
+   captures (the memo), and `{a}{a}` gives its second `a` no states
+   (item 18). These are generated worst cases; a shape like
+   `/{lang}/docs{?lang}` is compared as the search goes
+   (`RepeatedValue`).
 3. **Match a list in an unexploded variable (built).** A value that
    isn't exploded holds raw commas and comes back as a list
    (`Expression#holds_list?`; see "Matching rules"): any `/`, `.`,
@@ -596,15 +612,35 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
    quadratically, which Goal 2 accepts. Untried: for a greedy pattern
    like `a*`, the first choice is the longest end it reaches, so the
    ends past it needn't be checked; that doesn't hold for every pattern
-   (`a*?`, `a|ab`), so it needs a way to tell when it's safe. Also,
-   `matcher_for` rebuilds the whole matcher on every call with a
-   processor that has `match`, since the processor is asked for its
-   patterns each time.
-9. **Smaller ideas**, each to measure with `profile:template_machine`
-   before keeping: an Array for `FirstBytes` (lookups 11 rather than
-   40 ns, but slower to build); a shortcut in `Expression#expand` for
-   one-variable expressions (no `map`, `compact!`, `flat_map`); and
-   measuring with YJIT, which Rails 7.1+ turns on by default on 3.3.
+   (`a*?`, `a|ab`), so it needs a way to tell when it's safe.
+
+   The matcher is built again on every call with a processor that has
+   `match`, since the processor is asked for its patterns each time:
+   a match takes 253 µs with one, against 88 µs without, and 133 µs
+   for `:regexp`, which builds its regexp again too. Building the
+   slots is 6 µs of that and the matcher 118 µs, so keeping the last
+   matcher built, for as long as the patterns come back the same,
+   gave 128 µs. It was tried and left out (2026-11-21): a processor's
+   `match` is dynamic, and expected to be slow.
+9. **Smaller ideas (measured 2026-11-21; none kept).**
+   - An Array for `FirstBytes`, in place of a bit of an Integer: no
+     difference to the search (within 2% either way, two runs).
+   - A shortcut in `Expression#expand` for one-variable expressions:
+     none either (9.20 against 9.16 µs for two of them).
+   - YJIT, which Rails 7.1+ turns on by default on 3.3: with it the
+     machine matches as fast as `:regexp`. Ruby 3.3.14 on Linux,
+     best of seven:
+
+     | | `:regexp` | `:machine` | `:regexp`, YJIT | `:machine`, YJIT |
+     |---|---|---|---|---|
+     | simple match | 35.6 µs | 49.1 µs | 24.3 µs | 24.3 µs |
+     | API match | 73.4 µs | 106.4 µs | 50.0 µs | 51.5 µs |
+     | API expand | 48.6 µs | 26.7 µs | 38.6 µs | 16.1 µs |
+     | match, processor with `match` | 162.5 µs | 286.5 µs | 121.4 µs | 153.4 µs |
+
+     The machine's search is Ruby, which YJIT compiles, where
+     `:regexp`'s scan was already native. The profile's ratios in
+     "Status" are without it.
 
 ### Docs, CI and release
 
@@ -653,20 +689,28 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
 
 ### Small differences and cleanup
 
-13. **Small behaviour differences.** `expand(mapping, processor,
-    false)` where `transform` returns an array whose first member isn't
-    a String (`[1, [2, :x], nil]`): `:regexp` raises `NoMethodError`,
-    the machine returns `?a=1&a=[2, :x]&a=`. An invalid processor
-    pattern raises `RegexpError` in both engines, with different
-    messages.
-14. **Simplification.** Code that only copies a `Template` bug
+13. **Small behaviour differences (left as they are, 2026-11-21; for
+    the changelog).** `expand(mapping, processor, false)` where
+    `transform` returns an array whose first member isn't a String
+    (`[1, [2, :x], nil]`): `:regexp` raises `NoMethodError`, the
+    machine returns `?a=1&a=[2, :x]&a=`. An invalid processor pattern
+    raises `RegexpError` in both engines, with different messages.
+    Neither is worth copying: the first is an error for a value no
+    processor should return, and the second is the same error.
+14. **Simplification (nothing to do until `Template` changes).** Code
+    that only copies a `Template` bug
     (`Parser#names_in_invalid_token`, `Machine::Invalid#names`) goes
     once `Template` fixes it. `Matching.match_data` only serves
     `:regexp`, and goes with it.
-15. **Round-trip coverage of repeated names.** The round-trip spec's
-    generator gives each name one use, and `template_match_spec.rb`'s
-    soundness check skips patterns that reuse a name. Both could now
-    include the repeated shapes `Machine::Slots` converts.
+15. **Round-trip coverage of repeated names (built).** The round trip
+    spec has a second generator, for a name written twice where the
+    second use is compared as the search goes (`{a}/{a}`,
+    `/{a}/x{?a,b}`): over a thousand templates, all of which match
+    their expansions and write them back. Its values have no `,` or
+    `.`, which a `+` value before its expression's last, and a label,
+    can't hold, repeated or not. And `template_match_spec.rb`'s
+    soundness check runs on patterns that write a name twice too,
+    which is what found item 2's last wrong results.
 
 ## Tried and ruled out
 

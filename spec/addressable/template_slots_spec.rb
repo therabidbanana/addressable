@@ -300,11 +300,28 @@ describe Addressable::Template::Machine::Slots, "#read and #mapping" do
     ["{?a}{a}", ["a=", nil]] => {"a" => ""},
     ["{a}{?a}", [nil, "a="]] => {"a" => ""},
     ["{a}{?a}", [nil, nil]] => {"a" => nil},
-    ["{/a}{/a*}", ["x", "x"]] => {"a" => "x"},
-    ["{/a*}{/a}", ["x", "x"]] => {"a" => ["x"]},
     ["{/a*}{/a*}", ["x/y", "x/y"]] => {"a" => ["x", "y"]},
     ["{?a*}{&a*}", ["k=v", "k=v"]] => {"a" => {"k" => "v"}},
-    ["{a:1}{a*}", ["x", "xy"]] => {"a" => ["xy"]}
+    # Where a name is exploded in one place and not in another, an
+    # exploded list of one member is given as the member, which writes
+    # every place the same.
+    ["{/a}{/a*}", ["x", "x"]] => {"a" => "x"},
+    ["{/a*}{/a}", ["x", "x"]] => {"a" => "x"},
+    ["{a:1}{a*}", ["x", "xy"]] => {"a" => "xy"},
+    ["{?b*}{;b}", ["b=", "b"]] => {"b" => ""},
+    ["{/a*}{/a*}", ["x", "x"]] => {"a" => ["x"]},
+    ["{/a*}{/a}", ["x/y", "x,y"]] => {"a" => ["x", "y"]},
+    # A ; value written "a=" is a list of one empty member, which isn't
+    # the empty string that writes "a".
+    ["{;a}{;a}", ["a", "a="]] => nil,
+    ["{;a}{;a}", ["a=", "a="]] => {"a" => [""]},
+    # A use left out agrees with an empty value only where an empty value
+    # would write nothing there: not beside another value, nor beside the
+    # name again, which have a joiner written between them.
+    ["{b,a}{?a}", [nil, nil, "a="]] => {"b" => nil, "a" => ""},
+    ["{b,a}{?a}", ["x", nil, "a="]] => nil,
+    ["{a:2,a:1}{?a}", [nil, nil, "a="]] => nil,
+    ["{/a}{?a}", [nil, "a="]] => nil
   }.each do |(pattern, texts), expected|
     it "gives #{pattern} with #{texts.inspect} #{expected.inspect}" do
       expect(mapping(pattern, texts)).to eq(expected)
