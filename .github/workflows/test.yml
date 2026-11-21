@@ -39,7 +39,7 @@ jobs:
 
   profile:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     strategy:
@@ -72,6 +72,15 @@ jobs:
       - name: >-
           Profile Memory Allocation with ${{ matrix.idna_mode }} IDNA during Addressable::Template#match
         run: bundle exec rake profile:template_match_memory
+
+      # Prints time, allocations and agreement for the two Template
+      # engines, and how match time grows on adversarial input. It reports
+      # and doesn't judge: read the "differs" and "growth" columns.
+      - name: >-
+          Compare the Template engines with ${{ matrix.idna_mode }} IDNA
+        run: bundle exec rake profile:template_machine
+        env:
+          ITERATIONS: '3000'
 
   coverage:
     runs-on: ${{ matrix.os }}
@@ -205,12 +214,11 @@ jobs:
 
   # Runs the Addressable::Template specs with the :machine engine as the
   # default (TEMPLATE_MODE=machine), where they're also compared with the
-  # :regexp engine; see TEMPLATE_MACHINE_PLAN.md. The machine is
-  # experimental, so this job doesn't fail the workflow yet.
+  # :regexp engine; see TEMPLATE_MACHINE_PLAN.md. The test job runs the
+  # same specs with :regexp as the default.
   template-machine:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    continue-on-error: true
+    timeout-minutes: 10
     permissions:
       contents: read
     strategy:
@@ -240,10 +248,7 @@ jobs:
       - name: Run the Template specs against the template machine
         run: >-
           bundle exec rspec
-          spec/addressable/template_spec.rb
-          spec/addressable/template_match_spec.rb
-          spec/addressable/template_match_forms_spec.rb
-          spec/addressable/template_conformance_spec.rb
+          spec/addressable/template*_spec.rb
           --format progress --format json --out tmp/template_machine.json
 
       - name: Summarize

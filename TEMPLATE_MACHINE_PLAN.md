@@ -84,10 +84,10 @@ with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
 the branch for Ruby 2.3 and earlier.
 
-On 2026-11-19 (run 44642534313, commit `017e0a1`) the machine-mode CI
+On 2026-11-21 (run 44857829551, commit `42f3b26`) the machine-mode CI
 job passed on Ruby 2.3, 3.1, JRuby 10.0, TruffleRuby and current Ruby,
-and the full suite on every runtime in the matrix. The `gemspec` job
-fails by design until the branch merges.
+and the full suite on every runtime in the matrix: 37 of 38 jobs. The
+`gemspec` job fails by design until the branch merges.
 
 Performance against `:regexp` (Ruby 3.3.1, `profile:template_machine`
 at 3,000 iterations, two runs, 2026-11-20):
@@ -605,15 +605,23 @@ What one match allocates at 16 KB (`memory_profiler`, 2026-11-20):
 
 ### Docs, CI and release
 
-10. **Document `to_regexp` on the machine.** Its matches can differ
-    from `match`'s (see "Matching rules"); say so in its doc comment,
-    and revisit when `:regexp` is removed.
-11. **CI.** Make the machine-mode job (`.github/workflows/test.yml`,
-    `template-machine`, now `continue-on-error: true`) blocking; run it
-    on every runtime (2.3 to 4.0, JRuby, TruffleRuby) in both IDNA
-    modes; add `profile:template_machine` to CI. Check that the
-    processor pattern check (`\A`, `\z`, `$~`) behaves on JRuby and
-    TruffleRuby.
+10. **Document `to_regexp` on the machine (written).** Its doc comment
+    says its matches can differ from `match`'s. Revisit when `:regexp`
+    is removed.
+11. **CI (written 2026-11-20, not yet run).** The machine-mode job
+    (`.github/workflows/test.yml`, `template-machine`) is blocking, and
+    runs every `template*_spec.rb`, with 10 minutes for each runtime.
+    Its runtimes stay as they were (2.3, 3.1, current Ruby, JRuby 10.0
+    and TruffleRuby; decided 2026-11-20, not every runtime in both IDNA
+    modes as this item first said): the test job already runs the
+    machine's own specs on every supported runtime, since they name
+    their engine. The `profile` job prints `profile:template_machine`,
+    which reports and doesn't fail. The code as of `42f3b26` passed
+    under the job as it was (four spec files, not blocking), and under
+    the test job on every runtime, processor patterns and linear-time
+    specs included. To check on this workflow's first run: the
+    machine-mode job now runs all nine spec files, which take 75 s
+    here; 10 minutes is a guess for JRuby and TruffleRuby.
 12. **Before release N.**
     - Dumps: a `Marshal` or YAML dump of a used machine template holds
       its caches, which name private classes (2,630 bytes against

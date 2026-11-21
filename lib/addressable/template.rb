@@ -909,6 +909,15 @@ module Addressable
     # name starts with anything else has its group named with "__" before
     # and after it: `{42}` has `__42__`, and `{%41}` has `__%41__`.
     #
+    # The regular expression is the one the <tt>:regexp</tt> engine matches
+    # with, whichever engine the template has. The <tt>:machine</tt> engine
+    # doesn't match with it, and splits some URIs between the variables
+    # another way, so on a <tt>:machine</tt> template the groups of
+    # <tt>to_regexp.match(uri)</tt> can differ from what {#match} and
+    # {#extract} give, and it can match a URI they don't, or not match one
+    # they do. `{a}{b}` gives `xyz` to `b` here and to `a` there, and
+    # `{/a}` matches `/x,y` there (as a list) and not here.
+    #
     # @return [Regexp] A regular expression which should match the template.
     #
     # @raise [Addressable::Template::InvalidTemplateError]
