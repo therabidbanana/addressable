@@ -212,7 +212,9 @@ module Addressable
         # where an empty member is a "" key.
         #
         # A value that isn't exploded and holds a comma as it is, is a
-        # list, where the variable can hold one (#holds_list?).
+        # list, where the variable can hold one (#holds_list?). A default,
+        # / or . value that's exploded, whose members each hold an "=" as
+        # it is, is an associative array (#members_can_be_pairs?).
         #
         # @param [Variable] variable The variable.
         # @param [String, nil] text
@@ -221,12 +223,27 @@ module Addressable
         #   Whether the text was matched by the variable's own steps, not
         #   a processor's pattern, whose text is given as it is.
         #
-        # @return [Array] The name, and a String, Array, Hash or nil.
+        # @return [Array, nil]
+        #   The name, and a String, Array, Hash or nil; or nil if no value
+        #   writes the text.
         def read(variable, text, as_matched = true)
           name, value = read_text(variable, text)
-          if as_matched && value.is_a?(String) && holds_list?(variable) &&
+          if !as_matched
+            # A processor's pattern matched the text.
+          elsif value.is_a?(String) && holds_list?(variable) &&
               value.include?(",")
             value = value.split(",", -1)
+          elsif value.is_a?(Array) && members_can_be_pairs? &&
+              value.all? { |member| member.include?("=") }
+            # The steps take members that are all pairs, or none.
+            pairs = value.map { |member| member.split("=", 2) }
+            keys = pairs.map do |key, _|
+              Addressable::URI.unencode_component(key)
+            end
+            # An associative array has each key once, so no value writes
+            # the same key twice.
+            return nil unless keys.uniq.size == keys.size
+            value = Hash[pairs]
           end
           [name, value]
         end
@@ -362,6 +379,19 @@ module Addressable
         def end_decided?(variable)
           return false if variable.explode || self.class.allows_reserved?
           starts_outside?(following, Matcher::SETS.fetch(value_set(variable)))
+        end
+
+        ##
+        # Whether an exploded value's members can be an associative
+        # array's pairs, each written as its key, "=" and its value: a
+        # default, / or . expression's, where {/a*} writes {"k" => "v"} as
+        # "/k=v". There an "=" inside a key, a value or a list's member is
+        # written "%3D", so an "=" as it is can only be a pair's. A ;, ?
+        # or & member always has its name and "=" (#member_steps). A + or
+        # # member holds "=" as it is, so a pair can't be told from a
+        # list's member, and it's a list's.
+        def members_can_be_pairs?
+          !self.class.allows_reserved? && !self.class.names_values?
         end
 
         private
@@ -666,6 +696,21 @@ module Addressable
             matcher.repeat_stopping_before(self.class.joiner, names) do
               member_steps(matcher)
             end
+          elsif variable.explode && members_can_be_pairs?
+            # Members that are all values, or else all pairs: a list, or
+            # an associative array.
+            matcher.either(
+              lambda do
+                matcher.repeat(self.class.joiner) { member_steps(matcher) }
+              end,
+              lambda do
+                matcher.repeat(self.class.joiner) do
+                  member_steps(matcher)
+                  matcher.exact("=")
+                  member_steps(matcher)
+                end
+              end
+            )
           elsif variable.explode
             matcher.repeat(self.class.joiner) do
               member_steps(matcher)

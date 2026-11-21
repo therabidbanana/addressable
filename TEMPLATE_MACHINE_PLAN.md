@@ -78,7 +78,7 @@ Decisions that shape the code:
 
 All of `expand`, `partial_expand`, `match`, `extract`, `variables`,
 `named_captures`, `to_regexp` and `source` run on the machine. The
-full suite passes in both IDNA modes (5,103 and 4,989 examples), and
+full suite passes in both IDNA modes (5,186 and 5,072 examples), and
 the `Template` specs pass in machine mode (`TEMPLATE_MODE=machine`),
 with the rows the matching rules change picked by engine. Line
 coverage of the machine's files is complete except `matching.rb:143`,
@@ -195,9 +195,11 @@ The machine's rules:
      `x/y/z` gives `x/y` and `z`. Where 2 also applies, it comes first:
      `{+a}{#b}` on `x#y#z` gives `x` and `y#z`, not `x#y` and `z`.
   4. A `+` or `#` value before its expression's last stops at a comma.
-- **An exploded variable right after another in its expression takes
-  nothing** (`{;foo*,bar*}` matches like `{;foo*}`), so the matcher adds
-  no steps for it.
+- **An exploded `;`, `?`, `&`, `+` or `#` variable right after another
+  in its expression takes nothing** (`{;foo*,bar*}` matches like
+  `{;foo*}`), so the matcher adds no steps for it. In a default, `/`
+  or `.` expression it can take the kind of member the earlier one
+  didn't (see the associative arrays below).
 - **A value that isn't exploded can be a list.** Expansion writes a
   list's members with commas between them, and a comma inside a string
   as `%2C`, so a comma as it is separates members: `{/a}` on `/x,y`
@@ -210,6 +212,14 @@ The machine's rules:
   member, which is what writes it. Not `+` and `#`, whose values hold
   commas; nor with a prefix, which expansion refuses for a list; nor
   a value a processor's pattern matched.
+- **An exploded default, `/` or `.` value can be an associative
+  array.** Expansion writes each pair as its key, `=` and its value,
+  and an `=` inside a key, a value or a list's member as `%3D`, so an
+  `=` as it is makes a member a pair: `{/a*}` on `/k=v/j=w` gives
+  `{"k" => "v", "j" => "w"}`. Its members are all pairs or all values,
+  and no key comes twice; `/k=v/x` and `/k=v/k=w` don't match. Not `+`
+  and `#`, whose members hold `=` as it is, so `{+a*}` on `k=v` is the
+  list `["k=v"]`.
 - **A prefix takes at most its length,** counted in decoded
   characters, since expansion cuts the value before it pct-encodes it:
   a character as it is, or the triplets of one UTF-8 character
@@ -264,6 +274,9 @@ Examples of where the machine's results differ from `:regexp`'s
 | `{;a}` | `;a=` | `"a" => ""` (writes `;a`) | `"a" => [""]` | List in a value |
 | `{?a,b}` | `?a=x,y&b=w` | no match | `"a" => ["x", "y"], "b" => "w"` | List in a value |
 | `{.a}{c*}` | `.x,y` | `"a" => nil, "c" => [".x", "y"]` | `"a" => ["x", "y"], "c" => nil` | List in a value |
+| `{/a*}` | `/k=v/j=w` | no match | `"a" => {"k" => "v", "j" => "w"}` | Pairs in a value |
+| `{/a*,b*}` | `/x/k=v` | no match | `"a" => ["x"], "b" => {"k" => "v"}` | Pairs in a value |
+| `{?a*}{.c*}` | `?k=x.j=y` | `"a" => {"k" => "x.j=y"}, "c" => nil` | `"a" => {"k" => "x"}, "c" => {"j" => "y"}` | Pairs in a value |
 | `{a:3}` | `abcdef` | `"a" => "abcdef"` (writes `abc`) | no match | Prefix length |
 | `{a:2}{b}` | `xyz` | `"a" => nil, "b" => "xyz"` | `"a" => "xy", "b" => "z"` | Prefix length |
 | `{a}/{a}` | `x/y` | `"a" => "x"` (writes `x/x`) | no match | Name written again |
@@ -350,16 +363,35 @@ it").
      the same URI: `{a,b}` with `["x", "y"]` and `"w"` writes `x,y,w`,
      which gives `"x"` and `["y", "w"]`; an associative array comes
      back as a list; and a list of one member as a string.
-4. **Match exploded hashes outside `;`, `?` and `&` (decided).**
-   Expanding `{/a*}` with `{"k" => "v"}` writes `/k=v`, which doesn't
-   match today. Expansion writes the `=` between key and value as it
-   is, and pct-encodes an `=` inside a key, a value or a list member
-   (`["k=v"]` writes `/k%3Dv`, `{"k=x" => "v=y"}` writes
-   `/k%3Dx=v%3Dy`; checked on both engines). So for the default, `/`
-   and `.` operators, a member with a raw `=` is a pair: if every
-   member has one, the value is a hash; if none does, a list; mixed
-   members don't match. Not for `+` and `#`, which write `k=v` for both
-   the hash and the list `["k=v"]`.
+4. **Match exploded hashes outside `;`, `?` and `&` (built).** An
+   exploded default, `/` or `.` value whose members are all pairs is an
+   associative array (`Expression#members_can_be_pairs?`; see
+   "Matching rules"). The round trip spec now generates strings, lists
+   and associative arrays in every kind of variable, and all 2,000 of
+   its templates match their expansions and write them back. Three
+   things that took:
+   - *The same key twice isn't a match.* An associative array has each
+     key once, so `{/a*}` doesn't match `/k=v/k=w`
+     (`Expression#read`).
+   - *A later exploded variable isn't absorbed there.* The earlier one
+     takes all of one kind, and the later can take the other:
+     `{/a*,b*}` gives `/x/k=v` `["x"]` and `{"k" => "v"}`. It costs
+     states: rejecting 16 KB of `/` with `{/a*,b*,c*}!` went from 25 ms
+     to 164 ms. With more ways to split, a name exploded twice in one
+     expression can use up item 2's eight tries sooner.
+   - *An exploded `?` or `&` member keeps the fewest `=` it can.* Its
+     value can hold an `=` as it is, for URIs expansion didn't write
+     (a token that ends `==`). It tried the most first, and so took
+     the pairs of an expression after it: `{?a*}{.c*}` gave `?k=x.j=y`
+     all to `a`.
+
+   What it leaves, which the round trip spec's generator avoids:
+   - A list or an associative array in a default expression's variable
+     that isn't its last and isn't exploded (`{a,b*}` with `a`
+     `{"k" => "v"}`, which writes `k,v,…`): there the comma is the
+     joiner. It could be tried after the usual reading fails.
+   - An exploded `;`, `?` or `&` value with the same name twice
+     (`{?a*}` on `?k=1&k=2` gives `{"k" => "2"}`), as before.
 
 16. **A processor's pattern covers only the value in `;`, `?` and `&`
     (decided 2026-11-20; build later).** In both engines the pattern

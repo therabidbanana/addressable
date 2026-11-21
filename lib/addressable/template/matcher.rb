@@ -241,6 +241,21 @@ module Addressable
         land([to_end])
       end
 
+      ##
+      # The first steps, or else the second, tried in that order.
+      #
+      # @param [#call] first Adds the first steps.
+      # @param [#call] second Adds the second steps.
+      def either(first, second)
+        choice = add(Choice)
+        choice.first = @states.size
+        inside_optional { first.call }
+        to_end = jump_ahead
+        choice.second = @states.size
+        inside_optional { second.call }
+        land([to_end])
+      end
+
       # The block's states, or nothing, tried in that order.
       def optional
         choice = add(Choice)
@@ -303,6 +318,19 @@ module Addressable
         inside_optional { yield }
         add(Jump, again.index)
         again.second = @states.size
+      end
+
+      # The block's states as many times over as they match, as few as can
+      # be first: what follows is tried before each time. The block has to
+      # take at least one character each time.
+      def as_few_as_can_be
+        again = add(Choice)
+        to_end = jump_ahead
+        again.first = to_end.index
+        again.second = @states.size
+        inside_optional { yield }
+        add(Jump, again.index)
+        land([to_end])
       end
 
       # One or more members, as the block's states, with the joiner between

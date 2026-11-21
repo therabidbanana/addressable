@@ -1002,7 +1002,12 @@ describe Addressable::Template, "with the :machine engine, #match" do
       ["{?a*,b}", "?x=1&b=2"] => {"a" => {"x" => "1"}, "b" => "2"},
       ["{?a*,b}", "?x=1=2&b="] => {"a" => {"x" => "1=2"}, "b" => ""},
       # A prefix takes at most its length.
-      ["/{.a:2}/", "/.x.y/"] => nil
+      ["/{.a:2}/", "/.x.y/"] => nil,
+      # An exploded / value's members that are all pairs are an
+      # associative array.
+      ["{/foo*}", "/foo=bar/baz=qux"] => {
+        "foo" => {"foo" => "bar", "baz" => "qux"}
+      }
     }
   end
 
@@ -1338,6 +1343,12 @@ describe Addressable::Template, "with the :machine engine, #match" do
     ["{a}{b}{c}!", "a" * 16_000 + "?!"],
     ["{+a}{b}{c}!", "a/" * 8_000 + " !"],
     ["{a}{b,c}!", "a" * 16_000 + "?!"],
+    # Exploded members that are pairs, or pairs and values by turns, and
+    # an exploded ? value whose "=" could each end it.
+    ["{/a*}!", "/k=v" * 4_000 + "?!"],
+    ["{/a*,b*,c*}!", "/k=v/x" * 2_700 + "?!"],
+    ["{a*,b*}{c*}!", "x,k=v," * 2_700 + "?!"],
+    ["{?a*}{.c*}!", "?k=v" + "=v.j" * 4_000 + " !"],
     ["{;x}{;a:9999}!", ";x=" + "a" * 16_000 + "?!"]
   ].each do |pattern, uri|
     it "rejects a URI ending in #{uri[-2, 2].inspect} that doesn't match " \
@@ -1904,6 +1915,51 @@ describe Addressable::Template, "with the :machine engine, matching fixes" do
       # Nor an exploded value's member.
       ["{/a*}", "/x,y", nil, nil]
     ],
+    "an exploded default, / or . value can be an associative array" => [
+      ["{/a*}", "/k=v", nil, {"a" => {"k" => "v"}}],
+      ["{/a*}", "/k=v/j=w", nil, {"a" => {"k" => "v", "j" => "w"}}],
+      ["{.a*}", ".k=v.j=w", nil, {"a" => {"k" => "v", "j" => "w"}}],
+      ["{a*}", "k=v,j=w", nil, {"a" => {"k" => "v", "j" => "w"}}],
+      # A key or a value can be empty, and an "=" inside one is written
+      # "%3D".
+      ["{/a*}", "/k=", nil, {"a" => {"k" => ""}}],
+      ["{/a*}", "/=v", nil, {"a" => {"" => "v"}}],
+      ["{/a*}", "/=", nil, {"a" => {"" => ""}}],
+      ["{/a*}", "/k%3Dx=v%3Dy", nil, {"a" => {"k=x" => "v=y"}}],
+      ["{/a*}", "/k%3Dv", {"a" => ["k=v"]}, {"a" => ["k=v"]}],
+      # A key that is the variable's name is still a key.
+      ["{/a*}", "/a=v", nil, {"a" => {"a" => "v"}}],
+      # Members are all pairs, or all values.
+      ["{/a*}", "/x/y", {"a" => ["x", "y"]}, {"a" => ["x", "y"]}],
+      ["{/a*}", "/k=v/x", nil, nil],
+      ["{/a*}", "/x/k=v", nil, nil],
+      ["{/a*}", "/k=v=w", nil, nil],
+      # No value writes the same key twice.
+      ["{/a*}", "/k=v/k=w", nil, nil],
+      ["{/a*}", "/k=v/%6B=w", nil, nil],
+      ["{a*}", "=,=", nil, nil],
+      # With the values around it.
+      ["{/a*}{/b}", "/k=v/x", nil, {"a" => {"k" => "v"}, "b" => "x"}],
+      ["{/a*,b}", "/k=v/x", nil, {"a" => {"k" => "v"}, "b" => "x"}],
+      ["{a*,b}", "k=v,w", nil, {"a" => {"k" => "v"}, "b" => "w"}],
+      ["x{.a*}y", "x.k=vy", nil, {"a" => {"k" => "v"}}],
+      ["{/a*}{?b}", "/k=v?b=1", nil, {"a" => {"k" => "v"}, "b" => "1"}],
+      ["{/a*}/{/a*}", "/k=v//k=v", nil, {"a" => {"k" => "v"}}],
+      ["{/a*}/{/a*}", "/k=v//k=w", nil, nil],
+      # A later exploded variable takes the kind the earlier one didn't.
+      ["{/a*,b*}", "/x/k=v", nil, {"a" => ["x"], "b" => {"k" => "v"}}],
+      ["{/a*,b*}", "/k=v/x", nil, {"a" => {"k" => "v"}, "b" => ["x"]}],
+      ["{/a*,b*}", "/x/y", {"a" => [], "b" => ["x", "y"]},
+        {"a" => ["x", "y"], "b" => nil}],
+      # An exploded ? or & value before it keeps the fewest "=" it can, so
+      # the pairs go to the variable that wrote them.
+      ["{?a*}{.c*}", "?k=x.j=y", {"a" => {"k" => "x.j=y"}, "c" => nil},
+        {"a" => {"k" => "x"}, "c" => {"j" => "y"}}],
+      ["{?a*}", "?k=x=y", {"a" => {"k" => "x=y"}}, {"a" => {"k" => "x=y"}}],
+      # A + or # member holds "=" as it is, so it's a list's.
+      ["{+a*}", "k=v,j=w", {"a" => ["k=v", "j=w"]}, {"a" => ["k=v", "j=w"]}],
+      ["{#a*}", "#k=v", {"a" => ["k=v"]}, {"a" => ["k=v"]}]
+    ],
     "joiners between values are required" => [
       ["{?a,b}", "?a=1b=2", {"a" => "", "b" => nil, "1b" => "2"}, nil]
     ],
@@ -2109,9 +2165,10 @@ end
 
 # Expanding what #match gives back writes the URI again, for any URI
 # written by expanding some values. Templates and values are generated
-# from a fixed seed. Left out, as the plan accepts that they don't round
-# trip: a name used twice, a list or hash in an unexploded variable,
-# repeated names in an exploded ;, ? or & value, and prefixes.
+# from a fixed seed: strings, lists and associative arrays, in variables
+# that are exploded and that aren't. Left out, as the plan accepts that
+# they don't round trip: a name used twice, repeated names in an exploded
+# ;, ? or & value, and prefixes.
 describe Addressable::Template, "with the :machine engine, a match" do
   # Methods rather than constants, which a describe block would define at
   # the top level.
@@ -2127,29 +2184,44 @@ describe Addressable::Template, "with the :machine engine, a match" do
     ["", "/", "!", "x"]
   end
 
-  # Values for one template, each name used once. Exploded values in ;,
-  # ? and & are hashes whose keys aren't used anywhere else.
+  # Values for one template, each name used once: nil, a string, a list
+  # or an associative array, whose keys aren't used anywhere else. An
+  # exploded ;, ? or & value is always an associative array, since a
+  # list there repeats the variable's name.
   def generate(random)
     names = ("a".."z").to_a
     keys = 0
     values = {}
+    list = lambda do
+      Array.new(random.rand(1..3)) { strings.sample(random: random) }
+    end
+    hash = lambda do
+      Array.new(random.rand(1..2)) do
+        keys += 1
+        ["k#{keys}", strings.sample(random: random)]
+      end.each_with_object({}) { |(key, value), pairs| pairs[key] = value }
+    end
     expressions = Array.new(random.rand(1..2)) do
       operator = operators.sample(random: random)
-      varspecs = Array.new(random.rand(1..3)) do
+      count = random.rand(1..3)
+      varspecs = Array.new(count) do |position|
         name = names.shift
         explode = random.rand(2).zero?
+        kind = random.rand(4)
+        # In a default expression the comma is the joiner, so only its
+        # last variable can be a list without being exploded.
+        only_string = operator.empty? && !explode && position < count - 1
         values[name] =
-          if random.rand(4).zero?
+          if kind.zero?
             nil
-          elsif !explode
+          elsif explode && %w(; ? &).include?(operator)
+            hash.call
+          elsif only_string || (kind == 1 && !explode)
             strings.sample(random: random)
-          elsif %w(; ? &).include?(operator)
-            Array.new(random.rand(1..2)) do
-              keys += 1
-              ["k#{keys}", strings.sample(random: random)]
-            end.each_with_object({}) { |(key, value), hash| hash[key] = value }
+          elsif kind == 2
+            list.call
           else
-            Array.new(random.rand(1..3)) { strings.sample(random: random) }
+            hash.call
           end
         explode ? "#{name}*" : name
       end

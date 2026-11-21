@@ -39,12 +39,16 @@ module Addressable
           value_run(matcher, variable, value_set(variable))
         end
 
-        # A member, as member_regexp_source writes it: a name and "=", as
-        # many more runs that end in "=" as can be first, then the value.
+        # A member: a name and "=", then the value. Expansion writes an "="
+        # inside a value as "%3D", but a URI written some other way can
+        # have one as it is (a token that ends "=="), so the value can
+        # hold more runs that end in "=", as member_regexp_source allows:
+        # as few as can be first, so that an "=" expansion wrote for what
+        # follows isn't taken for the value's.
         def member_steps(matcher)
           matcher.greedy_run(:unreserved)
           matcher.exact("=")
-          matcher.zero_or_more do
+          matcher.as_few_as_can_be do
             matcher.greedy_run(:unreserved)
             matcher.exact("=")
           end

@@ -222,55 +222,90 @@ describe Addressable::Template::Matcher, "#to_s" do
       "20 Jump to 21",
       "21 Done"
     ],
-    # An exploded value: members with the joiner between them.
+    # An exploded value: members with the joiner between them, which are
+    # all values (a list), or else all pairs (an associative array).
     "{/a*}" => [
-      "0 Choice 1 or 9",
+      "0 Choice 1 or 20",
       "1 Literal \"/\"",
       "2 Capture group 0 start",
-      "3 GreedyRun unreserved, stopping at its end",
-      "4 Choice 5 or 8",
-      "5 Literal \"/\"",
-      "6 GreedyRun unreserved, stopping at its end",
-      "7 Jump to 4",
-      "8 Capture group 0 end",
-      "9 Done"
+      "3 Choice 4 or 10",
+      "4 GreedyRun unreserved, stopping at its end",
+      "5 Choice 6 or 9",
+      "6 Literal \"/\"",
+      "7 GreedyRun unreserved, stopping at its end",
+      "8 Jump to 5",
+      "9 Jump to 19",
+      "10 GreedyRun unreserved, stopping at its end",
+      "11 Literal \"=\"",
+      "12 GreedyRun unreserved, stopping at its end",
+      "13 Choice 14 or 19",
+      "14 Literal \"/\"",
+      "15 GreedyRun unreserved, stopping at its end",
+      "16 Literal \"=\"",
+      "17 GreedyRun unreserved, stopping at its end",
+      "18 Jump to 13",
+      "19 Capture group 0 end",
+      "20 Done"
+    ],
+    # A + or # member holds "=" as it is, so it has no pairs.
+    "{+a*}" => [
+      "0 Choice 1 or 16",
+      "1 Capture group 0 start",
+      "2 Choice 3 or 5",
+      "3 DelimiterRun reserved_no_comma",
+      "4 Jump to 6",
+      "5 GreedyRun reserved_no_comma, stopping at its end",
+      "6 Choice 7 or 13",
+      "7 Literal \",\"",
+      "8 Choice 9 or 11",
+      "9 DelimiterRun reserved_no_comma",
+      "10 Jump to 12",
+      "11 GreedyRun reserved_no_comma, stopping at its end",
+      "12 Jump to 6",
+      "13 LeaveOutIfEmpty to 16",
+      "14 Capture group 0 end",
+      "15 Jump to 17",
+      "16 Jump to 17",
+      "17 Done"
     ],
     # An exploded value stops before a later variable's name (rule 1).
     "{&a*,b}" => [
       "0 Choice 1 or 3",
       "1 FollowedBy \"&b\"",
-      "2 Jump to 27",
-      "3 Choice 4 or 27",
+      "2 Jump to 29",
+      "3 Choice 4 or 29",
       "4 Literal \"&\"",
       "5 Capture group 0 start",
       "6 GreedyRun unreserved, stopping at its end",
       "7 Literal \"=\"",
-      "8 Choice 9 or 12",
-      "9 GreedyRun unreserved, stopping at its end",
-      "10 Literal \"=\"",
-      "11 Jump to 8",
-      "12 GreedyRun unreserved, stopping at its end",
-      "13 Choice 14 or 16",
-      "14 FollowedBy \"&b\"",
-      "15 Jump to 26",
-      "16 Choice 17 or 26",
-      "17 Literal \"&\"",
-      "18 GreedyRun unreserved, stopping at its end",
-      "19 Literal \"=\"",
-      "20 Choice 21 or 24",
-      "21 GreedyRun unreserved, stopping at its end",
-      "22 Literal \"=\"",
-      "23 Jump to 20",
-      "24 GreedyRun unreserved, stopping at its end",
-      "25 Jump to 13",
-      "26 Capture group 0 end",
-      "27 Choice 28 or 33",
-      "28 Literal \"&\"",
-      "29 Capture group 1 start",
-      "30 Literal \"b=\"",
-      "31 GreedyRun unreserved_or_comma, stopping at its end",
-      "32 Capture group 1 end",
-      "33 Done"
+      "8 Choice 9 or 10",
+      "9 Jump to 13",
+      "10 GreedyRun unreserved, stopping at its end",
+      "11 Literal \"=\"",
+      "12 Jump to 8",
+      "13 GreedyRun unreserved, stopping at its end",
+      "14 Choice 15 or 17",
+      "15 FollowedBy \"&b\"",
+      "16 Jump to 28",
+      "17 Choice 18 or 28",
+      "18 Literal \"&\"",
+      "19 GreedyRun unreserved, stopping at its end",
+      "20 Literal \"=\"",
+      "21 Choice 22 or 23",
+      "22 Jump to 26",
+      "23 GreedyRun unreserved, stopping at its end",
+      "24 Literal \"=\"",
+      "25 Jump to 21",
+      "26 GreedyRun unreserved, stopping at its end",
+      "27 Jump to 14",
+      "28 Capture group 0 end",
+      "29 Choice 30 or 35",
+      "30 Literal \"&\"",
+      "31 Capture group 1 start",
+      "32 Literal \"b=\"",
+      "33 GreedyRun unreserved_or_comma, stopping at its end",
+      "34 Capture group 1 end",
+      "35 Done"
     ],
     # A ; value: the name, then "=" and a value, or nothing. The value can
     # be empty, for a list of one empty member.
@@ -598,6 +633,49 @@ describe Addressable::Template::Matcher, "builder methods" do
     expect(captures(matcher, "ab")).to be_nil
     expect(captures(matcher, "/")).to be_nil
     expect(captures(matcher, "")).to be_nil
+  end
+
+  it "#either tries the first steps, then the second" do
+    matcher = build(2) do |m|
+      m.either(
+        lambda { m.capture(0) { m.greedy_run(:unreserved) } },
+        lambda do
+          m.exact("/")
+          m.capture(1) { m.greedy_run(:unreserved) }
+        end
+      )
+      m.exact("!")
+    end
+    expect(captures(matcher, "ab!")).to eq(["ab", nil])
+    expect(captures(matcher, "/ab!")).to eq([nil, "ab"])
+    expect(captures(matcher, "!")).to eq(["", nil])
+    expect(captures(matcher, "/a/b!")).to be_nil
+  end
+
+  it "#as_few_as_can_be repeats its states only as far as the rest " \
+     "needs" do
+    matcher = build(2) do |m|
+      m.capture(0) do
+        m.as_few_as_can_be do
+          m.one_character(:unreserved)
+          m.exact("=")
+        end
+      end
+      m.capture(1) { m.greedy_run(:unreserved_or_equals) }
+    end
+    expect(captures(matcher, "a=b=c")).to eq(["", "a=b=c"])
+    strict = build(1) do |m|
+      m.capture(0) do
+        m.as_few_as_can_be do
+          m.one_character(:unreserved)
+          m.exact("=")
+        end
+      end
+      m.exact("c")
+    end
+    expect(captures(strict, "a=b=c")).to eq(["a=b="])
+    expect(captures(strict, "c")).to eq([""])
+    expect(captures(strict, "a=b")).to be_nil
   end
 
   it "#optional tries its states, then nothing" do

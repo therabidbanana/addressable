@@ -97,8 +97,15 @@ describe Addressable::Template::Machine::Slots do
     "{a}/{a}{b}" => [["a", :own], ["a", [:same, 0]], ["b", :own]],
     # An exploded variable right after another in its expression.
     "{;a*,b*}" => [["a*", :own], ["b*", :nothing]],
-    "{/a*,b*,c*}" => [["a*", :own], ["b*", :nothing], ["c*", :nothing]],
-    "{/a*,b,c*}" => [["a*", :own], ["b", :own], ["c*", :own]],
+    "{;a*,b*,c*}" => [["a*", :own], ["b*", :nothing], ["c*", :nothing]],
+    "{?a*,b*}" => [["a*", :own], ["b*", :nothing]],
+    "{+a*,b*}" => [["a*", :own], ["b*", :nothing]],
+    "{;a*,b,c*}" => [["a*", :own], ["b", :own], ["c*", :own]],
+    # Not where members can be a list's values or an associative array's
+    # pairs: the later variable can take the kind the earlier didn't.
+    "{/a*,b*,c*}" => [["a*", :own], ["b*", :own], ["c*", :own]],
+    "{a*,b*}" => [["a*", :own], ["b*", :own]],
+    "{.a*,b*}" => [["a*", :own], ["b*", :own]],
     # Not across expressions.
     "{/a*}{/b*}" => [["a*", :own], ["b*", :own]],
     # A name written again, where the earlier value's place is decided.
@@ -227,6 +234,18 @@ describe Addressable::Template::Machine::Slots, "#read and #mapping" do
     ["{+a}", ["x,y"]] => {"a" => "x,y"},
     ["{#a}", ["x,y"]] => {"a" => "x,y"},
     ["{/a:3}", ["x,y"]] => {"a" => "x,y"},
+    # An exploded default, / or . value whose members are all pairs is an
+    # associative array.
+    ["{/a*}", ["k=v/j=w"]] => {"a" => {"k" => "v", "j" => "w"}},
+    ["{.a*}", ["k=.=v"]] => {"a" => {"k" => "", "" => "v"}},
+    ["{a*}", ["%6B=%76"]] => {"a" => {"k" => "v"}},
+    ["{/a*}", ["k=v=w"]] => {"a" => {"k" => "v=w"}},
+    ["{/a*}", ["k=v/x"]] => {"a" => ["k=v", "x"]},
+    ["{+a*}", ["k=v"]] => {"a" => ["k=v"]},
+    ["{#a*}", ["k=v"]] => {"a" => ["k=v"]},
+    # No value writes the same key twice.
+    ["{/a*}", ["k=v/k=w"]] => nil,
+    ["{/a*}", ["k=v/%6B=w"]] => nil,
     # A ;, ? or & value comes with its name.
     ["{?a}", ["a=1"]] => {"a" => "1"},
     ["{?a}", ["a="]] => {"a" => ""},

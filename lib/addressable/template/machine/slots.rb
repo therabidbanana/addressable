@@ -53,7 +53,11 @@ module Addressable
       # another exploded one in its expression, which takes every member it
       # could, since the earlier variable wins. {;a*,b*} matches like
       # {;a*}. A processor's pattern can give either one other text, so a
-      # variable with one, or after one, isn't absorbed.
+      # variable with one, or after one, isn't absorbed. Nor is one whose
+      # members can be a list's values or an associative array's pairs
+      # (Expression#members_can_be_pairs?): the earlier variable takes
+      # all of one kind, and the later can take the other, so {/a*,b*}
+      # gives "/x/k=v" a ["x"] and b {"k" => "v"}.
       #
       # A varspec is empty_only if it's the first of a default expression
       # ({b} or {b,c}) right after a default or + expression, with no
@@ -173,6 +177,8 @@ module Addressable
             slot.expression.read(slot.variable, texts[slot.group],
               slot.pattern.nil?)
           end
+          # A slot whose text no value writes (Expression#read).
+          return nil if values.include?(nil)
           values if @written_again.all? { |slots| agree?(slots, values) }
         end
 
@@ -259,7 +265,8 @@ module Addressable
         # if any.
         def add(expression, variable, pattern, previous)
           absorbed = !previous.nil? && !pattern && !previous.pattern &&
-            variable.explode && previous.variable.explode
+            variable.explode && previous.variable.explode &&
+            !expression.members_can_be_pairs?
           slot = Slot.new(expression, variable, @size, pattern, absorbed,
             false, nil)
           @size += 1
