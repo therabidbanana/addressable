@@ -1327,6 +1327,10 @@ describe Addressable::Template, "with the :machine engine, #match" do
     ["{+path}/{name}-{+rest}", "/" * 8_000 + "-" * 8_000 + " "],
     ["{a}-{b}-{c}-{d}-{e}", "-" * 16_000 + "!"],
     ["{a}.{b}.{c}", "%2E." * 4_000 + "!"],
+    # One name written across three expressions, exploded in most, in a
+    # URI that's a run of a leader its values can hold: every split has
+    # its values compared.
+    ["{?a,a*,a*}{a*}{.a*,b*,c}", "?a=" + "." * 16_000 + "!"],
     # A name written again: compared with the earlier value where its
     # place is decided, and otherwise matched as if written once, since
     # comparing at every place the earlier value could end would grow
