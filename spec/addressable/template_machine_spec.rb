@@ -1317,6 +1317,16 @@ describe Addressable::Template, "with the :machine engine, #match" do
     # a's value is followed by "=", which b's name needs next, so it has
     # to try stopping at each of its characters.
     ["{?a,b,c}!", "?a=" + "x" * 16_000 + "=?!"],
+    # Literal text between expressions that the values before it can
+    # hold, in a URI that's a run of it: each value could stop before
+    # any of them.
+    ["/{year}-{month}-{day}", "/" + "-" * 16_000 + "!"],
+    ["/v{major}.{minor}.{patch}", "/v" + "." * 16_000 + "!"],
+    ["{+base}/{+path}/{+file}", "/" * 16_000 + " "],
+    ["{+path}/{name}-{+rest}", "/-" * 8_000 + " "],
+    ["{+path}/{name}-{+rest}", "/" * 8_000 + "-" * 8_000 + " "],
+    ["{a}-{b}-{c}-{d}-{e}", "-" * 16_000 + "!"],
+    ["{a}.{b}.{c}", "%2E." * 4_000 + "!"],
     # A name written again: compared with the earlier value where its
     # place is decided, and otherwise matched as if written once, since
     # comparing at every place the earlier value could end would grow
